@@ -1,0 +1,6 @@
+*.lock
+node_modules/
+dist/
+
+# KotaDB local storage
+.kotadb/

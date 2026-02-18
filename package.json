@@ -1,0 +1,22 @@
+{
+  "name": "pi-megapowers",
+  "version": "0.1.0",
+  "keywords": ["pi-package"],
+  "pi": {
+    "extensions": ["./extensions"]
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-agent-core": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-tui": "*",
+    "@sinclair/typebox": "*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "scripts": {
+    "test": "bun test",
+    "test:watch": "bun test --watch"
+  }
+}
