@@ -29,10 +29,10 @@
   "tdd": {
     "phase": "red-pending",
     "testFiles": [
-      "/Users/maxwellnewman/pi/workspace/pi-megapowers/tests/state-machine.test.ts"
+      "/Users/maxwellnewman/pi/workspace/pi-megapowers/tests/prompts.test.ts"
     ],
     "sourceFiles": [
-      "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/state-machine.ts"
+      "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/index.ts"
     ],
     "redVerificationPending": true
   },

@@ -4,17 +4,18 @@ import {
   interpolatePrompt,
   PHASE_PROMPT_MAP,
 } from "../extensions/megapowers/prompts.js";
+import type { Phase } from "../extensions/megapowers/state-machine.js";
 
 describe("PHASE_PROMPT_MAP", () => {
   it("maps every feature phase to a prompt file", () => {
-    const phases = ["brainstorm", "spec", "plan", "review", "implement", "verify", "done"];
+    const phases: Phase[] = ["brainstorm", "spec", "plan", "review", "implement", "verify", "done"];
     for (const phase of phases) {
       expect(PHASE_PROMPT_MAP[phase]).toBeDefined();
     }
   });
 
   it("maps every bugfix phase to a prompt file", () => {
-    const phases = ["reproduce", "diagnose", "plan", "review", "implement", "verify", "done"];
+    const phases: Phase[] = ["reproduce", "diagnose", "plan", "review", "implement", "verify", "done"];
     for (const phase of phases) {
       expect(PHASE_PROMPT_MAP[phase]).toBeDefined();
     }
