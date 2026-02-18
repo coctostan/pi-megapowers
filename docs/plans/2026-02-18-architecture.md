@@ -1,7 +1,9 @@
-# pi-megapowers Design Document
+# pi-megapowers Architecture
 
 **Date:** 2026-02-18
 **Status:** Draft
+
+This is the master architecture document. Individual component designs live in separate docs and reference this for overall vision and principles.
 
 ## Overview
 
