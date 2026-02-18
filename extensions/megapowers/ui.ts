@@ -45,7 +45,7 @@ export function renderStatusText(state: MegapowersState): string {
   return `📋 #${idNum} ${state.phase ?? "?"}${taskInfo}`;
 }
 
-export function renderDashboardLines(state: MegapowersState, issues: Issue[], theme: ThemeLike): string[] {
+export function renderDashboardLines(state: MegapowersState, _issues: Issue[], theme: ThemeLike): string[] {
   const lines: string[] = [];
 
   if (!state.activeIssue) {

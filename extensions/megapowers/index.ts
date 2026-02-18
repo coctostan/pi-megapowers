@@ -121,7 +121,7 @@ export default function megapowers(pi: ExtensionAPI): void {
   pi.on("agent_end", async (event, ctx) => {
     const activeIssue = state.activeIssue;
     const phase = state.phase;
-    if (!activeIssue || !phase || !store || !ctx.hasUI) return;
+    if (!activeIssue || !phase || !store) return;
 
     // Extract text from last assistant message
     const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
@@ -129,11 +129,11 @@ export default function megapowers(pi: ExtensionAPI): void {
     const text = getAssistantText(lastAssistant);
     if (!text) return;
 
-    // Phase-specific artifact capture
+    // Phase-specific artifact capture (always runs, even headless)
     if (phase === "spec" && text.length > 100) {
       store.ensurePlanDir(activeIssue);
       store.writePlanFile(activeIssue, "spec.md", text);
-      ctx.ui.notify("Spec saved.", "info");
+      if (ctx.hasUI) ctx.ui.notify("Spec saved.", "info");
     }
 
     if (phase === "plan" && text.length > 100) {
@@ -142,34 +142,33 @@ export default function megapowers(pi: ExtensionAPI): void {
       const tasks = extractPlanTasks(text);
       state = { ...state, planTasks: tasks };
       store.saveState(state);
-      ctx.ui.notify(`Plan saved. ${tasks.length} tasks extracted.`, "info");
+      if (ctx.hasUI) ctx.ui.notify(`Plan saved. ${tasks.length} tasks extracted.`, "info");
     }
 
     if (phase === "diagnose" && text.length > 100) {
       store.ensurePlanDir(activeIssue);
       store.writePlanFile(activeIssue, "diagnosis.md", text);
-      ctx.ui.notify("Diagnosis saved.", "info");
+      if (ctx.hasUI) ctx.ui.notify("Diagnosis saved.", "info");
     }
 
     if (phase === "review") {
-      // Check if the review approved the plan
       const approved = /\bapproved?\b/i.test(text) && !/\bnot approved\b/i.test(text);
       if (approved) {
         state = { ...state, reviewApproved: true };
         store.saveState(state);
-        ctx.ui.notify("Review: approved.", "info");
+        if (ctx.hasUI) ctx.ui.notify("Review: approved.", "info");
       }
     }
 
-    // Offer phase transition
-    const validNext = getValidTransitions(state.workflow, phase);
-    if (validNext.length > 0) {
-      state = await ui.handlePhaseTransition(ctx, state, store, jj);
-      // Persist after transition
-      pi.appendEntry("megapowers-state", state);
+    // Interactive-only: offer phase transition and update dashboard
+    if (ctx.hasUI) {
+      const validNext = getValidTransitions(state.workflow, phase);
+      if (validNext.length > 0) {
+        state = await ui.handlePhaseTransition(ctx, state, store, jj);
+        pi.appendEntry("megapowers-state", state);
+      }
+      ui.renderDashboard(ctx, state, store);
     }
-
-    ui.renderDashboard(ctx, state, store);
   });
 
   // --- Commands ---

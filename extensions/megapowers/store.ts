@@ -147,7 +147,11 @@ export function createStore(projectRoot: string): Store {
     createIssue(title: string, type: "feature" | "bugfix", description: string): Issue {
       ensureRoot();
       const existing = readdirSync(issuesDir).filter((f) => f.endsWith(".md"));
-      const nextId = existing.length + 1;
+      const maxId = existing.reduce((max, f) => {
+        const idMatch = f.match(/^(\d+)-/);
+        return idMatch ? Math.max(max, parseInt(idMatch[1])) : max;
+      }, 0);
+      const nextId = maxId + 1;
       const slug = `${padId(nextId)}-${slugify(title)}`;
 
       const issue: Issue = {

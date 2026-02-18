@@ -3,12 +3,12 @@
     "phases": {
       "brainstorm": "skipped",
       "plan": "complete",
-      "execute": "active",
+      "execute": "skipped",
       "verify": "skipped",
-      "review": "pending",
+      "review": "active",
       "finish": "pending"
     },
-    "currentPhase": "execute",
+    "currentPhase": "review",
     "artifacts": {
       "brainstorm": null,
       "plan": null,
@@ -29,10 +29,12 @@
   "tdd": {
     "phase": "red-pending",
     "testFiles": [
-      "/Users/maxwellnewman/pi/workspace/pi-megapowers/tests/prompts.test.ts"
+      "/Users/maxwellnewman/pi/workspace/pi-megapowers/tests/store.test.ts"
     ],
     "sourceFiles": [
-      "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/index.ts"
+      "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/store.ts",
+      "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/index.ts",
+      "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/ui.ts"
     ],
     "redVerificationPending": true
   },

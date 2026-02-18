@@ -75,6 +75,19 @@ describe("issues", () => {
     const issue = store.getIssue("001-test");
     expect(issue!.status).toBe("in-progress");
   });
+
+  it("generates correct ID after non-contiguous deletions", () => {
+    store.createIssue("First", "feature", "desc");
+    store.createIssue("Second", "feature", "desc");
+    // Simulate deletion of issue 001
+    const { rmSync: rm } = require("node:fs");
+    const { join: pjoin } = require("node:path");
+    rm(pjoin(tmp, ".megapowers", "issues", "001-first.md"));
+
+    const third = store.createIssue("Third", "feature", "desc");
+    expect(third.id).toBe(3);
+    expect(third.slug).toBe("003-third");
+  });
 });
 
 describe("plan files", () => {
