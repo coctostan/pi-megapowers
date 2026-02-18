@@ -1,14 +1,14 @@
 {
   "workflow": {
     "phases": {
-      "brainstorm": "active",
-      "plan": "pending",
-      "execute": "pending",
-      "verify": "pending",
+      "brainstorm": "skipped",
+      "plan": "complete",
+      "execute": "active",
+      "verify": "skipped",
       "review": "pending",
       "finish": "pending"
     },
-    "currentPhase": "brainstorm",
+    "currentPhase": "execute",
     "artifacts": {
       "brainstorm": null,
       "plan": null,
@@ -19,7 +19,7 @@
     },
     "prompted": {
       "brainstorm": false,
-      "plan": false,
+      "plan": true,
       "execute": false,
       "verify": false,
       "review": false,
@@ -29,7 +29,9 @@
   "tdd": {
     "phase": "idle",
     "testFiles": [],
-    "sourceFiles": [],
+    "sourceFiles": [
+      "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/index.ts"
+    ],
     "redVerificationPending": false
   },
   "debug": {
@@ -39,6 +41,6 @@
   },
   "verification": {
     "verified": false,
-    "verificationWaived": false
+    "verificationWaived": true
   }
 }
