@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { isTestFile, isAllowlisted } from "../extensions/megapowers/tdd-guard.js";
+import { isTestFile, isAllowlisted, isTestRunnerCommand, handleTestResult, type TddState } from "../extensions/megapowers/tdd-guard.js";
 
 describe("isTestFile", () => {
   it("matches *.test.ts files", () => {
@@ -73,5 +73,67 @@ describe("isAllowlisted", () => {
   it("does not allow regular source files", () => {
     expect(isAllowlisted("src/auth.ts")).toBe(false);
     expect(isAllowlisted("lib/utils.js")).toBe(false);
+  });
+});
+
+describe("isTestRunnerCommand", () => {
+  it("matches 'bun test'", () => {
+    expect(isTestRunnerCommand("bun test")).toBe(true);
+  });
+
+  it("matches 'bun test' with arguments", () => {
+    expect(isTestRunnerCommand("bun test tests/auth.test.ts -v")).toBe(true);
+  });
+
+  it("matches 'npm test'", () => {
+    expect(isTestRunnerCommand("npm test")).toBe(true);
+  });
+
+  it("matches 'npx jest'", () => {
+    expect(isTestRunnerCommand("npx jest")).toBe(true);
+  });
+
+  it("matches 'npx vitest'", () => {
+    expect(isTestRunnerCommand("npx vitest run")).toBe(true);
+  });
+
+  it("matches 'pytest'", () => {
+    expect(isTestRunnerCommand("pytest tests/")).toBe(true);
+  });
+
+  it("matches 'python -m pytest'", () => {
+    expect(isTestRunnerCommand("python -m pytest")).toBe(true);
+  });
+
+  it("matches 'cargo test'", () => {
+    expect(isTestRunnerCommand("cargo test")).toBe(true);
+  });
+
+  it("matches 'go test'", () => {
+    expect(isTestRunnerCommand("go test ./...")).toBe(true);
+  });
+
+  it("does not match unrelated commands", () => {
+    expect(isTestRunnerCommand("ls -la")).toBe(false);
+    expect(isTestRunnerCommand("cat test.txt")).toBe(false);
+    expect(isTestRunnerCommand("npm install")).toBe(false);
+  });
+});
+
+describe("handleTestResult", () => {
+  it("advances test-written to impl-allowed on non-zero exit", () => {
+    expect(handleTestResult(1, "test-written")).toBe("impl-allowed");
+  });
+
+  it("stays at test-written on zero exit (tests pass = not a failing test)", () => {
+    expect(handleTestResult(0, "test-written")).toBe("test-written");
+  });
+
+  it("does not change no-test state", () => {
+    expect(handleTestResult(1, "no-test")).toBe("no-test");
+  });
+
+  it("does not change impl-allowed state", () => {
+    expect(handleTestResult(1, "impl-allowed")).toBe("impl-allowed");
   });
 });

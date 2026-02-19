@@ -49,3 +49,32 @@ export function isAllowlisted(filePath: string): boolean {
   }
   return false;
 }
+
+// --- Test runner detection ---
+
+const TEST_RUNNER_PATTERNS = [
+  /\bbun\s+test\b/,
+  /\bnpm\s+test\b/,
+  /\bnpx\s+(jest|vitest|mocha)\b/,
+  /\bpytest\b/,
+  /\bpython\s+-m\s+pytest\b/,
+  /\bcargo\s+test\b/,
+  /\bgo\s+test\b/,
+  /\bdeno\s+test\b/,
+  /\bnpm\s+run\s+test\b/,
+];
+
+export function isTestRunnerCommand(command: string): boolean {
+  for (const pattern of TEST_RUNNER_PATTERNS) {
+    if (pattern.test(command)) return true;
+  }
+  return false;
+}
+
+// --- State transitions ---
+
+export function handleTestResult(exitCode: number, currentState: TddState): TddState {
+  if (currentState !== "test-written") return currentState;
+  if (exitCode !== 0) return "impl-allowed";
+  return "test-written";
+}
