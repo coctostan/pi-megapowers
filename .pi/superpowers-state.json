@@ -27,10 +27,14 @@
     }
   },
   "tdd": {
-    "phase": "idle",
-    "testFiles": [],
-    "sourceFiles": [],
-    "redVerificationPending": false
+    "phase": "red-pending",
+    "testFiles": [
+      "/Users/maxwellnewman/pi/workspace/pi-megapowers/tests/prompts.test.ts"
+    ],
+    "sourceFiles": [
+      "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/prompts.ts"
+    ],
+    "redVerificationPending": true
   },
   "debug": {
     "active": false,
