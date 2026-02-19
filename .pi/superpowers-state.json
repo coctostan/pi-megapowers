@@ -27,12 +27,15 @@
     }
   },
   "tdd": {
-    "phase": "idle",
-    "testFiles": [],
-    "sourceFiles": [
-      "extensions/megapowers/ui.ts"
+    "phase": "red-pending",
+    "testFiles": [
+      "tests/store.test.ts"
     ],
-    "redVerificationPending": false
+    "sourceFiles": [
+      "extensions/megapowers/store.ts",
+      "extensions/megapowers/index.ts"
+    ],
+    "redVerificationPending": true
   },
   "debug": {
     "active": false,

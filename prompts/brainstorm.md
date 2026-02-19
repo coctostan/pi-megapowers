@@ -2,9 +2,6 @@ You are brainstorming a new feature with the user. Your job is to understand wha
 
 ## Context
 Issue: {{issue_slug}}
-{{#issue_description}}
-Description: {{issue_description}}
-{{/issue_description}}
 
 ## Instructions
 

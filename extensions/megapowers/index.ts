@@ -172,6 +172,14 @@ export default function megapowers(pi: ExtensionAPI): void {
         state = await ui.handlePhaseTransition(ctx, state, store, jj);
         pi.appendEntry("megapowers-state", state);
       }
+
+      // Done phase: trigger wrap-up menu
+      if (state.phase === "done") {
+        state = await ui.handleDonePhase(ctx, state, store, jj);
+        store.saveState(state);
+        pi.appendEntry("megapowers-state", state);
+      }
+
       ui.renderDashboard(ctx, state, store);
     }
   });
@@ -223,6 +231,23 @@ export default function megapowers(pi: ExtensionAPI): void {
           ctx.ui.notify("No active workflow. Use /issue to start.", "info");
         }
       }
+    },
+  });
+
+  pi.registerCommand("done", {
+    description: "Trigger wrap-up menu (when in done phase)",
+    handler: async (_args, ctx) => {
+      if (state.phase !== "done") {
+        ctx.ui.notify("Not in done phase. Use /phase next to advance.", "info");
+        return;
+      }
+      if (!store) store = createStore(ctx.cwd);
+      if (!jj) jj = createJJ(pi);
+      if (!ui) ui = createUI();
+      state = await ui.handleDonePhase(ctx, state, store, jj);
+      store.saveState(state);
+      pi.appendEntry("megapowers-state", state);
+      ui.renderDashboard(ctx, state, store);
     },
   });
 
