@@ -68,6 +68,18 @@ describe("processAgentOutput — plan phase", () => {
     expect(result.stateUpdate.planTasks!.length).toBeGreaterThan(0);
     expect(result.stateUpdate.currentTaskIndex).toBe(0);
   });
+
+  it("resets tddTaskState when plan tasks are replaced", () => {
+    const state = makeState({
+      phase: "plan",
+      tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
+    });
+    const text = "## Implementation\n\n### Task 1: New task\nDo it.\n\n### Task 2: Another\nBuild it.\n\nMore text to get over 100 chars threshold for artifact.";
+    const result = processAgentOutput(text, "plan", state);
+
+    expect(result.stateUpdate.planTasks).toBeDefined();
+    expect(result.stateUpdate.tddTaskState).toBeNull();
+  });
 });
 
 describe("processAgentOutput — review phase", () => {

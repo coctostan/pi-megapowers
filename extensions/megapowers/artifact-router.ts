@@ -47,6 +47,7 @@ export function processAgentOutput(
     const tasks = extractPlanTasks(text);
     stateUpdate.planTasks = tasks;
     stateUpdate.currentTaskIndex = 0;
+    stateUpdate.tddTaskState = null;
     notifications.push(`Plan saved. ${tasks.length} tasks extracted.`);
   }
 
