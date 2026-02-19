@@ -307,6 +307,81 @@ describe("renderDashboardLines — verify phase with criteria", () => {
   });
 });
 
+describe("handleDonePhase", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "megapowers-ui-done-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("closes issue when 'Close issue' is selected", async () => {
+    const store = createStore(tmp);
+    const issue = store.createIssue("Test feature", "feature", "desc");
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: issue.slug,
+      workflow: "feature",
+      phase: "done",
+    };
+
+    const ctx = createMockCtx();
+    ctx.ui.select = async () => "Close issue";
+
+    const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
+
+    expect(result.activeIssue).toBeNull();
+    expect(result.phase).toBeNull();
+    expect(result.workflow).toBeNull();
+    // Verify issue status updated in store
+    const issues = store.listIssues();
+    const closed = issues.find(i => i.slug === issue.slug);
+    expect(closed?.status).toBe("done");
+  });
+
+  it("returns state unchanged when 'Done' is selected", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+    };
+
+    const ctx = createMockCtx();
+    ctx.ui.select = async () => "Done — finish without further actions";
+
+    const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
+
+    expect(result.activeIssue).toBe("001-test");
+    expect(result.phase).toBe("done");
+  });
+
+  it("returns state unchanged when selection is cancelled", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+    };
+
+    const ctx = createMockCtx(); // returns null by default
+    const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
+
+    expect(result.phase).toBe("done");
+  });
+});
+
 describe("handleIssueCommand — new state fields", () => {
   let tmp: string;
 

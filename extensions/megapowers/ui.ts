@@ -2,7 +2,7 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { MegapowersState, Phase, WorkflowType } from "./state-machine.js";
 import type { Issue, Store } from "./store.js";
 import type { JJ } from "./jj.js";
-import { getFirstPhase, getValidTransitions, transition } from "./state-machine.js";
+import { createInitialState, getFirstPhase, getValidTransitions, transition } from "./state-machine.js";
 import { formatChangeDescription } from "./jj.js";
 import { checkGate } from "./gates.js";
 
@@ -110,6 +110,13 @@ export interface MegapowersUI {
   ): Promise<MegapowersState>;
 
   handlePhaseTransition(
+    ctx: ExtensionContext,
+    state: MegapowersState,
+    store: Store,
+    jj: JJ
+  ): Promise<MegapowersState>;
+
+  handleDonePhase(
     ctx: ExtensionContext,
     state: MegapowersState,
     store: Store,
@@ -232,6 +239,52 @@ export function createUI(): MegapowersUI {
 
       ctx.ui.notify(`Unknown subcommand: ${subcommand}. Use: new, list`, "error");
       return state;
+    },
+
+    async handleDonePhase(ctx, state, store, jj) {
+      if (!state.activeIssue) return state;
+
+      const actions = [
+        "Close issue",
+        "Generate commit message",
+        "Update docs (LLM generates from artifacts)",
+        "Write changelog entry",
+        "Done — finish without further actions",
+      ];
+
+      let continueMenu = true;
+      let newState = state;
+
+      while (continueMenu) {
+        const choice = await ctx.ui.select("Wrap-up actions:", actions);
+        if (!choice || choice.startsWith("Done")) {
+          continueMenu = false;
+          break;
+        }
+
+        if (choice === "Close issue") {
+          store.updateIssueStatus(state.activeIssue, "done");
+          newState = createInitialState();
+          store.saveState(newState);
+          ctx.ui.notify("Issue closed.", "info");
+          continueMenu = false;
+          break;
+        }
+
+        if (choice.startsWith("Generate commit")) {
+          ctx.ui.notify("Ask the LLM to generate a commit message based on the spec and changes.", "info");
+        }
+
+        if (choice.startsWith("Update docs")) {
+          ctx.ui.notify("Ask the LLM to generate/update docs. The done-phase prompt will guide it.", "info");
+        }
+
+        if (choice.startsWith("Write changelog")) {
+          ctx.ui.notify("Ask the LLM to write a changelog entry. The done-phase prompt will guide it.", "info");
+        }
+      }
+
+      return newState;
     },
 
     async handlePhaseTransition(ctx, state, store, jj) {
