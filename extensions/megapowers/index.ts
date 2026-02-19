@@ -326,4 +326,46 @@ export default function megapowers(pi: ExtensionAPI): void {
       }
     },
   });
+
+  pi.registerCommand("tdd", {
+    description: "TDD guard control (usage: /tdd skip | /tdd status)",
+    getArgumentCompletions: (prefix) => {
+      const subs = ["skip", "status"];
+      const filtered = subs.filter((s) => s.startsWith(prefix));
+      return filtered.length > 0 ? filtered.map((s) => ({ value: s, label: s })) : null;
+    },
+    handler: async (args, ctx) => {
+      const sub = args.trim();
+
+      if (sub === "skip") {
+        if (state.phase !== "implement") {
+          ctx.ui.notify("Not in implement phase.", "info");
+          return;
+        }
+        if (!state.tddTaskState) {
+          ctx.ui.notify("No active TDD state to skip.", "info");
+          return;
+        }
+        state.tddTaskState = {
+          ...state.tddTaskState,
+          skipped: true,
+          skipReason: "User-approved runtime skip",
+        };
+        if (store) store.saveState(state);
+        ctx.ui.notify("TDD enforcement skipped for current task.", "info");
+        if (ui) ui.renderDashboard(ctx, state, store);
+        return;
+      }
+
+      if (sub === "status") {
+        const tddInfo = state.tddTaskState
+          ? `Task ${state.tddTaskState.taskIndex}: ${state.tddTaskState.state}${state.tddTaskState.skipped ? " (skipped)" : ""}`
+          : "No active TDD state";
+        ctx.ui.notify(`TDD Guard: ${tddInfo}\nPhase: ${state.phase ?? "none"}`, "info");
+        return;
+      }
+
+      ctx.ui.notify("Usage: /tdd skip | /tdd status", "info");
+    },
+  });
 }

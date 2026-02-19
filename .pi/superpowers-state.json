@@ -29,7 +29,9 @@
   "tdd": {
     "phase": "idle",
     "testFiles": [],
-    "sourceFiles": [],
+    "sourceFiles": [
+      "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/index.ts"
+    ],
     "redVerificationPending": false
   },
   "debug": {
