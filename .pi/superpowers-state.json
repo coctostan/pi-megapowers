@@ -27,12 +27,10 @@
     }
   },
   "tdd": {
-    "phase": "red-pending",
-    "testFiles": [
-      "tests/gates.test.ts"
-    ],
+    "phase": "idle",
+    "testFiles": [],
     "sourceFiles": [],
-    "redVerificationPending": true
+    "redVerificationPending": false
   },
   "debug": {
     "active": false,
