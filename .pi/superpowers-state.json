@@ -27,14 +27,18 @@
     }
   },
   "tdd": {
-    "phase": "idle",
-    "testFiles": [],
-    "sourceFiles": [],
-    "redVerificationPending": false
+    "phase": "red-pending",
+    "testFiles": [
+      "/Users/maxwellnewman/pi/workspace/pi-megapowers/tests/state-machine.test.ts"
+    ],
+    "sourceFiles": [
+      "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/state-machine.ts"
+    ],
+    "redVerificationPending": true
   },
   "debug": {
     "active": false,
-    "investigated": false,
+    "investigated": true,
     "fixAttempts": 0
   },
   "verification": {

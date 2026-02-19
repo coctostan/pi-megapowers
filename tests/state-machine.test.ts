@@ -6,6 +6,7 @@ import {
   transition,
   type MegapowersState,
   type PlanTask,
+  type AcceptanceCriterion,
 } from "../extensions/megapowers/state-machine.js";
 
 describe("createInitialState", () => {
@@ -39,9 +40,10 @@ describe("getValidTransitions — feature mode", () => {
     expect(ts).toContain("implement");
   });
 
-  it("review can go to implement", () => {
+  it("review can go to implement or plan (backward)", () => {
     const ts = getValidTransitions("feature", "review");
-    expect(ts).toEqual(["implement"]);
+    expect(ts).toContain("implement");
+    expect(ts).toContain("plan");
   });
 
   it("implement can go to verify", () => {
@@ -49,9 +51,17 @@ describe("getValidTransitions — feature mode", () => {
     expect(ts).toEqual(["verify"]);
   });
 
-  it("verify can go to done", () => {
+  it("verify can go to code-review or implement (backward)", () => {
     const ts = getValidTransitions("feature", "verify");
-    expect(ts).toEqual(["done"]);
+    expect(ts).toContain("code-review");
+    expect(ts).toContain("implement");
+    expect(ts).not.toContain("done");
+  });
+
+  it("code-review can go to done or implement (backward)", () => {
+    const ts = getValidTransitions("feature", "code-review");
+    expect(ts).toContain("done");
+    expect(ts).toContain("implement");
   });
 
   it("done has no transitions", () => {
@@ -133,5 +143,61 @@ describe("transition", () => {
 
     const next = transition(state, "plan");
     expect(next.reviewApproved).toBe(false);
+  });
+});
+
+describe("createInitialState — new fields", () => {
+  it("includes acceptanceCriteria and currentTaskIndex", () => {
+    const state = createInitialState();
+    expect(state.acceptanceCriteria).toEqual([]);
+    expect(state.currentTaskIndex).toBe(0);
+  });
+});
+
+describe("transition — backward transitions", () => {
+  it("allows review → plan (revise)", () => {
+    const state = createInitialState();
+    state.workflow = "feature";
+    state.phase = "review";
+    state.activeIssue = "001-test";
+    const next = transition(state, "plan");
+    expect(next.phase).toBe("plan");
+    expect(next.reviewApproved).toBe(false);
+  });
+
+  it("allows verify → implement (fix failures)", () => {
+    const state = createInitialState();
+    state.workflow = "feature";
+    state.phase = "verify";
+    state.activeIssue = "001-test";
+    const next = transition(state, "implement");
+    expect(next.phase).toBe("implement");
+  });
+
+  it("allows code-review → implement (fix issues)", () => {
+    const state = createInitialState();
+    state.workflow = "feature";
+    state.phase = "code-review";
+    state.activeIssue = "001-test";
+    const next = transition(state, "implement");
+    expect(next.phase).toBe("implement");
+  });
+
+  it("allows verify → code-review (forward)", () => {
+    const state = createInitialState();
+    state.workflow = "feature";
+    state.phase = "verify";
+    state.activeIssue = "001-test";
+    const next = transition(state, "code-review");
+    expect(next.phase).toBe("code-review");
+  });
+
+  it("allows code-review → done (forward)", () => {
+    const state = createInitialState();
+    state.workflow = "feature";
+    state.phase = "code-review";
+    state.activeIssue = "001-test";
+    const next = transition(state, "done");
+    expect(next.phase).toBe("done");
   });
 });

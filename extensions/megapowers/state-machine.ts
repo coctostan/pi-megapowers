@@ -2,7 +2,7 @@
 
 export type WorkflowType = "feature" | "bugfix";
 
-export type FeaturePhase = "brainstorm" | "spec" | "plan" | "review" | "implement" | "verify" | "done";
+export type FeaturePhase = "brainstorm" | "spec" | "plan" | "review" | "implement" | "verify" | "code-review" | "done";
 export type BugfixPhase = "reproduce" | "diagnose" | "plan" | "review" | "implement" | "verify" | "done";
 export type Phase = FeaturePhase | BugfixPhase;
 
@@ -19,6 +19,12 @@ export interface PlanTask {
   completed: boolean;
 }
 
+export interface AcceptanceCriterion {
+  id: number;
+  text: string;
+  status: "pending" | "pass" | "fail" | "partial";
+}
+
 export interface MegapowersState {
   version: 1;
   activeIssue: string | null;
@@ -28,6 +34,8 @@ export interface MegapowersState {
   reviewApproved: boolean;
   planTasks: PlanTask[];
   jjChangeId: string | null;
+  acceptanceCriteria: AcceptanceCriterion[];
+  currentTaskIndex: number;
 }
 
 // --- Transition Tables ---
@@ -36,9 +44,10 @@ const FEATURE_TRANSITIONS: Record<FeaturePhase, FeaturePhase[]> = {
   brainstorm: ["spec"],
   spec: ["plan"],
   plan: ["review", "implement"],
-  review: ["implement"],
+  review: ["implement", "plan"],
   implement: ["verify"],
-  verify: ["done"],
+  verify: ["code-review", "implement"],
+  "code-review": ["done", "implement"],
   done: [],
 };
 
@@ -64,6 +73,8 @@ export function createInitialState(): MegapowersState {
     reviewApproved: false,
     planTasks: [],
     jjChangeId: null,
+    acceptanceCriteria: [],
+    currentTaskIndex: 0,
   };
 }
 
@@ -104,6 +115,11 @@ export function transition(state: MegapowersState, to: Phase): MegapowersState {
   // Reset review approval when entering plan (re-planning invalidates previous review)
   if (to === "plan") {
     next.reviewApproved = false;
+  }
+
+  if (to === "implement") {
+    next.currentTaskIndex = next.planTasks.findIndex(t => !t.completed);
+    if (next.currentTaskIndex === -1) next.currentTaskIndex = 0;
   }
 
   return next;
