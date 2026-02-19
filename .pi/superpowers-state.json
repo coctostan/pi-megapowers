@@ -29,11 +29,9 @@
   "tdd": {
     "phase": "red-pending",
     "testFiles": [
-      "/Users/maxwellnewman/pi/workspace/pi-megapowers/tests/spec-parser.test.ts"
+      "tests/gates.test.ts"
     ],
-    "sourceFiles": [
-      "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/spec-parser.ts"
-    ],
+    "sourceFiles": [],
     "redVerificationPending": true
   },
   "debug": {
