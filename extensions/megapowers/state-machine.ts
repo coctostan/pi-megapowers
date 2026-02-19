@@ -17,6 +17,7 @@ export interface PlanTask {
   index: number;
   description: string;
   completed: boolean;
+  noTest: boolean;
 }
 
 export interface AcceptanceCriterion {
