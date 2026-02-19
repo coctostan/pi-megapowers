@@ -250,6 +250,63 @@ describe("handlePhaseTransition — gate enforcement", () => {
   });
 });
 
+describe("renderDashboardLines — implement phase with tasks", () => {
+  it("shows per-task progress count", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-auth",
+      workflow: "feature",
+      phase: "implement",
+      planTasks: [
+        { index: 1, description: "Set up schema", completed: true },
+        { index: 2, description: "Create endpoint", completed: false },
+        { index: 3, description: "Write tests", completed: false },
+      ],
+      currentTaskIndex: 1,
+    };
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const joined = lines.join("\n");
+    expect(joined).toContain("1/3");
+  });
+
+  it("shows current task name in implement phase", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-auth",
+      workflow: "feature",
+      phase: "implement",
+      planTasks: [
+        { index: 1, description: "Set up schema", completed: true },
+        { index: 2, description: "Create endpoint", completed: false },
+        { index: 3, description: "Write tests", completed: false },
+      ],
+      currentTaskIndex: 1,
+    };
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const joined = lines.join("\n");
+    expect(joined).toContain("Create endpoint");
+  });
+});
+
+describe("renderDashboardLines — verify phase with criteria", () => {
+  it("shows acceptance criteria pass count", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-auth",
+      workflow: "feature",
+      phase: "verify",
+      acceptanceCriteria: [
+        { id: 1, text: "User can register", status: "pass" },
+        { id: 2, text: "Email validated", status: "pending" },
+      ],
+    };
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const joined = lines.join("\n");
+    expect(joined).toContain("Criteria:");
+    expect(joined).toContain("1/2");
+  });
+});
+
 describe("handleIssueCommand — new state fields", () => {
   let tmp: string;
 

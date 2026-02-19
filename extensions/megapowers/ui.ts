@@ -65,9 +65,22 @@ export function renderDashboardLines(state: MegapowersState, _issues: Issue[], t
     lines.push(`${theme.fg("accent", "Phase:")} ${formatPhaseProgress(state.workflow, state.phase, theme)}`);
   }
 
+  // Task progress (implement phase or whenever tasks exist)
   if (state.planTasks.length > 0) {
     const completed = state.planTasks.filter((t) => t.completed).length;
     lines.push(`${theme.fg("accent", "Tasks:")} ${completed}/${state.planTasks.length} complete`);
+
+    // Show current task in implement phase
+    if (state.phase === "implement" && state.currentTaskIndex < state.planTasks.length) {
+      const current = state.planTasks[state.currentTaskIndex];
+      lines.push(`${theme.fg("accent", "Current:")} Task ${current.index}: ${current.description}`);
+    }
+  }
+
+  // Acceptance criteria status (verify and code-review phases)
+  if (state.acceptanceCriteria.length > 0 && (state.phase === "verify" || state.phase === "code-review")) {
+    const passed = state.acceptanceCriteria.filter(c => c.status === "pass").length;
+    lines.push(`${theme.fg("accent", "Criteria:")} ${passed}/${state.acceptanceCriteria.length} passing`);
   }
 
   if (state.jjChangeId) {
