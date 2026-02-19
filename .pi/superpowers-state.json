@@ -5,7 +5,7 @@
       "plan": "complete",
       "execute": "skipped",
       "verify": "skipped",
-      "review": "active",
+      "review": "skipped",
       "finish": "pending"
     },
     "currentPhase": "review",
@@ -29,12 +29,11 @@
   "tdd": {
     "phase": "red-pending",
     "testFiles": [
-      "/Users/maxwellnewman/pi/workspace/pi-megapowers/tests/store.test.ts"
+      "tests/store.test.ts"
     ],
     "sourceFiles": [
-      "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/store.ts",
-      "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/index.ts",
-      "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/ui.ts"
+      "extensions/megapowers/store.ts",
+      "extensions/megapowers/index.ts"
     ],
     "redVerificationPending": true
   },

@@ -196,6 +196,12 @@ A simple prioritized list in the project store. Each issue has: title, type (fea
 
 Accumulated knowledge that persists across sessions. The extension prompts for learnings capture at the end of each completed workflow. The LLM proposes, the user approves or edits. Learnings are injected into relevant LLM task contexts automatically — e.g., if a learning says "the auth module requires mocking the token service," the extension includes that when scoping implementation tasks that touch auth.
 
+### Project Roadmap
+
+A project-level `ROADMAP.md` at the repository root captures the larger trajectory: current milestone, future enhancements, and their relationships. The extension should be aware of this file and reference it during brainstorm and planning phases — when a user proposes work, the LLM should know where it fits in the project's bigger picture and flag conflicts or dependencies with other roadmap items.
+
+The roadmap is a living document maintained by the user, not auto-generated. The extension reads it as context, not as a state file.
+
 ### Living Documentation
 
 Docs are generated from artifacts that already exist: specs become feature docs, acceptance tests become behavior docs, the issue list becomes a changelog source. The LLM generates/updates docs at the Done phase, but only from real artifacts. The extension triggers it; the LLM writes it.

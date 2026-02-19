@@ -1,13 +1,33 @@
-You are writing an executable specification for the following feature.
+You are writing an executable specification. Convert the brainstorm design into a structured document with testable acceptance criteria.
 
 ## Context
 Issue: {{issue_slug}}
 
-## Instructions
-- Write clear acceptance criteria
-- Each criterion should be testable
-- Use concrete examples (Given/When/Then if helpful)
-- Cover happy paths and error cases
-- Keep it concise — this becomes the "done" checklist
+## Brainstorm Notes
+{{brainstorm_content}}
 
-Write the spec as a markdown document.
+## Required Structure
+
+Write a spec with exactly these sections:
+
+### ## Goal
+One paragraph: what is being built and why.
+
+### ## Acceptance Criteria
+Numbered list. Each criterion must be:
+- **Specific and verifiable** — "user sees error message with validation failure" not "error handling works"
+- **Self-contained** — understandable without reading the brainstorm notes
+- **TDD-friendly** — maps naturally to a test
+- **Bite-sized** — if it has "and" in it, split it into two criteria
+
+### ## Out of Scope
+Explicit boundaries. What this feature does NOT do.
+
+### ## Open Questions
+Anything unresolved. **This section must be empty to advance to planning.** If you have questions, ask the user now.
+
+## Rules
+- DRY and YAGNI — only criteria essential to the goal
+- Each criterion should assume zero codebase context
+- Keep it concise — spec is a contract, not a design doc
+- Number criteria sequentially (1, 2, 3...)

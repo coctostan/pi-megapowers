@@ -37,6 +37,29 @@ describe("state persistence", () => {
     expect(state.activeIssue).toBeNull();
     expect(state.version).toBe(1);
   });
+
+  it("migrates legacy state missing new fields", () => {
+    // Simulate a state file from before the feature-mode changes
+    const legacyState = {
+      version: 1,
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "brainstorm",
+      phaseHistory: [],
+      reviewApproved: false,
+      planTasks: [],
+      jjChangeId: null,
+      // Missing: acceptanceCriteria, currentTaskIndex
+    };
+    const { writeFileSync, mkdirSync } = require("node:fs");
+    mkdirSync(join(tmp, ".megapowers"), { recursive: true });
+    writeFileSync(join(tmp, ".megapowers", "state.json"), JSON.stringify(legacyState));
+
+    const loaded = store.loadState();
+    expect(loaded.activeIssue).toBe("001-test");
+    expect(loaded.acceptanceCriteria).toEqual([]);
+    expect(loaded.currentTaskIndex).toBe(0);
+  });
 });
 
 describe("issues", () => {

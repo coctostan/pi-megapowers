@@ -110,7 +110,9 @@ export function createStore(projectRoot: string): Store {
     loadState(): MegapowersState {
       if (!existsSync(stateFile)) return createInitialState();
       try {
-        return JSON.parse(readFileSync(stateFile, "utf-8"));
+        const raw = JSON.parse(readFileSync(stateFile, "utf-8"));
+        // Merge over defaults to handle missing fields from older versions
+        return { ...createInitialState(), ...raw };
       } catch {
         return createInitialState();
       }

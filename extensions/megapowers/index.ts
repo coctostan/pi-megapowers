@@ -3,8 +3,9 @@ import { createInitialState, getValidTransitions, type MegapowersState, type Pha
 import { createStore, type Store } from "./store.js";
 import { createJJ, formatChangeDescription, type JJ } from "./jj.js";
 import { createUI, type MegapowersUI } from "./ui.js";
-import { buildPhasePrompt } from "./prompts.js";
+import { buildPhasePrompt, buildImplementTaskVars, formatAcceptanceCriteriaList } from "./prompts.js";
 import { extractPlanTasks } from "./plan-parser.js";
+import { processAgentOutput } from "./artifact-router.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 
@@ -80,28 +81,40 @@ export default function megapowers(pi: ExtensionAPI): void {
   pi.on("before_agent_start", async (_event, _ctx) => {
     if (!state.activeIssue || !state.phase) return;
 
-    // Build vars for prompt interpolation
     const vars: Record<string, string> = {
       issue_slug: state.activeIssue,
       phase: state.phase,
     };
 
-    // Load plan artifacts if they exist
+    // Load all artifacts for prompt context
     if (store) {
-      const spec = store.readPlanFile(state.activeIssue, "spec.md");
-      if (spec) vars.spec_content = spec;
+      const artifactMap: Record<string, string> = {
+        "brainstorm.md": "brainstorm_content",
+        "spec.md": "spec_content",
+        "plan.md": "plan_content",
+        "diagnosis.md": "diagnosis_content",
+        "verify.md": "verify_content",
+        "code-review.md": "code_review_content",
+      };
+      for (const [file, varName] of Object.entries(artifactMap)) {
+        const content = store.readPlanFile(state.activeIssue, file);
+        if (content) vars[varName] = content;
+      }
+    }
 
-      const plan = store.readPlanFile(state.activeIssue, "plan.md");
-      if (plan) vars.plan_content = plan;
+    // Acceptance criteria formatting
+    if (state.acceptanceCriteria.length > 0) {
+      vars.acceptance_criteria_list = formatAcceptanceCriteriaList(state.acceptanceCriteria);
+    }
 
-      const diagnosis = store.readPlanFile(state.activeIssue, "diagnosis.md");
-      if (diagnosis) vars.diagnosis_content = diagnosis;
+    // Implement phase: inject per-task context
+    if (state.phase === "implement" && state.planTasks.length > 0) {
+      Object.assign(vars, buildImplementTaskVars(state.planTasks, state.currentTaskIndex));
     }
 
     const prompt = buildPhasePrompt(state.phase, vars);
     if (!prompt) return;
 
-    // Include relevant learnings
     const learnings = store?.getLearnings() ?? "";
     const fullPrompt = learnings
       ? `${prompt}\n\n## Project Learnings\n${learnings}`
@@ -123,40 +136,32 @@ export default function megapowers(pi: ExtensionAPI): void {
     const phase = state.phase;
     if (!activeIssue || !phase || !store) return;
 
-    // Extract text from last assistant message
     const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
     if (!lastAssistant) return;
     const text = getAssistantText(lastAssistant);
     if (!text) return;
 
-    // Phase-specific artifact capture (always runs, even headless)
-    if (phase === "spec" && text.length > 100) {
+    // Delegate to tested pure function
+    const result = processAgentOutput(text, phase, state);
+
+    // Apply artifacts
+    if (result.artifacts.length > 0) {
       store.ensurePlanDir(activeIssue);
-      store.writePlanFile(activeIssue, "spec.md", text);
-      if (ctx.hasUI) ctx.ui.notify("Spec saved.", "info");
+      for (const artifact of result.artifacts) {
+        store.writePlanFile(activeIssue, artifact.filename, artifact.content);
+      }
     }
 
-    if (phase === "plan" && text.length > 100) {
-      store.ensurePlanDir(activeIssue);
-      store.writePlanFile(activeIssue, "plan.md", text);
-      const tasks = extractPlanTasks(text);
-      state = { ...state, planTasks: tasks };
+    // Apply state updates
+    if (Object.keys(result.stateUpdate).length > 0) {
+      state = { ...state, ...result.stateUpdate };
       store.saveState(state);
-      if (ctx.hasUI) ctx.ui.notify(`Plan saved. ${tasks.length} tasks extracted.`, "info");
     }
 
-    if (phase === "diagnose" && text.length > 100) {
-      store.ensurePlanDir(activeIssue);
-      store.writePlanFile(activeIssue, "diagnosis.md", text);
-      if (ctx.hasUI) ctx.ui.notify("Diagnosis saved.", "info");
-    }
-
-    if (phase === "review") {
-      const approved = /\bapproved?\b/i.test(text) && !/\bnot approved\b/i.test(text);
-      if (approved) {
-        state = { ...state, reviewApproved: true };
-        store.saveState(state);
-        if (ctx.hasUI) ctx.ui.notify("Review: approved.", "info");
+    // Send notifications
+    if (ctx.hasUI) {
+      for (const msg of result.notifications) {
+        ctx.ui.notify(msg, "info");
       }
     }
 
@@ -167,6 +172,14 @@ export default function megapowers(pi: ExtensionAPI): void {
         state = await ui.handlePhaseTransition(ctx, state, store, jj);
         pi.appendEntry("megapowers-state", state);
       }
+
+      // Done phase: trigger wrap-up menu
+      if (state.phase === "done") {
+        state = await ui.handleDonePhase(ctx, state, store, jj);
+        store.saveState(state);
+        pi.appendEntry("megapowers-state", state);
+      }
+
       ui.renderDashboard(ctx, state, store);
     }
   });
@@ -218,6 +231,23 @@ export default function megapowers(pi: ExtensionAPI): void {
           ctx.ui.notify("No active workflow. Use /issue to start.", "info");
         }
       }
+    },
+  });
+
+  pi.registerCommand("done", {
+    description: "Trigger wrap-up menu (when in done phase)",
+    handler: async (_args, ctx) => {
+      if (state.phase !== "done") {
+        ctx.ui.notify("Not in done phase. Use /phase next to advance.", "info");
+        return;
+      }
+      if (!store) store = createStore(ctx.cwd);
+      if (!jj) jj = createJJ(pi);
+      if (!ui) ui = createUI();
+      state = await ui.handleDonePhase(ctx, state, store, jj);
+      store.saveState(state);
+      pi.appendEntry("megapowers-state", state);
+      ui.renderDashboard(ctx, state, store);
     },
   });
 
