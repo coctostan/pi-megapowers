@@ -190,6 +190,7 @@ export function createUI(): MegapowersUI {
           jjChangeId: null,
           acceptanceCriteria: [],
           currentTaskIndex: 0,
+          tddTaskState: null,
         };
 
         // Create jj change if in a jj repo
@@ -242,6 +243,7 @@ export function createUI(): MegapowersUI {
           jjChangeId: null,
           acceptanceCriteria: [],
           currentTaskIndex: 0,
+          tddTaskState: null,
         };
 
         if (await jj.isJJRepo()) {

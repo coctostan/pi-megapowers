@@ -566,4 +566,59 @@ describe("handleIssueCommand — new state fields", () => {
     expect(result.acceptanceCriteria).toEqual([]);
     expect(result.currentTaskIndex).toBe(0);
   });
+
+  it("new issue resets stale tddTaskState from previous issue", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    // Simulate stale TDD state (impl-allowed) from a previous issue
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "old-issue",
+      workflow: "feature",
+      phase: "implement",
+      currentTaskIndex: 2,
+      tddTaskState: { taskIndex: 2, state: "impl-allowed", skipped: false },
+    };
+
+    const ctx = createMockCtx();
+    ctx.ui.input = async () => "New issue";
+    ctx.ui.select = async (_prompt: string, items: string[]) => {
+      return items.includes("feature") ? "feature" : items[0];
+    };
+    ctx.ui.editor = async () => "description";
+
+    const result = await ui.handleIssueCommand(ctx as any, state, store, jj as any, "new");
+
+    expect(result.activeIssue).toBeTruthy();
+    expect(result.activeIssue).not.toBe("old-issue");
+    expect(result.tddTaskState).toBeNull();
+  });
+
+  it("list activation resets stale tddTaskState", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const issue = store.createIssue("Another feature", "feature", "desc");
+
+    // Stale TDD state from previous issue
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "old-issue",
+      workflow: "feature",
+      phase: "implement",
+      currentTaskIndex: 3,
+      tddTaskState: { taskIndex: 3, state: "impl-allowed", skipped: false },
+    };
+
+    const ctx = createMockCtx();
+    ctx.ui.select = async (_prompt: string, items: string[]) => {
+      return items.find(i => i.startsWith("#")) ?? items[0];
+    };
+
+    const result = await ui.handleIssueCommand(ctx as any, state, store, jj as any, "list");
+
+    expect(result.activeIssue).toBe(issue.slug);
+    expect(result.tddTaskState).toBeNull();
+  });
 });

@@ -2,7 +2,7 @@ import type { PlanTask } from "./state-machine.js";
 
 // --- Types ---
 
-export type TddState = "no-test" | "test-written" | "test-failing" | "impl-allowed";
+export type TddState = "no-test" | "test-written" | "impl-allowed";
 
 export interface TddTaskState {
   taskIndex: number;
