@@ -4,13 +4,18 @@
 
 Remaining component designs from the architecture plan:
 
-- [ ] **02: Feature Mode** — Prompts, brainstorm→done flow, output routing
 - [ ] **03: Bugfix Mode** — Reproduce→done flow, regression test enforcement
 - [ ] **04: TDD Enforcement** — tdd-guard as mechanical extension
 - [ ] **05: Subagent Orchestration** — LLM-managed subagents, circuit breakers
 - [ ] **06: Cross-cutting** — Learnings injection, living docs
 
 ## Completed Milestones
+
+### Feature Mode ✅
+
+Full brainstorm→done flow with phase gates, prompt injection, and artifact routing.
+
+**Tracking:** [docs/plans/2026-02-18-02-feature-mode-design.md](docs/plans/2026-02-18-02-feature-mode-design.md)
 
 ### Core Platform ✅
 
