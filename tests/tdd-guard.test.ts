@@ -113,6 +113,18 @@ describe("isTestRunnerCommand", () => {
     expect(isTestRunnerCommand("go test ./...")).toBe(true);
   });
 
+  it("matches 'deno test'", () => {
+    expect(isTestRunnerCommand("deno test")).toBe(true);
+  });
+
+  it("matches 'npm run test'", () => {
+    expect(isTestRunnerCommand("npm run test")).toBe(true);
+  });
+
+  it("matches 'npx mocha'", () => {
+    expect(isTestRunnerCommand("npx mocha")).toBe(true);
+  });
+
   it("does not match unrelated commands", () => {
     expect(isTestRunnerCommand("ls -la")).toBe(false);
     expect(isTestRunnerCommand("cat test.txt")).toBe(false);
