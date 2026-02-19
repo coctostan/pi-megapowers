@@ -1,5 +1,17 @@
 import { describe, it, expect } from "bun:test";
-import { isTestFile, isAllowlisted, isTestRunnerCommand, handleTestResult, type TddState } from "../extensions/megapowers/tdd-guard.js";
+import {
+  isTestFile, isAllowlisted, isTestRunnerCommand, handleTestResult,
+  checkFileWrite, type TddState, type TddTaskState, type FileWriteResult,
+} from "../extensions/megapowers/tdd-guard.js";
+import type { PlanTask } from "../extensions/megapowers/state-machine.js";
+
+function makeTask(overrides: Partial<PlanTask> = {}): PlanTask {
+  return { index: 1, description: "Implement feature", completed: false, noTest: false, ...overrides };
+}
+
+function makeTaskState(overrides: Partial<TddTaskState> = {}): TddTaskState {
+  return { taskIndex: 1, state: "no-test", skipped: false, ...overrides };
+}
 
 describe("isTestFile", () => {
   it("matches *.test.ts files", () => {
@@ -147,5 +159,64 @@ describe("handleTestResult", () => {
 
   it("does not change impl-allowed state", () => {
     expect(handleTestResult(1, "impl-allowed")).toBe("impl-allowed");
+  });
+});
+
+describe("checkFileWrite", () => {
+  it("allows writes when not in implement phase", () => {
+    const result = checkFileWrite("src/auth.ts", null, makeTask(), makeTaskState());
+    expect(result.allow).toBe(true);
+  });
+
+  it("allows allowlisted files regardless of state", () => {
+    const result = checkFileWrite("tsconfig.json", "implement", makeTask(), makeTaskState());
+    expect(result.allow).toBe(true);
+  });
+
+  it("allows test file writes and advances state to test-written", () => {
+    const taskState = makeTaskState({ state: "no-test" });
+    const result = checkFileWrite("tests/auth.test.ts", "implement", makeTask(), taskState);
+    expect(result.allow).toBe(true);
+    expect(result.newState).toBe("test-written");
+  });
+
+  it("allows production writes when state is impl-allowed", () => {
+    const taskState = makeTaskState({ state: "impl-allowed" });
+    const result = checkFileWrite("src/auth.ts", "implement", makeTask(), taskState);
+    expect(result.allow).toBe(true);
+  });
+
+  it("blocks production writes when state is no-test", () => {
+    const taskState = makeTaskState({ state: "no-test" });
+    const result = checkFileWrite("src/auth.ts", "implement", makeTask(), taskState);
+    expect(result.allow).toBe(false);
+    expect(result.reason).toContain("TDD violation");
+  });
+
+  it("blocks production writes when state is test-written", () => {
+    const taskState = makeTaskState({ state: "test-written" });
+    const result = checkFileWrite("src/auth.ts", "implement", makeTask(), taskState);
+    expect(result.allow).toBe(false);
+    expect(result.reason).toContain("TDD violation");
+  });
+
+  it("passes through when task has noTest: true", () => {
+    const task = makeTask({ noTest: true });
+    const taskState = makeTaskState({ state: "no-test" });
+    const result = checkFileWrite("src/auth.ts", "implement", task, taskState);
+    expect(result.allow).toBe(true);
+  });
+
+  it("passes through when task state is skipped", () => {
+    const taskState = makeTaskState({ state: "no-test", skipped: true });
+    const result = checkFileWrite("src/auth.ts", "implement", makeTask(), taskState);
+    expect(result.allow).toBe(true);
+  });
+
+  it("keeps state at test-written when writing more test files", () => {
+    const taskState = makeTaskState({ state: "test-written" });
+    const result = checkFileWrite("tests/auth-2.test.ts", "implement", makeTask(), taskState);
+    expect(result.allow).toBe(true);
+    expect(result.newState).toBeUndefined();
   });
 });

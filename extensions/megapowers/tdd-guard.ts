@@ -71,6 +71,60 @@ export function isTestRunnerCommand(command: string): boolean {
   return false;
 }
 
+// --- Core gating ---
+
+export interface FileWriteResult {
+  allow: boolean;
+  reason?: string;
+  newState?: TddState;
+}
+
+export function checkFileWrite(
+  filePath: string,
+  phase: string | null,
+  currentTask: PlanTask,
+  taskState: TddTaskState
+): FileWriteResult {
+  // Not in implement phase — pass through
+  if (phase !== "implement") {
+    return { allow: true };
+  }
+
+  // Allowlisted files — always pass
+  if (isAllowlisted(filePath)) {
+    return { allow: true };
+  }
+
+  // Task marked [no-test] — pass through
+  if (currentTask.noTest) {
+    return { allow: true };
+  }
+
+  // Task skipped at runtime — pass through
+  if (taskState.skipped) {
+    return { allow: true };
+  }
+
+  // Test file — advance state if needed, allow
+  if (isTestFile(filePath)) {
+    if (taskState.state === "no-test") {
+      return { allow: true, newState: "test-written" };
+    }
+    return { allow: true };
+  }
+
+  // Production file — check state
+  if (taskState.state === "impl-allowed") {
+    return { allow: true };
+  }
+
+  // Block
+  return {
+    allow: false,
+    reason: "TDD violation: this file write was blocked by tdd-guard because no failing test exists for the current task. Ask the user whether this task needs a test or if it's safe to skip TDD for this file.",
+  };
+}
+
 // --- State transitions ---
 
 export function handleTestResult(exitCode: number, currentState: TddState): TddState {
