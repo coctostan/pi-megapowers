@@ -1,0 +1,200 @@
+import { describe, it, expect } from "bun:test";
+import { processAgentOutput } from "../extensions/megapowers/artifact-router.js";
+import { createInitialState, type MegapowersState } from "../extensions/megapowers/state-machine.js";
+
+function makeState(overrides: Partial<MegapowersState> = {}): MegapowersState {
+  return {
+    ...createInitialState(),
+    activeIssue: "001-test",
+    workflow: "feature",
+    ...overrides,
+  };
+}
+
+describe("processAgentOutput — brainstorm phase", () => {
+  it("captures brainstorm summary when text has ## Approach section", () => {
+    const text = "Here's the design.\n\n## Approach\nWe'll build a widget that does X. It handles user input, validates it against the schema, and persists the result to the database.\n\n## Key Decisions\n- Use React for the frontend\n- PostgreSQL for storage";
+    const result = processAgentOutput(text, "brainstorm", makeState({ phase: "brainstorm" }));
+
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.artifacts[0].filename).toBe("brainstorm.md");
+    expect(result.artifacts[0].content).toBe(text);
+  });
+
+  it("ignores short brainstorm text", () => {
+    const text = "OK sounds good.";
+    const result = processAgentOutput(text, "brainstorm", makeState({ phase: "brainstorm" }));
+    expect(result.artifacts).toHaveLength(0);
+  });
+
+  it("ignores brainstorm text without summary sections", () => {
+    const text = "A".repeat(300); // long but no ## Approach or ## Key Decisions
+    const result = processAgentOutput(text, "brainstorm", makeState({ phase: "brainstorm" }));
+    expect(result.artifacts).toHaveLength(0);
+  });
+});
+
+describe("processAgentOutput — spec phase", () => {
+  it("saves spec and extracts acceptance criteria", () => {
+    const text = "## Goal\nBuild X.\n\n## Acceptance Criteria\n1. User can log in\n2. User sees dashboard\n\n## Out of Scope\n- Nothing";
+    const result = processAgentOutput(text, "spec", makeState({ phase: "spec" }));
+
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.artifacts[0].filename).toBe("spec.md");
+    expect(result.stateUpdate.acceptanceCriteria).toHaveLength(2);
+    expect(result.stateUpdate.acceptanceCriteria![0].text).toBe("User can log in");
+    expect(result.stateUpdate.acceptanceCriteria![0].status).toBe("pending");
+    expect(result.notifications).toContain("Spec saved. 2 acceptance criteria extracted.");
+  });
+
+  it("saves spec even with zero criteria", () => {
+    const text = "## Goal\nBuild X.\n\nSome long spec content that is over 100 chars for sure because we need enough length to pass the threshold check.";
+    const result = processAgentOutput(text, "spec", makeState({ phase: "spec" }));
+
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.stateUpdate.acceptanceCriteria).toBeUndefined();
+    expect(result.notifications).toContain("Spec saved. 0 acceptance criteria extracted.");
+  });
+});
+
+describe("processAgentOutput — plan phase", () => {
+  it("saves plan and extracts tasks", () => {
+    const text = "## Implementation\n\n### Task 1: Setup\nDo the setup.\n\n### Task 2: Build\nBuild it.\n\nMore text to get over 100 chars threshold.";
+    const result = processAgentOutput(text, "plan", makeState({ phase: "plan" }));
+
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.artifacts[0].filename).toBe("plan.md");
+    expect(result.stateUpdate.planTasks).toBeDefined();
+    expect(result.stateUpdate.planTasks!.length).toBeGreaterThan(0);
+    expect(result.stateUpdate.currentTaskIndex).toBe(0);
+  });
+});
+
+describe("processAgentOutput — review phase", () => {
+  it("detects approval via verdict: pass", () => {
+    const text = "The plan looks solid. All tasks are well-defined and dependencies are clear.\n\nVerdict: pass\n\nReady to implement. No issues found.";
+    const result = processAgentOutput(text, "review", makeState({ phase: "review" }));
+
+    expect(result.stateUpdate.reviewApproved).toBe(true);
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.artifacts[0].filename).toBe("review.md");
+  });
+
+  it("detects approval via status: approved", () => {
+    const text = "All good.\n\nStatus: approved\n\nNo issues found. This is more than 100 chars total for sure because we need length.";
+    const result = processAgentOutput(text, "review", makeState({ phase: "review" }));
+
+    expect(result.stateUpdate.reviewApproved).toBe(true);
+  });
+
+  it("does not approve on verdict: revise", () => {
+    const text = "Issues found.\n\nVerdict: revise\n\nTask 3 needs rework. This is long enough to get over 100 chars total for the artifact save.";
+    const result = processAgentOutput(text, "review", makeState({ phase: "review" }));
+
+    expect(result.stateUpdate.reviewApproved).toBeUndefined();
+  });
+});
+
+describe("processAgentOutput — implement phase", () => {
+  it("marks current task complete on 'task complete' signal", () => {
+    const text = "Implemented the handler.\n\nTask complete.\n\nFiles changed: foo.ts";
+    const state = makeState({
+      phase: "implement",
+      planTasks: [
+        { index: 1, description: "A", completed: false },
+        { index: 2, description: "B", completed: false },
+      ],
+      currentTaskIndex: 0,
+    });
+    const result = processAgentOutput(text, "implement", state);
+
+    expect(result.stateUpdate.planTasks![0].completed).toBe(true);
+    expect(result.stateUpdate.currentTaskIndex).toBe(1);
+  });
+
+  it("skips already-completed tasks when advancing", () => {
+    const text = "Done.\n\n## What was implemented\nStuff";
+    const state = makeState({
+      phase: "implement",
+      planTasks: [
+        { index: 1, description: "A", completed: true },
+        { index: 2, description: "B", completed: false },
+        { index: 3, description: "C", completed: true },
+        { index: 4, description: "D", completed: false },
+      ],
+      currentTaskIndex: 1,
+    });
+    const result = processAgentOutput(text, "implement", state);
+
+    expect(result.stateUpdate.planTasks![1].completed).toBe(true);
+    expect(result.stateUpdate.currentTaskIndex).toBe(3); // skips completed task 3
+  });
+
+  it("does nothing without completion signal", () => {
+    const text = "I'm working on it, here's what I've done so far...";
+    const state = makeState({
+      phase: "implement",
+      planTasks: [{ index: 1, description: "A", completed: false }],
+      currentTaskIndex: 0,
+    });
+    const result = processAgentOutput(text, "implement", state);
+
+    expect(result.stateUpdate.planTasks).toBeUndefined();
+  });
+});
+
+describe("processAgentOutput — verify phase", () => {
+  it("saves verify artifact", () => {
+    const text = "## Test Suite Results\nAll pass.\n\n## Overall Verdict\npass\n\nAll criteria met. Extra text to pad over 100 chars threshold.";
+    const result = processAgentOutput(text, "verify", makeState({ phase: "verify" }));
+
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.artifacts[0].filename).toBe("verify.md");
+  });
+
+  it("updates acceptance criteria status from verification output", () => {
+    const text = `## Per-Criterion Verification
+
+### Criterion 1: User can log in
+**Evidence:** test passes
+**Verdict:** pass
+
+### Criterion 2: Dashboard loads
+**Evidence:** test fails
+**Verdict:** fail
+
+Extra padding to get over the 100 char threshold for artifact saving.`;
+
+    const state = makeState({
+      phase: "verify",
+      acceptanceCriteria: [
+        { id: 1, text: "User can log in", status: "pending" },
+        { id: 2, text: "Dashboard loads", status: "pending" },
+      ],
+    });
+    const result = processAgentOutput(text, "verify", state);
+
+    expect(result.stateUpdate.acceptanceCriteria![0].status).toBe("pass");
+    expect(result.stateUpdate.acceptanceCriteria![1].status).toBe("fail");
+  });
+});
+
+describe("processAgentOutput — code-review phase", () => {
+  it("saves code-review artifact", () => {
+    const text = "## Findings\n\n### Critical\nNone\n\n### Important\nNone\n\n### Minor\nNone\n\n## Assessment\nready\n\nNo issues found. Code is clean and well-tested.";
+    const result = processAgentOutput(text, "code-review", makeState({ phase: "code-review" }));
+
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.artifacts[0].filename).toBe("code-review.md");
+  });
+});
+
+describe("processAgentOutput — diagnose phase", () => {
+  it("saves diagnosis artifact", () => {
+    const text = "## Root Cause\nThe bug is in the parser.\n\n## Fix\nUpdate the regex. Extra padding to get over the 100 char minimum.";
+    const result = processAgentOutput(text, "diagnose", makeState({ phase: "diagnose" }));
+
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.artifacts[0].filename).toBe("diagnosis.md");
+  });
+});

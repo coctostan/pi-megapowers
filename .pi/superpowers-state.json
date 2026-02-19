@@ -29,10 +29,13 @@
   "tdd": {
     "phase": "red-pending",
     "testFiles": [
-      "/Users/maxwellnewman/pi/workspace/pi-megapowers/tests/prompts.test.ts"
+      "tests/ui.test.ts",
+      "tests/artifact-router.test.ts"
     ],
     "sourceFiles": [
-      "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/prompts.ts"
+      "extensions/megapowers/ui.ts",
+      "extensions/megapowers/index.ts",
+      "extensions/megapowers/artifact-router.ts"
     ],
     "redVerificationPending": true
   },

@@ -4,6 +4,7 @@ import type { Issue, Store } from "./store.js";
 import type { JJ } from "./jj.js";
 import { getFirstPhase, getValidTransitions, transition } from "./state-machine.js";
 import { formatChangeDescription } from "./jj.js";
+import { checkGate } from "./gates.js";
 
 // --- Theme type (subset used by pure renderers) ---
 
@@ -14,7 +15,7 @@ interface ThemeLike {
 
 // --- Phase labels ---
 
-const FEATURE_PHASES: Phase[] = ["brainstorm", "spec", "plan", "review", "implement", "verify", "done"];
+const FEATURE_PHASES: Phase[] = ["brainstorm", "spec", "plan", "review", "implement", "verify", "code-review", "done"];
 const BUGFIX_PHASES: Phase[] = ["reproduce", "diagnose", "plan", "review", "implement", "verify", "done"];
 
 function getPhasesForWorkflow(workflow: WorkflowType): Phase[] {
@@ -147,6 +148,8 @@ export function createUI(): MegapowersUI {
           reviewApproved: false,
           planTasks: [],
           jjChangeId: null,
+          acceptanceCriteria: [],
+          currentTaskIndex: 0,
         };
 
         // Create jj change if in a jj repo
@@ -197,6 +200,8 @@ export function createUI(): MegapowersUI {
           reviewApproved: false,
           planTasks: [],
           jjChangeId: null,
+          acceptanceCriteria: [],
+          currentTaskIndex: 0,
         };
 
         if (await jj.isJJRepo()) {
@@ -225,20 +230,40 @@ export function createUI(): MegapowersUI {
         return state;
       }
 
-      const labels = validNext.map((p) => {
-        if (p === "implement" && validNext.includes("review")) {
-          return `${p} (skip review)`;
+      // Check gates for each valid transition and annotate
+      const options: { phase: Phase; label: string; gated: boolean; reason?: string }[] = [];
+      for (const p of validNext) {
+        const gate = checkGate(state, p, store);
+        let label = p as string;
+        if (
+          (state.phase === "review" && p === "plan") ||
+          (state.phase === "verify" && p === "implement") ||
+          (state.phase === "code-review" && p === "implement")
+        ) {
+          label = `← ${p} (go back)`;
         }
-        return p;
-      });
+        if (p === "implement" && state.phase === "plan") {
+          label = `${p} (skip review)`;
+        }
+        if (!gate.pass) {
+          label = `${label} ⛔ ${gate.reason}`;
+        }
+        options.push({ phase: p, label, gated: !gate.pass, reason: gate.reason });
+      }
 
-      const choice = await ctx.ui.select(
-        `Phase "${state.phase}" — what next?`,
-        labels
-      );
+      const labels = options.map(o => o.label);
+      const choice = await ctx.ui.select(`Phase "${state.phase}" — what next?`, labels);
       if (!choice) return state;
 
-      const targetPhase = choice.split(" ")[0] as Phase;
+      const selected = options.find(o => o.label === choice);
+      if (!selected) return state;
+
+      if (selected.gated) {
+        ctx.ui.notify(`Cannot advance: ${selected.reason}`, "error");
+        return state;
+      }
+
+      const targetPhase = selected.phase;
       let newState = transition(state, targetPhase);
 
       // jj: describe current, create new change
