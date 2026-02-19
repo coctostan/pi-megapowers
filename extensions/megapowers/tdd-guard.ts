@@ -53,18 +53,21 @@ export function isAllowlisted(filePath: string): boolean {
 // --- Test runner detection ---
 
 const TEST_RUNNER_PATTERNS = [
-  /\bbun\s+test\b/,
-  /\bnpm\s+test\b/,
-  /\bnpx\s+(jest|vitest|mocha)\b/,
-  /\bpytest\b/,
-  /\bpython\s+-m\s+pytest\b/,
-  /\bcargo\s+test\b/,
-  /\bgo\s+test\b/,
-  /\bdeno\s+test\b/,
-  /\bnpm\s+run\s+test\b/,
+  /^\s*bun\s+test(\s|$)/,
+  /^\s*npm\s+test(\s|$)/,
+  /^\s*npx\s+(jest|vitest|mocha)(\s|$)/,
+  /^\s*pytest(\s|$)/,
+  /^\s*python\s+-m\s+pytest(\s|$)/,
+  /^\s*cargo\s+test(\s|$)/,
+  /^\s*go\s+test(\s|$)/,
+  /^\s*deno\s+test(\s|$)/,
+  /^\s*npm\s+run\s+test(\s|$)/,
 ];
 
 export function isTestRunnerCommand(command: string): boolean {
+  // Reject compound commands — we can't know which part failed
+  if (/[;&|]/.test(command)) return false;
+
   for (const pattern of TEST_RUNNER_PATTERNS) {
     if (pattern.test(command)) return true;
   }

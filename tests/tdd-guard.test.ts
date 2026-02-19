@@ -142,6 +142,18 @@ describe("isTestRunnerCommand", () => {
     expect(isTestRunnerCommand("cat test.txt")).toBe(false);
     expect(isTestRunnerCommand("npm install")).toBe(false);
   });
+
+  it("does not match test runners embedded in other commands", () => {
+    expect(isTestRunnerCommand("echo bun test")).toBe(false);
+    expect(isTestRunnerCommand("echo 'npm test' && false")).toBe(false);
+  });
+
+  it("does not match compound commands with test runners", () => {
+    expect(isTestRunnerCommand("bun test && bun run lint")).toBe(false);
+    expect(isTestRunnerCommand("npm test && npm run build")).toBe(false);
+    expect(isTestRunnerCommand("bun test; echo done")).toBe(false);
+    expect(isTestRunnerCommand("cargo test | grep FAILED")).toBe(false);
+  });
 });
 
 describe("handleTestResult", () => {
