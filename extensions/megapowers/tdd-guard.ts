@@ -65,8 +65,8 @@ const TEST_RUNNER_PATTERNS = [
 ];
 
 export function isTestRunnerCommand(command: string): boolean {
-  // Reject compound commands — we can't know which part failed
-  if (/[;&|]/.test(command)) return false;
+  // Reject compound/multiline commands — we can't know which part failed
+  if (/[;&|\n]/.test(command)) return false;
 
   for (const pattern of TEST_RUNNER_PATTERNS) {
     if (pattern.test(command)) return true;

@@ -342,13 +342,13 @@ export default function megapowers(pi: ExtensionAPI): void {
           ctx.ui.notify("Not in implement phase.", "info");
           return;
         }
-        // Initialize TDD state if not yet created (before first guarded write)
-        if (!state.tddTaskState) {
-          const currentTask = state.planTasks[state.currentTaskIndex];
-          if (!currentTask) {
-            ctx.ui.notify("No active task to skip TDD for.", "info");
-            return;
-          }
+        // Initialize or reinitialize TDD state for current task
+        const currentTask = state.planTasks[state.currentTaskIndex];
+        if (!currentTask) {
+          ctx.ui.notify("No active task to skip TDD for.", "info");
+          return;
+        }
+        if (!state.tddTaskState || state.tddTaskState.taskIndex !== currentTask.index) {
           state.tddTaskState = {
             taskIndex: currentTask.index,
             state: "no-test",

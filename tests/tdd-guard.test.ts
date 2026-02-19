@@ -154,6 +154,11 @@ describe("isTestRunnerCommand", () => {
     expect(isTestRunnerCommand("bun test; echo done")).toBe(false);
     expect(isTestRunnerCommand("cargo test | grep FAILED")).toBe(false);
   });
+
+  it("does not match multiline compound commands", () => {
+    expect(isTestRunnerCommand("bun test\nfalse")).toBe(false);
+    expect(isTestRunnerCommand("bun test\necho done")).toBe(false);
+  });
 });
 
 describe("handleTestResult", () => {
