@@ -60,6 +60,33 @@ describe("state persistence", () => {
     expect(loaded.acceptanceCriteria).toEqual([]);
     expect(loaded.currentTaskIndex).toBe(0);
   });
+
+  it("migrates legacy planTasks missing the noTest field", () => {
+    // Simulate a state file from before noTest was added to PlanTask
+    const legacyState = {
+      version: 1,
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "implement",
+      phaseHistory: [],
+      reviewApproved: false,
+      planTasks: [
+        { index: 1, description: "Set up schema", completed: false },
+        { index: 2, description: "Write tests", completed: true },
+      ],
+      currentTaskIndex: 0,
+      acceptanceCriteria: [],
+      jjChangeId: null,
+    };
+    const { writeFileSync, mkdirSync } = require("node:fs");
+    mkdirSync(join(tmp, ".megapowers"), { recursive: true });
+    writeFileSync(join(tmp, ".megapowers", "state.json"), JSON.stringify(legacyState));
+
+    const loaded = store.loadState();
+    expect(loaded.planTasks).toHaveLength(2);
+    expect(loaded.planTasks[0].noTest).toBe(false);
+    expect(loaded.planTasks[1].noTest).toBe(false);
+  });
 });
 
 describe("issues", () => {

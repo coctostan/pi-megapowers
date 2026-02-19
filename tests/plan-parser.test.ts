@@ -120,4 +120,29 @@ Details...
     const tasks = extractPlanTasks(plan);
     expect(tasks[0].noTest).toBe(false);
   });
+
+  it("parses [no-test] case-insensitively in headers (uppercase)", () => {
+    const plan = `### Task 1: Define config schema [NO-TEST]
+
+Details...
+
+### Task 2: Implement logic
+
+Details...
+`;
+    const tasks = extractPlanTasks(plan);
+    expect(tasks[0].noTest).toBe(true);
+    expect(tasks[0].description).toBe("Define config schema");
+    expect(tasks[1].noTest).toBe(false);
+  });
+
+  it("parses [no-test] case-insensitively in numbered list items (mixed case)", () => {
+    const plan = `1. Define retry config schema [No-Test]
+2. Implement retry logic
+`;
+    const tasks = extractPlanTasks(plan);
+    expect(tasks[0].noTest).toBe(true);
+    expect(tasks[0].description).toBe("Define retry config schema");
+    expect(tasks[1].noTest).toBe(false);
+  });
 });
