@@ -75,6 +75,26 @@ export function renderDashboardLines(state: MegapowersState, _issues: Issue[], t
       const current = state.planTasks[state.currentTaskIndex];
       lines.push(`${theme.fg("accent", "Current:")} Task ${current.index}: ${current.description}`);
     }
+
+    // TDD guard state indicator (implement phase only)
+    if (state.phase === "implement") {
+      const currentTask = state.planTasks[state.currentTaskIndex];
+      let tddIndicator: string;
+
+      if (currentTask?.noTest || state.tddTaskState?.skipped) {
+        tddIndicator = "⚪ Skipped";
+      } else if (!state.tddTaskState || state.tddTaskState.state === "no-test") {
+        tddIndicator = "🔴 Need test";
+      } else if (state.tddTaskState.state === "test-written") {
+        tddIndicator = "🟡 Run test";
+      } else if (state.tddTaskState.state === "impl-allowed") {
+        tddIndicator = "🟢 Implement";
+      } else {
+        tddIndicator = "—";
+      }
+
+      lines.push(`${theme.fg("accent", "TDD:")} ${tddIndicator}`);
+    }
   }
 
   // Acceptance criteria status (verify and code-review phases)

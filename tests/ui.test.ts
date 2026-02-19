@@ -382,6 +382,101 @@ describe("handleDonePhase", () => {
   });
 });
 
+describe("renderDashboardLines — TDD state indicator", () => {
+  it("shows 🔴 Need test when in no-test state", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "implement",
+      planTasks: [{ index: 1, description: "Build auth", completed: false, noTest: false }],
+      currentTaskIndex: 0,
+      tddTaskState: { taskIndex: 1, state: "no-test", skipped: false },
+    };
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const tddLine = lines.find(l => l.includes("TDD:"));
+    expect(tddLine).toBeDefined();
+    expect(tddLine).toContain("🔴");
+    expect(tddLine).toContain("Need test");
+  });
+
+  it("shows 🟡 Run test when in test-written state", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "implement",
+      planTasks: [{ index: 1, description: "Build auth", completed: false, noTest: false }],
+      currentTaskIndex: 0,
+      tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
+    };
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const tddLine = lines.find(l => l.includes("TDD:"));
+    expect(tddLine).toContain("🟡");
+    expect(tddLine).toContain("Run test");
+  });
+
+  it("shows 🟢 Implement when in impl-allowed state", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "implement",
+      planTasks: [{ index: 1, description: "Build auth", completed: false, noTest: false }],
+      currentTaskIndex: 0,
+      tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
+    };
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const tddLine = lines.find(l => l.includes("TDD:"));
+    expect(tddLine).toContain("🟢");
+    expect(tddLine).toContain("Implement");
+  });
+
+  it("shows ⚪ Skipped when task is noTest", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "implement",
+      planTasks: [{ index: 1, description: "Config schema", completed: false, noTest: true }],
+      currentTaskIndex: 0,
+      tddTaskState: null,
+    };
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const tddLine = lines.find(l => l.includes("TDD:"));
+    expect(tddLine).toContain("⚪");
+    expect(tddLine).toContain("Skipped");
+  });
+
+  it("shows ⚪ Skipped when runtime skip is active", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "implement",
+      planTasks: [{ index: 1, description: "Build auth", completed: false, noTest: false }],
+      currentTaskIndex: 0,
+      tddTaskState: { taskIndex: 1, state: "no-test", skipped: true },
+    };
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const tddLine = lines.find(l => l.includes("TDD:"));
+    expect(tddLine).toContain("⚪");
+    expect(tddLine).toContain("Skipped");
+  });
+
+  it("does not show TDD indicator when not in implement phase", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "brainstorm",
+    };
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const tddLine = lines.find(l => l.includes("TDD:"));
+    expect(tddLine).toBeUndefined();
+  });
+});
+
 describe("handleIssueCommand — new state fields", () => {
   let tmp: string;
 
