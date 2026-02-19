@@ -1,6 +1,18 @@
 # pi-megapowers Roadmap
 
-## Current Milestone: Core Platform
+## Current Milestone: Component Designs
+
+Remaining component designs from the architecture plan:
+
+- [ ] **02: Feature Mode** — Prompts, brainstorm→done flow, output routing
+- [ ] **03: Bugfix Mode** — Reproduce→done flow, regression test enforcement
+- [ ] **04: TDD Enforcement** — tdd-guard as mechanical extension
+- [ ] **05: Subagent Orchestration** — LLM-managed subagents, circuit breakers
+- [ ] **06: Cross-cutting** — Learnings injection, living docs
+
+## Completed Milestones
+
+### Core Platform ✅
 
 The foundational process engine, state machine, jj integration, TUI, and basic workflow for feature and bugfix modes.
 
