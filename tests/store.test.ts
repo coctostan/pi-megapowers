@@ -61,6 +61,39 @@ describe("state persistence", () => {
     expect(loaded.currentTaskIndex).toBe(0);
   });
 
+  it("persists tddTaskState through save/load", () => {
+    const state = createInitialState();
+    state.activeIssue = "001-test";
+    state.tddTaskState = { taskIndex: 1, state: "test-written", skipped: false };
+
+    store.saveState(state);
+    const loaded = store.loadState();
+
+    expect(loaded.tddTaskState).toEqual({ taskIndex: 1, state: "test-written", skipped: false });
+  });
+
+  it("defaults tddTaskState to null for legacy state", () => {
+    // Write a legacy state file missing the tddTaskState field
+    const { writeFileSync, mkdirSync } = require("node:fs");
+    mkdirSync(join(tmp, ".megapowers"), { recursive: true });
+    writeFileSync(join(tmp, ".megapowers", "state.json"), JSON.stringify({
+      version: 1,
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "implement",
+      phaseHistory: [],
+      reviewApproved: false,
+      planTasks: [],
+      jjChangeId: null,
+      acceptanceCriteria: [],
+      currentTaskIndex: 0,
+      // No tddTaskState field - simulating legacy state
+    }));
+
+    const loaded = store.loadState();
+    expect(loaded.tddTaskState).toBeNull();
+  });
+
   it("migrates legacy planTasks missing the noTest field", () => {
     // Simulate a state file from before noTest was added to PlanTask
     const legacyState = {

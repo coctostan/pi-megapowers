@@ -1,3 +1,5 @@
+import type { TddTaskState } from "./tdd-guard.js";
+
 // --- Types ---
 
 export type WorkflowType = "feature" | "bugfix";
@@ -37,6 +39,7 @@ export interface MegapowersState {
   jjChangeId: string | null;
   acceptanceCriteria: AcceptanceCriterion[];
   currentTaskIndex: number;
+  tddTaskState: TddTaskState | null;
 }
 
 // --- Transition Tables ---
@@ -76,6 +79,7 @@ export function createInitialState(): MegapowersState {
     jjChangeId: null,
     acceptanceCriteria: [],
     currentTaskIndex: 0,
+    tddTaskState: null,
   };
 }
 
