@@ -15,8 +15,12 @@ describe("isSatelliteMode", () => {
     expect(isSatelliteMode({ isTTY: true, env: { PI_SUBAGENT: "1" } })).toBe(true);
   });
 
-  it("returns true when no TTY attached (isTTY is false)", () => {
-    expect(isSatelliteMode({ isTTY: false, env: {} })).toBe(true);
+  it("returns false when no TTY but no subagent signal (could be CI or piped)", () => {
+    expect(isSatelliteMode({ isTTY: false, env: {} })).toBe(false);
+  });
+
+  it("returns true when PI_SUBAGENT=1 even without TTY", () => {
+    expect(isSatelliteMode({ isTTY: false, env: { PI_SUBAGENT: "1" } })).toBe(true);
   });
 
   it("returns false when isTTY is undefined (ambiguous — not satellite)", () => {

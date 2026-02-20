@@ -11,16 +11,14 @@ export interface SatelliteDetectionContext {
 /**
  * Detect if the current session is running as a satellite (subagent).
  *
- * A session is satellite if:
- * - PI_SUBAGENT=1 is set in environment
- * - No TTY is attached (isTTY is explicitly false)
+ * A session is satellite only when PI_SUBAGENT=1 is set in environment.
+ * This is the explicit signal from the pi subagent tool.
  *
- * When isTTY is undefined (ambiguous), we don't assume satellite.
+ * We no longer use isTTY === false as a signal because non-interactive
+ * contexts (CI, piped output) would incorrectly skip primary features.
  */
 export function isSatelliteMode(ctx: SatelliteDetectionContext): boolean {
-  if (ctx.env.PI_SUBAGENT === "1") return true;
-  if (ctx.isTTY === false) return true;
-  return false;
+  return ctx.env.PI_SUBAGENT === "1";
 }
 
 // --- Read-only state loading ---
