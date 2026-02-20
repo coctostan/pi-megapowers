@@ -15,8 +15,8 @@ export function createSatelliteTddState(
   const currentTask = state.planTasks[state.currentTaskIndex];
   if (!currentTask) return null;
 
-  if (state.tddTaskState) {
-    // Clone from parent — mutable copy
+  if (state.tddTaskState && state.tddTaskState.taskIndex === currentTask.index) {
+    // Clone from parent — mutable copy (only if it matches current task)
     return { ...state.tddTaskState };
   }
 

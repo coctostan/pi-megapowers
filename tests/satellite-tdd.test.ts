@@ -50,6 +50,15 @@ describe("createSatelliteTddState", () => {
     const tdd = createSatelliteTddState(state);
     expect(tdd).toBeNull();
   });
+
+  it("ignores parent tddTaskState when taskIndex doesn't match current task", () => {
+    const state = makeImplementState({
+      tddTaskState: { taskIndex: 99, state: "impl-allowed", skipped: false },
+    });
+    const tdd = createSatelliteTddState(state);
+    // Should create fresh state for current task, not inherit stale impl-allowed
+    expect(tdd).toEqual({ taskIndex: 1, state: "no-test", skipped: false });
+  });
 });
 
 describe("handleSatelliteToolCall", () => {
