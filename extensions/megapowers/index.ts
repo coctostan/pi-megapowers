@@ -7,6 +7,7 @@ import { buildPhasePrompt, buildImplementTaskVars, formatAcceptanceCriteriaList 
 import { extractPlanTasks } from "./plan-parser.js";
 import { processAgentOutput } from "./artifact-router.js";
 import { checkFileWrite, isTestRunnerCommand, handleTestResult, type TddTaskState } from "./tdd-guard.js";
+import { createSatelliteTddState, handleSatelliteToolCall } from "./satellite-tdd.js";
 import { shouldCreateTaskChange, createTaskChange, inspectTaskChange, buildTaskCompletionReport } from "./task-coordinator.js";
 import { isSatelliteMode, loadSatelliteState } from "./satellite.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
@@ -36,34 +37,36 @@ export default function megapowers(pi: ExtensionAPI): void {
 
   if (satellite) {
     let satelliteState: Readonly<MegapowersState> | null = null;
+    let satelliteTddState: TddTaskState | null = null;
 
     pi.on("session_start", async (_event, ctx) => {
       satelliteState = loadSatelliteState(ctx.cwd);
+      satelliteTddState = satelliteState ? createSatelliteTddState(satelliteState) : null;
     });
 
     pi.on("tool_call", async (event, _ctx) => {
-      if (!satelliteState || satelliteState.phase !== "implement") return;
-      if (satelliteState.planTasks.length === 0) return;
-
-      const toolName = event.toolName;
-      if (toolName !== "write" && toolName !== "edit") return;
+      if (!satelliteState || !satelliteTddState) return;
 
       const filePath: string | undefined = (event.input as any)?.path;
-      if (!filePath) return;
+      const result = handleSatelliteToolCall(event.toolName, filePath, satelliteState, satelliteTddState);
 
-      const currentTask = satelliteState.planTasks[satelliteState.currentTaskIndex];
-      if (!currentTask) return;
-
-      const tddState = satelliteState.tddTaskState ?? {
-        taskIndex: currentTask.index,
-        state: "no-test" as const,
-        skipped: false,
-      };
-
-      const result = checkFileWrite(filePath, satelliteState.phase, currentTask, tddState);
-
-      if (!result.allow) {
+      if (result && result.block) {
         return { block: true, reason: result.reason };
+      }
+    });
+
+    pi.on("tool_result", async (event, _ctx) => {
+      if (!satelliteTddState) return;
+      if (satelliteTddState.state !== "test-written") return;
+      if (event.toolName !== "bash") return;
+
+      const command = (event.input as any)?.command;
+      if (!command || !isTestRunnerCommand(command)) return;
+
+      const exitCode = event.isError ? 1 : 0;
+      const newState = handleTestResult(exitCode, satelliteTddState.state);
+      if (newState !== satelliteTddState.state) {
+        satelliteTddState.state = newState;
       }
     });
 
