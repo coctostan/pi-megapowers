@@ -44,8 +44,7 @@ describe("parseTaskDiffFiles", () => {
   it("handles hypothetical rename/copy summary lines", () => {
     const output = `R src/old.ts => src/new.ts\nC src/original.ts => src/copy.ts`;
     const files = parseTaskDiffFiles(output);
-    // Should extract at least some file path from each line
-    expect(files.length).toBe(2);
+    expect(files).toEqual(["src/old.ts => src/new.ts", "src/original.ts => src/copy.ts"]);
   });
 
   it("handles any single-letter status prefix", () => {
