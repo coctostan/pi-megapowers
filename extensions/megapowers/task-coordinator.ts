@@ -1,4 +1,5 @@
 import type { PlanTask, Phase } from "./state-machine.js";
+import type { JJ } from "./jj.js";
 
 // --- Pure helpers ---
 
@@ -65,4 +66,45 @@ export function shouldCreateTaskChange(ctx: TaskChangeContext): boolean {
   if (!currentTask) return false;
   if (ctx.taskJJChanges[currentTask.index]) return false;
   return true;
+}
+
+// --- JJ wrappers (thin, used by index.ts) ---
+
+export interface TaskChangeResult {
+  changeId: string | null;
+}
+
+export async function createTaskChange(
+  jj: JJ,
+  issueSlug: string,
+  taskIndex: number,
+  taskDescription: string,
+  parentChangeId?: string
+): Promise<TaskChangeResult> {
+  const desc = buildTaskChangeDescription(issueSlug, taskIndex, taskDescription);
+  const changeId = await jj.newChange(desc, parentChangeId);
+  return { changeId };
+}
+
+export async function inspectTaskChange(
+  jj: JJ,
+  changeId: string
+): Promise<TaskInspection> {
+  const diffOutput = await jj.diff(changeId);
+  const files = parseTaskDiffFiles(diffOutput);
+  return { files, hasDiffs: files.length > 0 };
+}
+
+export async function abandonTaskChange(
+  jj: JJ,
+  changeId: string
+): Promise<void> {
+  await jj.abandon(changeId);
+}
+
+export async function squashTaskChanges(
+  jj: JJ,
+  phaseChangeId: string
+): Promise<void> {
+  await jj.squashInto(phaseChangeId);
 }
