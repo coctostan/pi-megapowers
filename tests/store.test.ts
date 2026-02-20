@@ -94,6 +94,39 @@ describe("state persistence", () => {
     expect(loaded.tddTaskState).toBeNull();
   });
 
+  it("persists taskJJChanges through save/load", () => {
+    const state = createInitialState();
+    state.activeIssue = "001-test";
+    state.taskJJChanges = { 1: "abc123", 2: "def456" };
+
+    store.saveState(state);
+    const loaded = store.loadState();
+
+    expect(loaded.taskJJChanges).toEqual({ 1: "abc123", 2: "def456" });
+  });
+
+  it("defaults taskJJChanges to empty object for legacy state", () => {
+    const { writeFileSync, mkdirSync } = require("node:fs");
+    mkdirSync(join(tmp, ".megapowers"), { recursive: true });
+    writeFileSync(join(tmp, ".megapowers", "state.json"), JSON.stringify({
+      version: 1,
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "implement",
+      phaseHistory: [],
+      reviewApproved: false,
+      planTasks: [],
+      jjChangeId: null,
+      acceptanceCriteria: [],
+      currentTaskIndex: 0,
+      tddTaskState: null,
+      // No taskJJChanges — simulating legacy state
+    }));
+
+    const loaded = store.loadState();
+    expect(loaded.taskJJChanges).toEqual({});
+  });
+
   it("migrates legacy planTasks missing the noTest field", () => {
     // Simulate a state file from before noTest was added to PlanTask
     const legacyState = {
