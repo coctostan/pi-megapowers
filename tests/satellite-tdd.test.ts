@@ -3,6 +3,7 @@ import {
   createSatelliteTddState,
   handleSatelliteToolCall,
 } from "../extensions/megapowers/satellite-tdd.js";
+import { handleTestResult, isTestRunnerCommand } from "../extensions/megapowers/tdd-guard.js";
 import { createInitialState } from "../extensions/megapowers/state-machine.js";
 import type { MegapowersState } from "../extensions/megapowers/state-machine.js";
 
@@ -110,5 +111,47 @@ describe("handleSatelliteToolCall", () => {
     const tdd = { taskIndex: 1, state: "no-test" as const, skipped: false };
     const result = handleSatelliteToolCall("write", "src/feature.ts", state, tdd);
     expect(result).toBeNull();
+  });
+});
+
+describe("satellite TDD full flow", () => {
+  it("progresses no-test → test-written → impl-allowed → allows production write", () => {
+    const state = makeImplementState();
+    const tdd = createSatelliteTddState(state)!;
+
+    // 1. Start at no-test
+    expect(tdd.state).toBe("no-test");
+
+    // 2. Write a test file → advances to test-written
+    handleSatelliteToolCall("write", "tests/feature.test.ts", state, tdd);
+    expect(tdd.state).toBe("test-written");
+
+    // 3. Production write blocked in test-written
+    const blocked = handleSatelliteToolCall("write", "src/feature.ts", state, tdd);
+    expect(blocked!.block).toBe(true);
+
+    // 4. Failing test run → advances to impl-allowed
+    expect(isTestRunnerCommand("bun test")).toBe(true);
+    const newTddState = handleTestResult(1, tdd.state);
+    tdd.state = newTddState;
+    expect(tdd.state).toBe("impl-allowed");
+
+    // 5. Production write now allowed
+    const allowed = handleSatelliteToolCall("write", "src/feature.ts", state, tdd);
+    expect(allowed!.block).toBe(false);
+  });
+
+  it("stays at test-written when tests pass (no failing test)", () => {
+    const state = makeImplementState();
+    const tdd = createSatelliteTddState(state)!;
+
+    // Write test → test-written
+    handleSatelliteToolCall("write", "tests/feature.test.ts", state, tdd);
+    expect(tdd.state).toBe("test-written");
+
+    // Passing test run → stays at test-written
+    const newTddState = handleTestResult(0, tdd.state);
+    tdd.state = newTddState;
+    expect(tdd.state).toBe("test-written");
   });
 });
