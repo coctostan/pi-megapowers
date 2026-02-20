@@ -112,7 +112,13 @@ export function createStore(projectRoot: string): Store {
       try {
         const raw = JSON.parse(readFileSync(stateFile, "utf-8"));
         // Merge over defaults to handle missing fields from older versions
-        return { ...createInitialState(), ...raw };
+        const merged = { ...createInitialState(), ...raw };
+        // Backfill noTest on planTasks persisted before this field was added
+        merged.planTasks = merged.planTasks.map((task: { noTest?: boolean; [key: string]: unknown }) => ({
+          ...task,
+          noTest: task.noTest ?? false,
+        }));
+        return merged;
       } catch {
         return createInitialState();
       }

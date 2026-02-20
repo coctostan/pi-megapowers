@@ -6,6 +6,7 @@ import { createUI, type MegapowersUI } from "./ui.js";
 import { buildPhasePrompt, buildImplementTaskVars, formatAcceptanceCriteriaList } from "./prompts.js";
 import { extractPlanTasks } from "./plan-parser.js";
 import { processAgentOutput } from "./artifact-router.js";
+import { checkFileWrite, isTestRunnerCommand, handleTestResult, type TddTaskState } from "./tdd-guard.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 
@@ -127,6 +128,63 @@ export default function megapowers(pi: ExtensionAPI): void {
         display: false,
       },
     };
+  });
+
+  // --- TDD Guard: intercept file writes ---
+
+  pi.on("tool_call", async (event, _ctx) => {
+    if (state.phase !== "implement") return;
+    if (state.planTasks.length === 0) return;
+
+    // Only gate write and edit tools
+    const toolName = event.toolName;
+    if (toolName !== "write" && toolName !== "edit") return;
+
+    const filePath: string | undefined = (event.input as any)?.path;
+    if (!filePath) return;
+
+    const currentTask = state.planTasks[state.currentTaskIndex];
+    if (!currentTask) return;
+
+    // Initialize TDD state for current task if needed
+    if (!state.tddTaskState || state.tddTaskState.taskIndex !== currentTask.index) {
+      state.tddTaskState = {
+        taskIndex: currentTask.index,
+        state: "no-test",
+        skipped: false,
+      };
+    }
+
+    const result = checkFileWrite(filePath, state.phase, currentTask, state.tddTaskState);
+
+    if (result.newState && state.tddTaskState) {
+      state.tddTaskState = { ...state.tddTaskState, state: result.newState };
+      if (store) store.saveState(state);
+    }
+
+    if (!result.allow) {
+      return { block: true, reason: result.reason };
+    }
+  });
+
+  // --- TDD Guard: detect test runner results ---
+
+  pi.on("tool_result", async (event, _ctx) => {
+    if (state.phase !== "implement") return;
+    if (event.toolName !== "bash") return;
+    if (!state.tddTaskState || state.tddTaskState.state !== "test-written") return;
+
+    const command = (event.input as any)?.command;
+    if (!command || !isTestRunnerCommand(command)) return;
+
+    // event.isError is true when bash exits with non-zero code
+    const exitCode = event.isError ? 1 : 0;
+
+    const newState = handleTestResult(exitCode, state.tddTaskState.state);
+    if (newState !== state.tddTaskState.state) {
+      state.tddTaskState = { ...state.tddTaskState, state: newState };
+      if (store) store.saveState(state);
+    }
   });
 
   // --- Agent completion: capture artifacts and offer transitions ---
@@ -266,6 +324,57 @@ export default function megapowers(pi: ExtensionAPI): void {
           ctx.ui.notify("Learning captured.", "info");
         }
       }
+    },
+  });
+
+  pi.registerCommand("tdd", {
+    description: "TDD guard control (usage: /tdd skip | /tdd status)",
+    getArgumentCompletions: (prefix) => {
+      const subs = ["skip", "status"];
+      const filtered = subs.filter((s) => s.startsWith(prefix));
+      return filtered.length > 0 ? filtered.map((s) => ({ value: s, label: s })) : null;
+    },
+    handler: async (args, ctx) => {
+      const sub = args.trim();
+
+      if (sub === "skip") {
+        if (state.phase !== "implement") {
+          ctx.ui.notify("Not in implement phase.", "info");
+          return;
+        }
+        // Initialize or reinitialize TDD state for current task
+        const currentTask = state.planTasks[state.currentTaskIndex];
+        if (!currentTask) {
+          ctx.ui.notify("No active task to skip TDD for.", "info");
+          return;
+        }
+        if (!state.tddTaskState || state.tddTaskState.taskIndex !== currentTask.index) {
+          state.tddTaskState = {
+            taskIndex: currentTask.index,
+            state: "no-test",
+            skipped: false,
+          };
+        }
+        state.tddTaskState = {
+          ...state.tddTaskState,
+          skipped: true,
+          skipReason: "User-approved runtime skip",
+        };
+        if (store) store.saveState(state);
+        ctx.ui.notify("TDD enforcement skipped for current task.", "info");
+        if (ui) ui.renderDashboard(ctx, state, store);
+        return;
+      }
+
+      if (sub === "status") {
+        const tddInfo = state.tddTaskState
+          ? `Task ${state.tddTaskState.taskIndex}: ${state.tddTaskState.state}${state.tddTaskState.skipped ? " (skipped)" : ""}`
+          : "No active TDD state";
+        ctx.ui.notify(`TDD Guard: ${tddInfo}\nPhase: ${state.phase ?? "none"}`, "info");
+        return;
+      }
+
+      ctx.ui.notify("Usage: /tdd skip | /tdd status", "info");
     },
   });
 }

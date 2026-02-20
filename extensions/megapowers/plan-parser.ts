@@ -23,10 +23,14 @@ function extractTaskHeaders(content: string): PlanTask[] {
   const pattern = /^###\s+Task\s+(\d+):\s*(.+)$/gm;
 
   for (const match of content.matchAll(pattern)) {
+    const raw = match[2].trim();
+    const noTest = /\[no-test\]/i.test(raw);
+    const description = raw.replace(/\s*\[no-test\]\s*/gi, "").trim();
     tasks.push({
       index: parseInt(match[1]),
-      description: match[2].trim(),
+      description,
       completed: false,
+      noTest,
     });
   }
 
@@ -41,10 +45,14 @@ function extractNumberedItems(content: string): PlanTask[] {
     // Match top-level numbered items (no leading whitespace beyond 0-1 spaces)
     const match = line.match(/^\s{0,1}(\d+)[.)]\s+(.+)/);
     if (match) {
+      const raw = match[2].trim();
+      const noTest = /\[no-test\]/i.test(raw);
+      const description = raw.replace(/\s*\[no-test\]\s*/gi, "").trim();
       tasks.push({
         index: parseInt(match[1]),
-        description: match[2].trim(),
+        description,
         completed: false,
+        noTest,
       });
     }
   }

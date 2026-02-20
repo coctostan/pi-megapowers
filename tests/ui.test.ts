@@ -382,6 +382,101 @@ describe("handleDonePhase", () => {
   });
 });
 
+describe("renderDashboardLines — TDD state indicator", () => {
+  it("shows 🔴 Need test when in no-test state", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "implement",
+      planTasks: [{ index: 1, description: "Build auth", completed: false, noTest: false }],
+      currentTaskIndex: 0,
+      tddTaskState: { taskIndex: 1, state: "no-test", skipped: false },
+    };
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const tddLine = lines.find(l => l.includes("TDD:"));
+    expect(tddLine).toBeDefined();
+    expect(tddLine).toContain("🔴");
+    expect(tddLine).toContain("Need test");
+  });
+
+  it("shows 🟡 Run test when in test-written state", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "implement",
+      planTasks: [{ index: 1, description: "Build auth", completed: false, noTest: false }],
+      currentTaskIndex: 0,
+      tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
+    };
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const tddLine = lines.find(l => l.includes("TDD:"));
+    expect(tddLine).toContain("🟡");
+    expect(tddLine).toContain("Run test");
+  });
+
+  it("shows 🟢 Implement when in impl-allowed state", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "implement",
+      planTasks: [{ index: 1, description: "Build auth", completed: false, noTest: false }],
+      currentTaskIndex: 0,
+      tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
+    };
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const tddLine = lines.find(l => l.includes("TDD:"));
+    expect(tddLine).toContain("🟢");
+    expect(tddLine).toContain("Implement");
+  });
+
+  it("shows ⚪ Skipped when task is noTest", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "implement",
+      planTasks: [{ index: 1, description: "Config schema", completed: false, noTest: true }],
+      currentTaskIndex: 0,
+      tddTaskState: null,
+    };
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const tddLine = lines.find(l => l.includes("TDD:"));
+    expect(tddLine).toContain("⚪");
+    expect(tddLine).toContain("Skipped");
+  });
+
+  it("shows ⚪ Skipped when runtime skip is active", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "implement",
+      planTasks: [{ index: 1, description: "Build auth", completed: false, noTest: false }],
+      currentTaskIndex: 0,
+      tddTaskState: { taskIndex: 1, state: "no-test", skipped: true },
+    };
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const tddLine = lines.find(l => l.includes("TDD:"));
+    expect(tddLine).toContain("⚪");
+    expect(tddLine).toContain("Skipped");
+  });
+
+  it("does not show TDD indicator when not in implement phase", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "brainstorm",
+    };
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const tddLine = lines.find(l => l.includes("TDD:"));
+    expect(tddLine).toBeUndefined();
+  });
+});
+
 describe("handleIssueCommand — new state fields", () => {
   let tmp: string;
 
@@ -470,5 +565,60 @@ describe("handleIssueCommand — new state fields", () => {
     expect(result.activeIssue).not.toBe("old-issue");
     expect(result.acceptanceCriteria).toEqual([]);
     expect(result.currentTaskIndex).toBe(0);
+  });
+
+  it("new issue resets stale tddTaskState from previous issue", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    // Simulate stale TDD state (impl-allowed) from a previous issue
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "old-issue",
+      workflow: "feature",
+      phase: "implement",
+      currentTaskIndex: 2,
+      tddTaskState: { taskIndex: 2, state: "impl-allowed", skipped: false },
+    };
+
+    const ctx = createMockCtx();
+    ctx.ui.input = async () => "New issue";
+    ctx.ui.select = async (_prompt: string, items: string[]) => {
+      return items.includes("feature") ? "feature" : items[0];
+    };
+    ctx.ui.editor = async () => "description";
+
+    const result = await ui.handleIssueCommand(ctx as any, state, store, jj as any, "new");
+
+    expect(result.activeIssue).toBeTruthy();
+    expect(result.activeIssue).not.toBe("old-issue");
+    expect(result.tddTaskState).toBeNull();
+  });
+
+  it("list activation resets stale tddTaskState", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const issue = store.createIssue("Another feature", "feature", "desc");
+
+    // Stale TDD state from previous issue
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "old-issue",
+      workflow: "feature",
+      phase: "implement",
+      currentTaskIndex: 3,
+      tddTaskState: { taskIndex: 3, state: "impl-allowed", skipped: false },
+    };
+
+    const ctx = createMockCtx();
+    ctx.ui.select = async (_prompt: string, items: string[]) => {
+      return items.find(i => i.startsWith("#")) ?? items[0];
+    };
+
+    const result = await ui.handleIssueCommand(ctx as any, state, store, jj as any, "list");
+
+    expect(result.activeIssue).toBe(issue.slug);
+    expect(result.tddTaskState).toBeNull();
   });
 });
