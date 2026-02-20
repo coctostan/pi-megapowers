@@ -229,6 +229,21 @@ export default function megapowers(pi: ExtensionAPI): void {
       }
     }
 
+    // Inspect jj change for completed task
+    if (phase === "implement" && result.stateUpdate.planTasks) {
+      const completedTask = state.planTasks[state.currentTaskIndex];
+      const changeId = completedTask ? state.taskJJChanges[completedTask.index] : undefined;
+      if (changeId && completedTask && await jj.isJJRepo()) {
+        try {
+          const inspection = await inspectTaskChange(jj, changeId);
+          const report = buildTaskCompletionReport(completedTask.index, completedTask.description, inspection);
+          result.notifications.push(report);
+        } catch {
+          // jj inspection is best-effort — don't block completion
+        }
+      }
+    }
+
     // Apply state updates
     if (Object.keys(result.stateUpdate).length > 0) {
       state = { ...state, ...result.stateUpdate };
