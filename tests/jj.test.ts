@@ -8,6 +8,9 @@ import {
   buildBookmarkSetArgs,
   buildLogArgs,
   formatChangeDescription,
+  buildDiffArgs,
+  buildAbandonArgs,
+  buildSquashIntoArgs,
 } from "../extensions/megapowers/jj.js";
 
 describe("parseChangeId", () => {
@@ -85,5 +88,25 @@ describe("formatChangeDescription", () => {
     expect(formatChangeDescription("001-auth-refactor", "spec", "complete")).toBe(
       "mega(001-auth-refactor): spec complete"
     );
+  });
+});
+
+describe("buildDiffArgs", () => {
+  it("builds diff --summary for a specific change", () => {
+    expect(buildDiffArgs("abc123")).toEqual(["diff", "--summary", "-r", "abc123"]);
+  });
+});
+
+describe("buildAbandonArgs", () => {
+  it("builds abandon for a specific change", () => {
+    expect(buildAbandonArgs("abc123")).toEqual(["abandon", "abc123"]);
+  });
+});
+
+describe("buildSquashIntoArgs", () => {
+  it("builds squash from children into parent", () => {
+    expect(buildSquashIntoArgs("parentid")).toEqual([
+      "squash", "--from", "all:children(parentid)", "--into", "parentid",
+    ]);
   });
 });

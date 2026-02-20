@@ -33,6 +33,18 @@ export function buildLogArgs(revset?: string): string[] {
   return ["log"];
 }
 
+export function buildDiffArgs(changeId: string): string[] {
+  return ["diff", "--summary", "-r", changeId];
+}
+
+export function buildAbandonArgs(changeId: string): string[] {
+  return ["abandon", changeId];
+}
+
+export function buildSquashIntoArgs(parentChangeId: string): string[] {
+  return ["squash", "--from", `all:children(${parentChangeId})`, "--into", parentChangeId];
+}
+
 export function formatChangeDescription(issueSlug: string, phase: string, suffix?: string): string {
   const desc = suffix ? `${phase} ${suffix}` : phase;
   return `mega(${issueSlug}): ${desc}`;
@@ -50,6 +62,9 @@ export interface JJ {
   squash(): Promise<void>;
   bookmarkSet(name: string): Promise<void>;
   log(revset?: string): Promise<string>;
+  diff(changeId: string): Promise<string>;
+  abandon(changeId: string): Promise<void>;
+  squashInto(parentChangeId: string): Promise<void>;
 }
 
 export function createJJ(pi: ExtensionAPI): JJ {
@@ -99,6 +114,19 @@ export function createJJ(pi: ExtensionAPI): JJ {
     async log(revset?: string): Promise<string> {
       const result = await run(buildLogArgs(revset));
       return result.stdout;
+    },
+
+    async diff(changeId: string): Promise<string> {
+      const result = await run(buildDiffArgs(changeId));
+      return result.stdout;
+    },
+
+    async abandon(changeId: string): Promise<void> {
+      await run(buildAbandonArgs(changeId));
+    },
+
+    async squashInto(parentChangeId: string): Promise<void> {
+      await run(buildSquashIntoArgs(parentChangeId));
     },
   };
 }
