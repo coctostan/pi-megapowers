@@ -21,7 +21,7 @@ export function parseTaskDiffFiles(diffOutput: string): string[] {
   const files: string[] = [];
   for (const line of diffOutput.split("\n")) {
     // --summary format: "M src/auth.ts" or "A tests/auth.test.ts" or "D old.ts"
-    const summaryMatch = line.match(/^[MAD]\s+(.+)$/);
+    const summaryMatch = line.match(/^[A-Z]\s+(.+)$/);
     if (summaryMatch) {
       files.push(summaryMatch[1].trim());
       continue;

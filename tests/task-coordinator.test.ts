@@ -40,6 +40,19 @@ describe("parseTaskDiffFiles", () => {
   it("returns empty array for summary-only line", () => {
     expect(parseTaskDiffFiles("0 files changed")).toEqual([]);
   });
+
+  it("handles hypothetical rename/copy summary lines", () => {
+    const output = `R src/old.ts => src/new.ts\nC src/original.ts => src/copy.ts`;
+    const files = parseTaskDiffFiles(output);
+    // Should extract at least some file path from each line
+    expect(files.length).toBe(2);
+  });
+
+  it("handles any single-letter status prefix", () => {
+    const output = `X src/unknown-status.ts`;
+    const files = parseTaskDiffFiles(output);
+    expect(files).toEqual(["src/unknown-status.ts"]);
+  });
 });
 
 describe("buildTaskCompletionReport", () => {
