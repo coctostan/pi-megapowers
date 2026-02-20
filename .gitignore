@@ -4,3 +4,6 @@ dist/
 
 # KotaDB local storage
 .kotadb/
+
+# Pi workflow monitor state
+.pi/superpowers-state.json
