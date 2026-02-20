@@ -621,4 +621,28 @@ describe("handleIssueCommand — new state fields", () => {
     expect(result.activeIssue).toBe(issue.slug);
     expect(result.tddTaskState).toBeNull();
   });
+
+  it("new issue resets taskJJChanges", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "old-issue",
+      workflow: "feature",
+      phase: "implement",
+      taskJJChanges: { 1: "stale-change" },
+    };
+
+    const ctx = createMockCtx();
+    ctx.ui.input = async () => "New issue";
+    ctx.ui.select = async (_prompt: string, items: string[]) => {
+      return items.includes("feature") ? "feature" : items[0];
+    };
+    ctx.ui.editor = async () => "description";
+
+    const result = await ui.handleIssueCommand(ctx as any, state, store, jj as any, "new");
+
+    expect(result.taskJJChanges).toEqual({});
+  });
 });
