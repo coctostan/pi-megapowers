@@ -49,6 +49,9 @@ function createMockJJ() {
     describe: async () => {},
     newChange: async () => null,
     log: async () => [],
+    diff: async () => "",
+    abandon: async () => {},
+    squashInto: async (_id: string) => {},
   };
 }
 
@@ -379,6 +382,86 @@ describe("handleDonePhase", () => {
     const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
 
     expect(result.phase).toBe("done");
+  });
+
+  it("offers squash option when taskJJChanges exist", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+      taskJJChanges: { 1: "abc123", 2: "def456" },
+      jjChangeId: "phase-change-id",
+    };
+
+    let selectItems: string[] = [];
+    const ctx = createMockCtx();
+    ctx.ui.select = async (_prompt: string, items: string[]) => {
+      selectItems = items;
+      return "Done — finish without further actions";
+    };
+
+    await ui.handleDonePhase(ctx as any, state, store, jj as any);
+
+    expect(selectItems.some(item => item.toLowerCase().includes("squash"))).toBe(true);
+  });
+
+  it("does not offer squash option when no taskJJChanges", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+      taskJJChanges: {},
+    };
+
+    let selectItems: string[] = [];
+    const ctx = createMockCtx();
+    ctx.ui.select = async (_prompt: string, items: string[]) => {
+      selectItems = items;
+      return "Done — finish without further actions";
+    };
+
+    await ui.handleDonePhase(ctx as any, state, store, jj as any);
+
+    expect(selectItems.every(item => !item.toLowerCase().includes("squash"))).toBe(true);
+  });
+
+  it("squashes task changes and clears taskJJChanges", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    let squashedInto: string | null = null;
+    const jj = {
+      ...createMockJJ(),
+      squashInto: async (id: string) => { squashedInto = id; },
+    };
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+      taskJJChanges: { 1: "abc123" },
+      jjChangeId: "phase-change-id",
+    };
+
+    let callCount = 0;
+    const ctx = createMockCtx();
+    ctx.ui.select = async (_prompt: string, _items: string[]) => {
+      callCount++;
+      if (callCount === 1) return "Squash task changes into phase change";
+      return "Done — finish without further actions";
+    };
+
+    const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
+
+    expect(squashedInto).toBe("phase-change-id");
+    expect(result.taskJJChanges).toEqual({});
   });
 });
 

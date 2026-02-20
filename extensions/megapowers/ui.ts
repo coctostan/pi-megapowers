@@ -273,8 +273,15 @@ export function createUI(): MegapowersUI {
         "Generate commit message",
         "Update docs (LLM generates from artifacts)",
         "Write changelog entry",
-        "Done — finish without further actions",
       ];
+
+      // Offer squash if there are per-task jj changes and a phase change to squash into
+      const hasTaskChanges = Object.keys(state.taskJJChanges).length > 0 && state.jjChangeId;
+      if (hasTaskChanges) {
+        actions.push("Squash task changes into phase change");
+      }
+
+      actions.push("Done — finish without further actions");
 
       let continueMenu = true;
       let newState = state;
@@ -293,6 +300,14 @@ export function createUI(): MegapowersUI {
           ctx.ui.notify("Issue closed.", "info");
           continueMenu = false;
           break;
+        }
+
+        if (choice === "Squash task changes into phase change") {
+          if (state.jjChangeId) {
+            await jj.squashInto(state.jjChangeId);
+            newState = { ...newState, taskJJChanges: {} };
+            ctx.ui.notify("Task changes squashed into phase change.", "info");
+          }
         }
 
         if (choice.startsWith("Generate commit")) {
