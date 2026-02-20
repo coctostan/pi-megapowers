@@ -8,6 +8,7 @@ import { extractPlanTasks } from "./plan-parser.js";
 import { processAgentOutput } from "./artifact-router.js";
 import { checkFileWrite, isTestRunnerCommand, handleTestResult, type TddTaskState } from "./tdd-guard.js";
 import { shouldCreateTaskChange, createTaskChange, inspectTaskChange, buildTaskCompletionReport } from "./task-coordinator.js";
+import { isSatelliteMode, loadSatelliteState } from "./satellite.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 
@@ -27,6 +28,48 @@ function getAssistantText(message: AssistantMessage): string {
 // --- Extension ---
 
 export default function megapowers(pi: ExtensionAPI): void {
+  // --- Satellite mode: TDD-only for subagent sessions ---
+  const satellite = isSatelliteMode({
+    isTTY: process.stdout.isTTY,
+    env: process.env as Record<string, string | undefined>,
+  });
+
+  if (satellite) {
+    let satelliteState: Readonly<MegapowersState> | null = null;
+
+    pi.on("session_start", async (_event, ctx) => {
+      satelliteState = loadSatelliteState(ctx.cwd);
+    });
+
+    pi.on("tool_call", async (event, _ctx) => {
+      if (!satelliteState || satelliteState.phase !== "implement") return;
+      if (satelliteState.planTasks.length === 0) return;
+
+      const toolName = event.toolName;
+      if (toolName !== "write" && toolName !== "edit") return;
+
+      const filePath: string | undefined = (event.input as any)?.path;
+      if (!filePath) return;
+
+      const currentTask = satelliteState.planTasks[satelliteState.currentTaskIndex];
+      if (!currentTask) return;
+
+      const tddState = satelliteState.tddTaskState ?? {
+        taskIndex: currentTask.index,
+        state: "no-test" as const,
+        skipped: false,
+      };
+
+      const result = checkFileWrite(filePath, satelliteState.phase, currentTask, tddState);
+
+      if (!result.allow) {
+        return { block: true, reason: result.reason };
+      }
+    });
+
+    return; // Skip all primary session setup
+  }
+
   let state: MegapowersState = createInitialState();
   let store: Store;
   let jj: JJ;
