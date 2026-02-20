@@ -4,6 +4,12 @@ You are implementing a single task from the plan. Follow strict Red-Green-Refact
 Issue: {{issue_slug}}
 Phase: implement — Task {{current_task_index}} of {{total_tasks}}
 
+## Execution Mode
+You may work on this task inline or delegate to a subagent tool (if available).
+- **Inline:** Work directly in this session. TDD is enforced via tdd-guard.
+- **Subagent:** Delegate the task. TDD is enforced in the subagent's satellite session.
+- Either way, signal task completion when done so megapowers can inspect and advance.
+
 ## Current Task
 {{current_task_description}}
 
