@@ -3,7 +3,7 @@ import { createInitialState, getValidTransitions, type MegapowersState, type Pha
 import { createStore, type Store } from "./store.js";
 import { createJJ, formatChangeDescription, type JJ } from "./jj.js";
 import { createUI, type MegapowersUI } from "./ui.js";
-import { buildPhasePrompt, buildImplementTaskVars, formatAcceptanceCriteriaList } from "./prompts.js";
+import { buildPhasePrompt, buildImplementTaskVars, formatAcceptanceCriteriaList, loadPromptFile, BRAINSTORM_PLAN_PHASES, interpolatePrompt, getPhasePromptTemplate } from "./prompts.js";
 import { extractPlanTasks } from "./plan-parser.js";
 import { processAgentOutput } from "./artifact-router.js";
 import { checkFileWrite, isTestRunnerCommand, handleTestResult, type TddTaskState } from "./tdd-guard.js";
@@ -178,18 +178,43 @@ export default function megapowers(pi: ExtensionAPI): void {
       }
     }
 
-    const prompt = buildPhasePrompt(state.phase, vars);
-    if (!prompt) return;
+    // Learnings + Roadmap: brainstorm and plan phases only
+    if (BRAINSTORM_PLAN_PHASES.includes(state.phase)) {
+      vars.learnings = store?.getLearnings() ?? "";
+      vars.roadmap = store?.readRoadmap() ?? "";
+    }
 
-    const learnings = store?.getLearnings() ?? "";
-    const fullPrompt = learnings
-      ? `${prompt}\n\n## Project Learnings\n${learnings}`
-      : prompt;
+    // Select prompt template
+    let template = getPhasePromptTemplate(state.phase);
+
+    // Done phase: select prompt based on doneMode
+    if (state.phase === "done" && state.doneMode && store) {
+      const doneModeTemplateMap: Record<string, string> = {
+        "generate-docs": "generate-docs.md",
+        "capture-learnings": "capture-learnings.md",
+        "write-changelog": "write-changelog.md",
+      };
+      const filename = doneModeTemplateMap[state.doneMode];
+      if (filename) {
+        const modeTemplate = loadPromptFile(filename);
+        if (modeTemplate) template = modeTemplate;
+      }
+      // files_changed for done-phase artifact prompts
+      if (state.jjChangeId && await jj.isJJRepo()) {
+        try { vars.files_changed = await jj.diff(state.jjChangeId); } catch { vars.files_changed = ""; }
+      } else {
+        vars.files_changed = "";
+      }
+      vars.learnings = store.getLearnings();
+    }
+
+    const finalPrompt = interpolatePrompt(template, vars);
+    if (!finalPrompt) return;
 
     return {
       message: {
         customType: "megapowers-context",
-        content: fullPrompt,
+        content: finalPrompt,
         display: false,
       },
     };
@@ -309,6 +334,24 @@ export default function megapowers(pi: ExtensionAPI): void {
       if (validNext.length > 0) {
         state = await ui.handlePhaseTransition(ctx, state, store, jj);
         pi.appendEntry("megapowers-state", state);
+      }
+
+      // Done phase: capture artifacts from doneMode LLM output
+      if (state.phase === "done" && state.doneMode && activeIssue && text.length > 100) {
+        if (state.doneMode === "generate-docs") {
+          store.writeFeatureDoc(activeIssue, text);
+          ctx.ui.notify(`Feature doc saved to .megapowers/docs/${activeIssue}.md`, "info");
+        }
+        if (state.doneMode === "write-changelog") {
+          store.appendChangelog(text);
+          ctx.ui.notify("Changelog entry appended to .megapowers/CHANGELOG.md", "info");
+        }
+        // capture-learnings: user manually reviews and uses /learn command
+        // Clear doneMode after artifact capture (except capture-learnings which persists)
+        if (state.doneMode !== "capture-learnings") {
+          state = { ...state, doneMode: null };
+          store.saveState(state);
+        }
       }
 
       // Done phase: trigger wrap-up menu
