@@ -200,3 +200,41 @@ describe("backward transitions pass without gates", () => {
     expect(result.pass).toBe(true);
   });
 });
+
+describe("reproduce → diagnose (bugfix)", () => {
+  it("fails when reproduce.md does not exist", () => {
+    const store = createStore(tmp);
+    const state = makeState({ phase: "reproduce", workflow: "bugfix" });
+    const result = checkGate(state, "diagnose", store);
+    expect(result.pass).toBe(false);
+    expect(result.reason).toContain("reproduce.md");
+  });
+
+  it("passes when reproduce.md exists", () => {
+    const store = createStore(tmp);
+    store.ensurePlanDir("001-test");
+    store.writePlanFile("001-test", "reproduce.md", "## Steps to Reproduce\n1. Do X\n2. See error");
+    const state = makeState({ phase: "reproduce", workflow: "bugfix" });
+    const result = checkGate(state, "diagnose", store);
+    expect(result.pass).toBe(true);
+  });
+});
+
+describe("diagnose → plan (bugfix)", () => {
+  it("fails when diagnosis.md does not exist", () => {
+    const store = createStore(tmp);
+    const state = makeState({ phase: "diagnose", workflow: "bugfix" });
+    const result = checkGate(state, "plan", store);
+    expect(result.pass).toBe(false);
+    expect(result.reason).toContain("diagnosis.md");
+  });
+
+  it("passes when diagnosis.md exists", () => {
+    const store = createStore(tmp);
+    store.ensurePlanDir("001-test");
+    store.writePlanFile("001-test", "diagnosis.md", "## Root Cause\nThe regex is wrong.");
+    const state = makeState({ phase: "diagnose", workflow: "bugfix" });
+    const result = checkGate(state, "plan", store);
+    expect(result.pass).toBe(true);
+  });
+});

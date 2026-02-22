@@ -229,6 +229,34 @@ describe("prompt templates — diagnose-bug.md", () => {
   });
 });
 
+describe("prompt templates — generate-bugfix-summary.md", () => {
+  it("bugfix summary template exists and is loadable", () => {
+    const content = loadPromptFile("generate-bugfix-summary.md");
+    expect(content.length).toBeGreaterThan(0);
+  });
+
+  it("bugfix summary template contains expected placeholders", () => {
+    const content = loadPromptFile("generate-bugfix-summary.md");
+    expect(content).toContain("{{reproduce_content}}");
+    expect(content).toContain("{{diagnosis_content}}");
+    expect(content).toContain("{{plan_content}}");
+    expect(content).toContain("{{files_changed}}");
+    expect(content).toContain("{{learnings}}");
+  });
+});
+
+describe("prompt templates — bugfix plan variable injection", () => {
+  it("write-plan template contains {{spec_content}} (used for diagnosis in bugfix)", () => {
+    const template = getPhasePromptTemplate("plan");
+    expect(template).toContain("{{spec_content}}");
+  });
+
+  it("write-plan template contains {{brainstorm_content}} (used for reproduce in bugfix)", () => {
+    const template = getPhasePromptTemplate("plan");
+    expect(template).toContain("{{brainstorm_content}}");
+  });
+});
+
 describe("prompt templates — new template files exist", () => {
   it("capture-learnings.md exists and contains {{spec_content}}", () => {
     const { readFileSync } = require("node:fs");

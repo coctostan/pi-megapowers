@@ -268,12 +268,20 @@ export function createUI(): MegapowersUI {
     async handleDonePhase(ctx, state, store, jj) {
       if (!state.activeIssue) return state;
 
-      const actions = [
-        "Generate feature doc",
-        "Write changelog entry",
-        "Capture learnings",
-        "Close issue",
-      ];
+      const isBugfix = state.workflow === "bugfix";
+      const actions = isBugfix
+        ? [
+            "Generate bugfix summary",
+            "Write changelog entry",
+            "Capture learnings",
+            "Close issue",
+          ]
+        : [
+            "Generate feature doc",
+            "Write changelog entry",
+            "Capture learnings",
+            "Close issue",
+          ];
 
       // Offer squash if there are per-task jj changes and a phase change to squash into
       const hasTaskChanges = Object.keys(state.taskJJChanges).length > 0 && state.jjChangeId;
@@ -297,6 +305,16 @@ export function createUI(): MegapowersUI {
           newState = { ...newState, doneMode: "generate-docs" };
           ctx.ui.notify(
             "Feature doc mode active. Send any message to the LLM to generate the feature doc.\nThe doc will be saved to .megapowers/docs/.",
+            "info"
+          );
+          continueMenu = false;
+          break;
+        }
+
+        if (choice === "Generate bugfix summary") {
+          newState = { ...newState, doneMode: "generate-bugfix-summary" };
+          ctx.ui.notify(
+            "Bugfix summary mode active. Send any message to the LLM to generate the bugfix summary.\nThe summary will be saved to .megapowers/docs/.",
             "info"
           );
           continueMenu = false;
@@ -339,7 +357,11 @@ export function createUI(): MegapowersUI {
             ctx.ui.notify("Task changes squashed into phase change.", "info");
           }
           // Continue menu after squash
+          continue;
         }
+
+        // Catch-all: unknown selection exits the loop (prevents hang)
+        break;
       }
 
       return newState;

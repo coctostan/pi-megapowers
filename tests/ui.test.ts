@@ -819,3 +819,93 @@ describe("handleIssueCommand — new state fields", () => {
     expect(result.taskJJChanges).toEqual({});
   });
 });
+
+describe("handleDonePhase — bugfix workflow", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "megapowers-ui-bugfix-done-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("shows bugfix menu items when workflow is bugfix", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    let menuItems: string[] = [];
+    const ctx = createMockCtx();
+    ctx.ui.select = async (_prompt: string, items: string[]) => {
+      menuItems = items;
+      return "Done — finish without further actions";
+    };
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "bugfix",
+      phase: "done",
+    };
+    await ui.handleDonePhase(ctx as any, state, store, jj as any);
+    expect(menuItems).toContain("Generate bugfix summary");
+    expect(menuItems).not.toContain("Generate feature doc");
+    expect(menuItems).toContain("Write changelog entry");
+    expect(menuItems).toContain("Capture learnings");
+    expect(menuItems).toContain("Close issue");
+  });
+
+  it("sets doneMode to 'generate-bugfix-summary' when selected", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const ctx = createMockCtx();
+    ctx.ui.select = async () => "Generate bugfix summary";
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "bugfix",
+      phase: "done",
+    };
+    const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
+    expect(result.doneMode).toBe("generate-bugfix-summary");
+  });
+
+  it("notifies user when bugfix summary mode is active", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const ctx = createMockCtx();
+    ctx.ui.select = async () => "Generate bugfix summary";
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "bugfix",
+      phase: "done",
+    };
+    await ui.handleDonePhase(ctx as any, state, store, jj as any);
+    const msgs = (ctx._notifications as Array<{msg: string, type: string}>).map(n => n.msg);
+    expect(msgs.some(m => m.toLowerCase().includes("bugfix summary"))).toBe(true);
+  });
+
+  it("still shows feature menu when workflow is feature", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    let menuItems: string[] = [];
+    const ctx = createMockCtx();
+    ctx.ui.select = async (_prompt: string, items: string[]) => {
+      menuItems = items;
+      return "Done — finish without further actions";
+    };
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+    };
+    await ui.handleDonePhase(ctx as any, state, store, jj as any);
+    expect(menuItems).toContain("Generate feature doc");
+    expect(menuItems).not.toContain("Generate bugfix summary");
+  });
+});

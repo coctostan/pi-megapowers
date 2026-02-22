@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "activeIssue": "001-bugfix-feature",
+  "workflow": "feature",
+  "phase": "implement",
+  "phaseHistory": [
+    {
+      "from": "brainstorm",
+      "to": "spec",
+      "timestamp": 1771781859670
+    },
+    {
+      "from": "spec",
+      "to": "plan",
+      "timestamp": 1771782441440
+    },
+    {
+      "from": "plan",
+      "to": "review",
+      "timestamp": 1771783001558
+    },
+    {
+      "from": "review",
+      "to": "plan",
+      "timestamp": 1771792891389
+    },
+    {
+      "from": "plan",
+      "to": "implement",
+      "timestamp": 1771793075707
+    }
+  ],
+  "reviewApproved": false,
+  "planTasks": [],
+  "jjChangeId": null,
+  "acceptanceCriteria": [],
+  "currentTaskIndex": 0,
+  "tddTaskState": null,
+  "taskJJChanges": {},
+  "doneMode": null
+}

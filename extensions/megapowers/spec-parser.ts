@@ -38,6 +38,37 @@ export function extractAcceptanceCriteria(specContent: string): AcceptanceCriter
 /**
  * Check if a spec has unresolved open questions.
  */
+/**
+ * Extract numbered criteria from a "## Fixed When" section in a diagnosis.
+ */
+export function extractFixedWhenCriteria(diagnosisContent: string): AcceptanceCriterion[] {
+  const lines = diagnosisContent.split("\n");
+  const criteria: AcceptanceCriterion[] = [];
+  let inSection = false;
+
+  for (const line of lines) {
+    if (/^##\s+Fixed\s+When/i.test(line)) {
+      inSection = true;
+      continue;
+    }
+    if (inSection && /^##\s+/.test(line)) {
+      break;
+    }
+    if (!inSection) continue;
+
+    const match = line.match(/^\s{0,1}(\d+)[.)]\s+(.+)/);
+    if (match) {
+      criteria.push({
+        id: parseInt(match[1]),
+        text: match[2].trim(),
+        status: "pending",
+      });
+    }
+  }
+
+  return criteria;
+}
+
 export function hasOpenQuestions(specContent: string): boolean {
   const lines = specContent.split("\n");
   let inSection = false;
