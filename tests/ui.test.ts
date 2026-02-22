@@ -465,6 +465,96 @@ describe("handleDonePhase", () => {
   });
 });
 
+describe("handleDonePhase — doneMode actions", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "megapowers-ui-donemode-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("sets doneMode to 'generate-docs' when feature doc is selected", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+    };
+
+    const ctx = createMockCtx();
+    ctx.ui.select = async (_prompt: string, _items: string[]) => "Generate feature doc";
+
+    const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
+    expect(result.doneMode).toBe("generate-docs");
+  });
+
+  it("sets doneMode to 'write-changelog' when changelog is selected", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+    };
+
+    const ctx = createMockCtx();
+    ctx.ui.select = async (_prompt: string, _items: string[]) => "Write changelog entry";
+
+    const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
+    expect(result.doneMode).toBe("write-changelog");
+  });
+
+  it("sets doneMode to 'capture-learnings' when capture learnings is selected", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+    };
+
+    const ctx = createMockCtx();
+    ctx.ui.select = async (_prompt: string, _items: string[]) => "Capture learnings";
+
+    const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
+    expect(result.doneMode).toBe("capture-learnings");
+  });
+
+  it("menu includes all three doneMode action labels", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+    };
+
+    let menuItems: string[] = [];
+    const ctx = createMockCtx();
+    ctx.ui.select = async (_prompt: string, items: string[]) => {
+      menuItems = items;
+      return "Done — finish without further actions";
+    };
+
+    await ui.handleDonePhase(ctx as any, state, store, jj as any);
+    expect(menuItems).toContain("Generate feature doc");
+    expect(menuItems).toContain("Write changelog entry");
+    expect(menuItems).toContain("Capture learnings");
+  });
+});
+
 describe("renderDashboardLines — TDD state indicator", () => {
   it("shows 🔴 Need test when in no-test state", () => {
     const state: MegapowersState = {

@@ -269,10 +269,10 @@ export function createUI(): MegapowersUI {
       if (!state.activeIssue) return state;
 
       const actions = [
-        "Close issue",
-        "Generate commit message",
-        "Update docs (LLM generates from artifacts)",
+        "Generate feature doc",
         "Write changelog entry",
+        "Capture learnings",
+        "Close issue",
       ];
 
       // Offer squash if there are per-task jj changes and a phase change to squash into
@@ -293,6 +293,36 @@ export function createUI(): MegapowersUI {
           break;
         }
 
+        if (choice === "Generate feature doc") {
+          newState = { ...newState, doneMode: "generate-docs" };
+          ctx.ui.notify(
+            "Feature doc mode active. Send any message to the LLM to generate the feature doc.\nThe doc will be saved to .megapowers/docs/.",
+            "info"
+          );
+          continueMenu = false;
+          break;
+        }
+
+        if (choice === "Write changelog entry") {
+          newState = { ...newState, doneMode: "write-changelog" };
+          ctx.ui.notify(
+            "Changelog mode active. Send any message to the LLM to generate the changelog entry.\nThe entry will be appended to .megapowers/CHANGELOG.md.",
+            "info"
+          );
+          continueMenu = false;
+          break;
+        }
+
+        if (choice === "Capture learnings") {
+          newState = { ...newState, doneMode: "capture-learnings" };
+          ctx.ui.notify(
+            "Learnings capture mode active. Send any message to the LLM to generate learning suggestions.\nReview the output and use /learn to save individual entries.",
+            "info"
+          );
+          continueMenu = false;
+          break;
+        }
+
         if (choice === "Close issue") {
           store.updateIssueStatus(state.activeIssue, "done");
           newState = createInitialState();
@@ -308,18 +338,7 @@ export function createUI(): MegapowersUI {
             newState = { ...newState, taskJJChanges: {} };
             ctx.ui.notify("Task changes squashed into phase change.", "info");
           }
-        }
-
-        if (choice.startsWith("Generate commit")) {
-          ctx.ui.notify("Ask the LLM to generate a commit message based on the spec and changes.", "info");
-        }
-
-        if (choice.startsWith("Update docs")) {
-          ctx.ui.notify("Ask the LLM to generate/update docs. The done-phase prompt will guide it.", "info");
-        }
-
-        if (choice.startsWith("Write changelog")) {
-          ctx.ui.notify("Ask the LLM to write a changelog entry. The done-phase prompt will guide it.", "info");
+          // Continue menu after squash
         }
       }
 
