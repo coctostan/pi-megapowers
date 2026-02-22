@@ -6,6 +6,7 @@ import { createUI, type MegapowersUI } from "./ui.js";
 import { buildImplementTaskVars, formatAcceptanceCriteriaList, loadPromptFile, BRAINSTORM_PLAN_PHASES, interpolatePrompt, getPhasePromptTemplate } from "./prompts.js";
 import { extractPlanTasks } from "./plan-parser.js";
 import { processAgentOutput } from "./artifact-router.js";
+import { resolveStartupState } from "./state-recovery.js";
 import { checkFileWrite, isTestRunnerCommand, handleTestResult, type TddTaskState } from "./tdd-guard.js";
 import { createSatelliteTddState, handleSatelliteToolCall } from "./satellite-tdd.js";
 import { shouldCreateTaskChange, createTaskChange, inspectTaskChange, buildTaskCompletionReport } from "./task-coordinator.js";
@@ -86,16 +87,20 @@ export default function megapowers(pi: ExtensionAPI): void {
     ui = createUI();
 
     // Load persisted state
-    state = store.loadState();
+    const fileState = store.loadState();
 
-    // Also reconstruct from pi session entries (crash recovery)
+    // Collect session entry states for crash recovery
+    const sessionEntryStates: MegapowersState[] = [];
     for (const entry of ctx.sessionManager.getEntries()) {
       if (entry.type === "custom" && (entry as any).customType === "megapowers-state") {
         try {
-          state = (entry as any).data as MegapowersState;
+          sessionEntryStates.push((entry as any).data as MegapowersState);
         } catch { /* ignore corrupt entries */ }
       }
     }
+
+    // state.json is authoritative; session entries only for crash recovery
+    state = resolveStartupState(fileState, sessionEntryStates);
 
     // Recovery: if in implement phase with empty planTasks, re-parse from plan.md
     if (state.activeIssue && state.phase === "implement" && state.planTasks.length === 0) {

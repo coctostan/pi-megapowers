@@ -31,11 +31,64 @@
     }
   ],
   "reviewApproved": false,
-  "planTasks": [],
+  "planTasks": [
+    {
+      "index": 1,
+      "description": "Create reproduce-bug.md prompt template",
+      "completed": false,
+      "noTest": false
+    },
+    {
+      "index": 2,
+      "description": "Update diagnose-bug.md with optional Fixed When section",
+      "completed": false,
+      "noTest": false
+    },
+    {
+      "index": 3,
+      "description": "Create generate-bugfix-summary.md prompt template",
+      "completed": false,
+      "noTest": false
+    },
+    {
+      "index": 4,
+      "description": "Add bugfix gates (reproduce→diagnose, diagnose→plan)",
+      "completed": false,
+      "noTest": false
+    },
+    {
+      "index": 5,
+      "description": "Add reproduce artifact routing and Fixed When AC extraction",
+      "completed": false,
+      "noTest": false
+    },
+    {
+      "index": 6,
+      "description": "Add bugfix prompt variable mapping",
+      "completed": false,
+      "noTest": false
+    },
+    {
+      "index": 7,
+      "description": "Add bugfix done-phase menu to UI",
+      "completed": false,
+      "noTest": false
+    },
+    {
+      "index": 8,
+      "description": "Update MegapowersState doneMode type",
+      "completed": false,
+      "noTest": false
+    }
+  ],
   "jjChangeId": null,
   "acceptanceCriteria": [],
   "currentTaskIndex": 0,
-  "tddTaskState": null,
+  "tddTaskState": {
+    "taskIndex": 1,
+    "state": "impl-allowed",
+    "skipped": false
+  },
   "taskJJChanges": {},
   "doneMode": null
 }
