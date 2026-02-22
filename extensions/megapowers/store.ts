@@ -32,6 +32,10 @@ export interface Store {
 
   getLearnings(): string;
   appendLearning(learning: string): void;
+  appendLearnings(issueSlug: string, entries: string[]): void;
+  readRoadmap(): string;
+  writeFeatureDoc(issueSlug: string, content: string): void;
+  appendChangelog(entry: string): void;
 }
 
 // --- Helpers ---
@@ -94,6 +98,9 @@ export function createStore(projectRoot: string): Store {
   const plansDir = join(root, "plans");
   const learningsDir = join(root, "learnings");
   const learningsFile = join(learningsDir, "learnings.md");
+  const learningsFlatFile = join(root, "learnings.md");
+  const docsDir = join(root, "docs");
+  const changelogFile = join(root, "CHANGELOG.md");
 
   function ensureDir(dir: string): void {
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
@@ -225,14 +232,47 @@ export function createStore(projectRoot: string): Store {
     },
 
     getLearnings(): string {
-      if (!existsSync(learningsFile)) return "";
-      return readFileSync(learningsFile, "utf-8").trim();
+      const parts: string[] = [];
+      if (existsSync(learningsFile)) {
+        const old = readFileSync(learningsFile, "utf-8").trim();
+        if (old) parts.push(old);
+      }
+      if (existsSync(learningsFlatFile)) {
+        const attributed = readFileSync(learningsFlatFile, "utf-8").trim();
+        if (attributed) parts.push(attributed);
+      }
+      return parts.join("\n\n").trim();
     },
 
     appendLearning(learning: string): void {
       ensureRoot();
       const entry = `- ${learning}\n`;
       appendFileSync(learningsFile, entry);
+    },
+
+    appendLearnings(issueSlug: string, entries: string[]): void {
+      if (entries.length === 0) return;
+      ensureRoot();
+      const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+      const block = `\n## ${date} — ${issueSlug}\n\n${entries.map(e => `- ${e}`).join("\n")}\n`;
+      appendFileSync(learningsFlatFile, block);
+    },
+
+    readRoadmap(): string {
+      const roadmapPath = join(projectRoot, "ROADMAP.md");
+      if (!existsSync(roadmapPath)) return "";
+      return readFileSync(roadmapPath, "utf-8").trim();
+    },
+
+    writeFeatureDoc(issueSlug: string, content: string): void {
+      ensureRoot();
+      ensureDir(docsDir);
+      writeFileSync(join(docsDir, `${issueSlug}.md`), content);
+    },
+
+    appendChangelog(entry: string): void {
+      ensureRoot();
+      appendFileSync(changelogFile, entry + "\n");
     },
   };
 }
