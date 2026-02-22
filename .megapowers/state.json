@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "activeIssue": "001-bugfix-feature",
-  "workflow": "feature",
+  "activeIssue": null,
+  "workflow": null,
   "phase": "done",
   "phaseHistory": [
     {
@@ -67,7 +67,7 @@
     },
     {
       "index": 4,
-      "description": "Add bugfix gates (reproduce→diagnose, diagnose→plan)",
+      "description": "Add bugfix gates (reproduce\u2192diagnose, diagnose\u2192plan)",
       "completed": true,
       "noTest": false
     },
