@@ -2,7 +2,7 @@
   "version": 1,
   "activeIssue": "001-bugfix-feature",
   "workflow": "feature",
-  "phase": "implement",
+  "phase": "done",
   "phaseHistory": [
     {
       "from": "brainstorm",
@@ -28,6 +28,21 @@
       "from": "plan",
       "to": "implement",
       "timestamp": 1771793075707
+    },
+    {
+      "from": "implement",
+      "to": "verify",
+      "timestamp": 1771798025604
+    },
+    {
+      "from": "verify",
+      "to": "code-review",
+      "timestamp": 1771798150755
+    },
+    {
+      "from": "code-review",
+      "to": "done",
+      "timestamp": 1771798270913
     }
   ],
   "reviewApproved": false,
@@ -35,58 +50,58 @@
     {
       "index": 1,
       "description": "Create reproduce-bug.md prompt template",
-      "completed": false,
+      "completed": true,
       "noTest": false
     },
     {
       "index": 2,
       "description": "Update diagnose-bug.md with optional Fixed When section",
-      "completed": false,
+      "completed": true,
       "noTest": false
     },
     {
       "index": 3,
       "description": "Create generate-bugfix-summary.md prompt template",
-      "completed": false,
+      "completed": true,
       "noTest": false
     },
     {
       "index": 4,
       "description": "Add bugfix gates (reproduce→diagnose, diagnose→plan)",
-      "completed": false,
+      "completed": true,
       "noTest": false
     },
     {
       "index": 5,
       "description": "Add reproduce artifact routing and Fixed When AC extraction",
-      "completed": false,
+      "completed": true,
       "noTest": false
     },
     {
       "index": 6,
       "description": "Add bugfix prompt variable mapping",
-      "completed": false,
+      "completed": true,
       "noTest": false
     },
     {
       "index": 7,
       "description": "Add bugfix done-phase menu to UI",
-      "completed": false,
+      "completed": true,
       "noTest": false
     },
     {
       "index": 8,
       "description": "Update MegapowersState doneMode type",
-      "completed": false,
+      "completed": true,
       "noTest": false
     }
   ],
   "jjChangeId": null,
   "acceptanceCriteria": [],
-  "currentTaskIndex": 0,
+  "currentTaskIndex": 8,
   "tddTaskState": {
-    "taskIndex": 1,
-    "state": "impl-allowed",
+    "taskIndex": 2,
+    "state": "no-test",
     "skipped": false
   },
   "taskJJChanges": {},

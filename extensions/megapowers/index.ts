@@ -143,7 +143,17 @@ export default function megapowers(pi: ExtensionAPI): void {
   });
 
   pi.on("session_shutdown", async () => {
-    if (store) store.saveState(state);
+    if (store) {
+      // Check if the file has been updated externally (e.g. by another session or manual edit)
+      // Only save if our in-memory state is at least as advanced as the file state
+      const fileState = store.loadState();
+      const phaseOrder = ["brainstorm", "spec", "reproduce", "diagnose", "plan", "review", "implement", "verify", "code-review", "done"];
+      const filePhaseIdx = phaseOrder.indexOf(fileState.phase);
+      const memPhaseIdx = phaseOrder.indexOf(state.phase);
+      // If file is ahead of in-memory, don't overwrite
+      if (filePhaseIdx > memPhaseIdx) return;
+      store.saveState(state);
+    }
   });
 
   // --- Prompt injection ---
