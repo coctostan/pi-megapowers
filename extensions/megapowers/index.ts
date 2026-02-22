@@ -3,7 +3,7 @@ import { createInitialState, getValidTransitions, type MegapowersState, type Pha
 import { createStore, type Store } from "./store.js";
 import { createJJ, formatChangeDescription, type JJ } from "./jj.js";
 import { createUI, type MegapowersUI } from "./ui.js";
-import { buildPhasePrompt, buildImplementTaskVars, formatAcceptanceCriteriaList, loadPromptFile, BRAINSTORM_PLAN_PHASES, interpolatePrompt, getPhasePromptTemplate } from "./prompts.js";
+import { buildImplementTaskVars, formatAcceptanceCriteriaList, loadPromptFile, BRAINSTORM_PLAN_PHASES, interpolatePrompt, getPhasePromptTemplate } from "./prompts.js";
 import { extractPlanTasks } from "./plan-parser.js";
 import { processAgentOutput } from "./artifact-router.js";
 import { checkFileWrite, isTestRunnerCommand, handleTestResult, type TddTaskState } from "./tdd-guard.js";
@@ -184,8 +184,8 @@ export default function megapowers(pi: ExtensionAPI): void {
       vars.roadmap = store?.readRoadmap() ?? "";
     }
 
-    // Select prompt template
-    let template = getPhasePromptTemplate(state.phase);
+    // Select prompt template (done phase requires doneMode)
+    let template = state.phase === "done" ? "" : getPhasePromptTemplate(state.phase);
 
     // Done phase: select prompt based on doneMode
     if (state.phase === "done" && state.doneMode && store) {
