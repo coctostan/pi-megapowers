@@ -59,9 +59,7 @@ export function processAgentOutput(
   if (phase === "diagnose" && text.length > 100) {
     artifacts.push({ filename: "diagnosis.md", content: text });
     const criteria = extractFixedWhenCriteria(text);
-    if (criteria.length > 0) {
-      stateUpdate.acceptanceCriteria = criteria;
-    }
+    stateUpdate.acceptanceCriteria = criteria;
     notifications.push("Diagnosis saved.");
   }
 

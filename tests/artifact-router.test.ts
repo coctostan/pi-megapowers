@@ -236,10 +236,15 @@ describe("processAgentOutput — diagnose phase with Fixed When", () => {
     expect(result.stateUpdate.acceptanceCriteria![0].text).toBe("Parser handles multi-line input");
   });
 
-  it("does not set acceptanceCriteria when no Fixed When section", () => {
+  it("clears acceptanceCriteria when no Fixed When section (prevents stale criteria)", () => {
     const text = "## Root Cause\nThe bug is in the parser.\n\n## Fix\nUpdate the regex. Extra padding to get over the 100 char minimum.";
-    const result = processAgentOutput(text, "diagnose", makeState({ phase: "diagnose", workflow: "bugfix" }));
+    const stateWithOldCriteria = makeState({
+      phase: "diagnose",
+      workflow: "bugfix",
+      acceptanceCriteria: [{ id: "old-1", text: "stale criterion", status: "pending" as const }],
+    });
+    const result = processAgentOutput(text, "diagnose", stateWithOldCriteria);
     expect(result.artifacts).toHaveLength(1);
-    expect(result.stateUpdate.acceptanceCriteria).toBeUndefined();
+    expect(result.stateUpdate.acceptanceCriteria).toEqual([]);
   });
 });
