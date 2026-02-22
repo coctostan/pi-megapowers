@@ -131,3 +131,61 @@ describe("formatAcceptanceCriteriaList", () => {
     expect(result).toContain("3. Error shown on invalid [fail]");
   });
 });
+
+describe("prompt templates — learnings and roadmap variables", () => {
+  it("brainstorm template contains {{learnings}} placeholder", () => {
+    const template = getPhasePromptTemplate("brainstorm");
+    expect(template).toContain("{{learnings}}");
+  });
+
+  it("brainstorm template contains {{roadmap}} placeholder", () => {
+    const template = getPhasePromptTemplate("brainstorm");
+    expect(template).toContain("{{roadmap}}");
+  });
+
+  it("plan (write-plan) template contains {{learnings}} placeholder", () => {
+    const template = getPhasePromptTemplate("plan");
+    expect(template).toContain("{{learnings}}");
+  });
+
+  it("plan (write-plan) template contains {{roadmap}} placeholder", () => {
+    const template = getPhasePromptTemplate("plan");
+    expect(template).toContain("{{roadmap}}");
+  });
+});
+
+describe("prompt templates — done phase template updates", () => {
+  it("done (generate-docs) template contains {{files_changed}} placeholder", () => {
+    const template = getPhasePromptTemplate("done");
+    expect(template).toContain("{{files_changed}}");
+  });
+
+  it("done (generate-docs) template contains {{learnings}} placeholder", () => {
+    const template = getPhasePromptTemplate("done");
+    expect(template).toContain("{{learnings}}");
+  });
+});
+
+describe("prompt templates — new template files exist", () => {
+  it("capture-learnings.md exists and contains {{spec_content}}", () => {
+    const { readFileSync } = require("node:fs");
+    const { join, dirname } = require("node:path");
+    const { fileURLToPath } = require("node:url");
+    const thisDir = dirname(fileURLToPath(import.meta.url));
+    const promptsDir = join(thisDir, "..", "prompts");
+    const content = readFileSync(join(promptsDir, "capture-learnings.md"), "utf-8");
+    expect(content.length).toBeGreaterThan(50);
+    expect(content).toContain("{{spec_content}}");
+  });
+
+  it("write-changelog.md exists and contains {{spec_content}}", () => {
+    const { readFileSync } = require("node:fs");
+    const { join, dirname } = require("node:path");
+    const { fileURLToPath } = require("node:url");
+    const thisDir = dirname(fileURLToPath(import.meta.url));
+    const promptsDir = join(thisDir, "..", "prompts");
+    const content = readFileSync(join(promptsDir, "write-changelog.md"), "utf-8");
+    expect(content.length).toBeGreaterThan(50);
+    expect(content).toContain("{{spec_content}}");
+  });
+});

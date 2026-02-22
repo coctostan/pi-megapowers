@@ -1,4 +1,4 @@
-You are wrapping up a completed feature. Help the user finalize the work.
+You are generating a feature document for a completed issue. Produce a structured, durable document from the artifacts below.
 
 ## Context
 Issue: {{issue_slug}}
@@ -6,22 +6,35 @@ Issue: {{issue_slug}}
 ## Spec
 {{spec_content}}
 
-## Verification
+## Plan
+{{plan_content}}
+
+## Verification Results
 {{verify_content}}
 
-## Code Review
-{{code_review_content}}
+## Files Changed
+{{files_changed}}
 
-## Available Actions
-The user will choose from:
-- **Commit** — generate a commit message (conventional commits format)
-- **Squash** — clean up commit history
-- **Update docs** — generate or update documentation based on what was built
-- **Changelog entry** — write a summary for release notes
-- **Close issue** — mark the issue as done
+## Learnings Captured
+{{learnings}}
 
-## Instructions
-- Keep it brief — this is housekeeping, not creative work
-- Commit messages should summarize the feature, not list every file
-- Documentation should be generated from the spec and verification results, not from memory
-- Changelog entries should be user-facing (what changed, not how)
+## Output Format
+
+Write the feature document in this structure:
+
+# Feature: [issue title from spec]
+
+## Summary
+Brief description (2–3 sentences) of what was built and why.
+
+## Design Decisions
+Key architectural choices, trade-offs, alternatives rejected.
+
+## API / Interface
+Public API, CLI commands, configuration keys, or UI changes added or modified.
+
+## Testing
+Testing approach, notable test cases, coverage notes.
+
+## Files Changed
+List of files added or modified with one-line descriptions.
