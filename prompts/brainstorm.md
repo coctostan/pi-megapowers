@@ -47,3 +47,9 @@ Validate each section with the user before moving to the next.
 [How this will be tested]
 
 **Do NOT write code or edit files.** This is a read-only thinking phase.
+
+## Project Learnings
+{{learnings}}
+
+## Roadmap Context
+{{roadmap}}

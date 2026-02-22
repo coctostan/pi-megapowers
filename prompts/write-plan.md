@@ -42,3 +42,9 @@ For each task:
 - **YAGNI** — no tasks for speculative features
 - **DRY** — extract shared code into utilities, don't duplicate
 - Each acceptance criterion from the spec should be covered by at least one task
+
+## Project Learnings
+{{learnings}}
+
+## Roadmap Context
+{{roadmap}}

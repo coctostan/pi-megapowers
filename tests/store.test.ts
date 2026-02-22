@@ -243,3 +243,73 @@ describe("learnings", () => {
     expect(store.getLearnings()).toBe("");
   });
 });
+
+describe("appendLearnings — attributed entries", () => {
+  it("appends a dated block attributed to the issue slug", () => {
+    store.appendLearnings("001-auth", ["Token service needs DI mocking", "Use fake clock for timer tests"]);
+    const content = store.getLearnings();
+    expect(content).toMatch(/## \d{4}-\d{2}-\d{2} — 001-auth/);
+    expect(content).toContain("Token service needs DI mocking");
+    expect(content).toContain("Use fake clock for timer tests");
+  });
+
+  it("appends multiple blocks independently", () => {
+    store.appendLearnings("001-auth", ["First learning"]);
+    store.appendLearnings("002-retry", ["Second learning"]);
+    const content = store.getLearnings();
+    expect(content).toContain("001-auth");
+    expect(content).toContain("002-retry");
+    expect(content).toContain("First learning");
+    expect(content).toContain("Second learning");
+  });
+
+  it("writes nothing when entries array is empty", () => {
+    store.appendLearnings("001-auth", []);
+    expect(store.getLearnings()).toBe("");
+  });
+});
+
+describe("readRoadmap", () => {
+  it("returns empty string when ROADMAP.md does not exist", () => {
+    expect(store.readRoadmap()).toBe("");
+  });
+
+  it("returns roadmap content when ROADMAP.md exists in project root", () => {
+    const { writeFileSync } = require("node:fs");
+    writeFileSync(join(tmp, "ROADMAP.md"), "# Roadmap\n\n- Phase 1: Auth\n- Phase 2: API\n");
+    expect(store.readRoadmap()).toContain("Phase 1: Auth");
+  });
+});
+
+describe("writeFeatureDoc", () => {
+  it("writes doc to .megapowers/docs/{slug}.md", () => {
+    store.writeFeatureDoc("001-auth", "# Feature: Auth\n\nBuilt JWT auth.");
+    const { readFileSync, existsSync } = require("node:fs");
+    const docPath = join(tmp, ".megapowers", "docs", "001-auth.md");
+    expect(existsSync(docPath)).toBe(true);
+    expect(readFileSync(docPath, "utf-8")).toContain("Built JWT auth.");
+  });
+
+  it("creates the docs directory if it does not exist", () => {
+    expect(() => store.writeFeatureDoc("001-auth", "content")).not.toThrow();
+  });
+});
+
+describe("appendChangelog", () => {
+  it("creates CHANGELOG.md and appends an entry", () => {
+    store.appendChangelog("## v1.1.0\n\n- Added JWT auth");
+    const { readFileSync } = require("node:fs");
+    const changelogPath = join(tmp, ".megapowers", "CHANGELOG.md");
+    const content = readFileSync(changelogPath, "utf-8");
+    expect(content).toContain("Added JWT auth");
+  });
+
+  it("appends to existing CHANGELOG.md without overwriting", () => {
+    store.appendChangelog("Entry 1");
+    store.appendChangelog("Entry 2");
+    const { readFileSync } = require("node:fs");
+    const content = readFileSync(join(tmp, ".megapowers", "CHANGELOG.md"), "utf-8");
+    expect(content).toContain("Entry 1");
+    expect(content).toContain("Entry 2");
+  });
+});
