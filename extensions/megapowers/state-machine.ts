@@ -40,6 +40,7 @@ export interface MegapowersState {
   acceptanceCriteria: AcceptanceCriterion[];
   currentTaskIndex: number;
   tddTaskState: TddTaskState | null;
+  taskJJChanges: Record<number, string>;
 }
 
 // --- Transition Tables ---
@@ -80,6 +81,7 @@ export function createInitialState(): MegapowersState {
     acceptanceCriteria: [],
     currentTaskIndex: 0,
     tddTaskState: null,
+    taskJJChanges: {},
   };
 }
 
@@ -125,6 +127,7 @@ export function transition(state: MegapowersState, to: Phase): MegapowersState {
   if (to === "implement") {
     next.currentTaskIndex = next.planTasks.findIndex(t => !t.completed);
     if (next.currentTaskIndex === -1) next.currentTaskIndex = 0;
+    next.taskJJChanges = {};  // Reset per-task changes on re-entry
   }
 
   return next;

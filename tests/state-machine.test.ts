@@ -154,6 +154,41 @@ describe("createInitialState — new fields", () => {
   });
 });
 
+describe("transition — taskJJChanges reset", () => {
+  it("resets taskJJChanges when transitioning to implement", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "review",
+      reviewApproved: true,
+      taskJJChanges: { 1: "old-change", 2: "old-change-2" },
+      planTasks: [
+        { index: 1, description: "A", completed: false, noTest: false },
+      ],
+    };
+
+    const next = transition(state, "implement");
+    expect(next.taskJJChanges).toEqual({});
+  });
+
+  it("preserves taskJJChanges when transitioning to non-implement phase", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "implement",
+      taskJJChanges: { 1: "change-a" },
+      planTasks: [
+        { index: 1, description: "A", completed: true, noTest: false },
+      ],
+    };
+
+    const next = transition(state, "verify");
+    expect(next.taskJJChanges).toEqual({ 1: "change-a" });
+  });
+});
+
 describe("transition — backward transitions", () => {
   it("allows review → plan (revise)", () => {
     const state = createInitialState();

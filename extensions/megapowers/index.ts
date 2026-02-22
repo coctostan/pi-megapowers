@@ -7,6 +7,9 @@ import { buildPhasePrompt, buildImplementTaskVars, formatAcceptanceCriteriaList 
 import { extractPlanTasks } from "./plan-parser.js";
 import { processAgentOutput } from "./artifact-router.js";
 import { checkFileWrite, isTestRunnerCommand, handleTestResult, type TddTaskState } from "./tdd-guard.js";
+import { createSatelliteTddState, handleSatelliteToolCall } from "./satellite-tdd.js";
+import { shouldCreateTaskChange, createTaskChange, inspectTaskChange, buildTaskCompletionReport } from "./task-coordinator.js";
+import { isSatelliteMode, loadSatelliteState } from "./satellite.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 
@@ -26,6 +29,50 @@ function getAssistantText(message: AssistantMessage): string {
 // --- Extension ---
 
 export default function megapowers(pi: ExtensionAPI): void {
+  // --- Satellite mode: TDD-only for subagent sessions ---
+  const satellite = isSatelliteMode({
+    isTTY: process.stdout.isTTY,
+    env: process.env as Record<string, string | undefined>,
+  });
+
+  if (satellite) {
+    let satelliteState: Readonly<MegapowersState> | null = null;
+    let satelliteTddState: TddTaskState | null = null;
+
+    pi.on("session_start", async (_event, ctx) => {
+      satelliteState = loadSatelliteState(ctx.cwd);
+      satelliteTddState = satelliteState ? createSatelliteTddState(satelliteState) : null;
+    });
+
+    pi.on("tool_call", async (event, _ctx) => {
+      if (!satelliteState || !satelliteTddState) return;
+
+      const filePath: string | undefined = (event.input as any)?.path;
+      const result = handleSatelliteToolCall(event.toolName, filePath, satelliteState, satelliteTddState);
+
+      if (result && result.block) {
+        return { block: true, reason: result.reason };
+      }
+    });
+
+    pi.on("tool_result", async (event, _ctx) => {
+      if (!satelliteTddState) return;
+      if (satelliteTddState.state !== "test-written") return;
+      if (event.toolName !== "bash") return;
+
+      const command = (event.input as any)?.command;
+      if (!command || !isTestRunnerCommand(command)) return;
+
+      const exitCode = event.isError ? 1 : 0;
+      const newState = handleTestResult(exitCode, satelliteTddState.state);
+      if (newState !== satelliteTddState.state) {
+        satelliteTddState.state = newState;
+      }
+    });
+
+    return; // Skip all primary session setup
+  }
+
   let state: MegapowersState = createInitialState();
   let store: Store;
   let jj: JJ;
@@ -111,6 +158,24 @@ export default function megapowers(pi: ExtensionAPI): void {
     // Implement phase: inject per-task context
     if (state.phase === "implement" && state.planTasks.length > 0) {
       Object.assign(vars, buildImplementTaskVars(state.planTasks, state.currentTaskIndex));
+    }
+
+    // Create per-task jj change if needed
+    if (state.phase === "implement" && state.planTasks.length > 0 && await jj.isJJRepo()) {
+      if (shouldCreateTaskChange(state)) {
+        const task = state.planTasks[state.currentTaskIndex];
+        const result = await createTaskChange(
+          jj,
+          state.activeIssue!,
+          task.index,
+          task.description,
+          state.jjChangeId ?? undefined
+        );
+        if (result.changeId) {
+          state = { ...state, taskJJChanges: { ...state.taskJJChanges, [task.index]: result.changeId } };
+          store.saveState(state);
+        }
+      }
     }
 
     const prompt = buildPhasePrompt(state.phase, vars);
@@ -207,6 +272,21 @@ export default function megapowers(pi: ExtensionAPI): void {
       store.ensurePlanDir(activeIssue);
       for (const artifact of result.artifacts) {
         store.writePlanFile(activeIssue, artifact.filename, artifact.content);
+      }
+    }
+
+    // Inspect jj change for completed task
+    if (phase === "implement" && result.stateUpdate.planTasks) {
+      const completedTask = state.planTasks[state.currentTaskIndex];
+      const changeId = completedTask ? state.taskJJChanges[completedTask.index] : undefined;
+      if (changeId && completedTask && await jj.isJJRepo()) {
+        try {
+          const inspection = await inspectTaskChange(jj, changeId);
+          const report = buildTaskCompletionReport(completedTask.index, completedTask.description, inspection);
+          result.notifications.push(report);
+        } catch {
+          // jj inspection is best-effort — don't block completion
+        }
       }
     }
 
