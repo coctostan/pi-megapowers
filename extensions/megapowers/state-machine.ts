@@ -41,6 +41,7 @@ export interface MegapowersState {
   currentTaskIndex: number;
   tddTaskState: TddTaskState | null;
   taskJJChanges: Record<number, string>;
+  doneMode: "generate-docs" | "capture-learnings" | "write-changelog" | null;
 }
 
 // --- Transition Tables ---
@@ -82,6 +83,7 @@ export function createInitialState(): MegapowersState {
     currentTaskIndex: 0,
     tddTaskState: null,
     taskJJChanges: {},
+    doneMode: null,
   };
 }
 
@@ -129,6 +131,9 @@ export function transition(state: MegapowersState, to: Phase): MegapowersState {
     if (next.currentTaskIndex === -1) next.currentTaskIndex = 0;
     next.taskJJChanges = {};  // Reset per-task changes on re-entry
   }
+
+  // Reset doneMode on every phase transition
+  next.doneMode = null;
 
   return next;
 }

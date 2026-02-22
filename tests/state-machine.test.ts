@@ -236,3 +236,28 @@ describe("transition — backward transitions", () => {
     expect(next.phase).toBe("done");
   });
 });
+
+describe("doneMode field", () => {
+  it("initializes to null", () => {
+    const state = createInitialState();
+    expect(state.doneMode).toBeNull();
+  });
+
+  it("is included in the state type (TypeScript compile check via assignment)", () => {
+    const state = createInitialState();
+    const copy: MegapowersState = { ...state, doneMode: "generate-docs" };
+    expect(copy.doneMode).toBe("generate-docs");
+  });
+
+  it("transition to non-done phase resets doneMode to null", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "code-review",
+      doneMode: "generate-docs",
+    };
+    const next = transition(state, "done");
+    expect(next.doneMode).toBeNull();
+  });
+});
