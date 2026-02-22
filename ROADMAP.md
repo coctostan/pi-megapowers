@@ -1,27 +1,40 @@
 # pi-megapowers Roadmap
 
-## Current Milestone: Component Designs
-
-Remaining component designs from the architecture plan:
-
-- [ ] **03: Bugfix Mode** — Reproduce→done flow, regression test enforcement
-- [ ] **04: TDD Enforcement** — tdd-guard as mechanical extension
-- [ ] **05: Subagent Orchestration** — LLM-managed subagents, circuit breakers
-- [ ] **06: Cross-cutting** — Learnings injection, living docs
-
 ## Completed Milestones
 
-### Feature Mode ✅
+### 01: Core Platform ✅
+
+The foundational process engine, state machine, jj integration, TUI, and basic workflow for feature and bugfix modes.
+
+**Tracking:** [docs/plans/2026-02-18-01-core-platform.md](docs/plans/2026-02-18-01-core-platform.md)
+
+### 02: Feature Mode ✅
 
 Full brainstorm→done flow with phase gates, prompt injection, and artifact routing.
 
 **Tracking:** [docs/plans/2026-02-18-02-feature-mode-design.md](docs/plans/2026-02-18-02-feature-mode-design.md)
 
-### Core Platform ✅
+### 04: TDD Enforcement ✅
 
-The foundational process engine, state machine, jj integration, TUI, and basic workflow for feature and bugfix modes.
+tdd-guard as a mechanical extension — blocks production file writes until tests are written and passing. Includes satellite TDD for subagent sessions.
 
-**Tracking:** [docs/plans/2026-02-18-01-core-platform.md](docs/plans/2026-02-18-01-core-platform.md)
+**Tracking:** [docs/plans/2026-02-19-04-tdd-enforcement-design.md](docs/plans/2026-02-19-04-tdd-enforcement-design.md)
+
+### 05: Task Coordination ✅
+
+Per-task jj change tracking, satellite TDD enforcement for subagent sessions, task-level state management.
+
+**Tracking:** [docs/plans/2026-02-19-05-task-coordination-design.md](docs/plans/2026-02-19-05-task-coordination-design.md)
+
+### 06: Cross-Cutting Concerns ✅
+
+Project learnings persistence with attribution, roadmap awareness in brainstorm/plan prompts, done-phase actions (generate feature docs, capture learnings, write changelog).
+
+**Tracking:** [docs/plans/2026-02-19-06-cross-cutting-design.md](docs/plans/2026-02-19-06-cross-cutting-design.md)
+
+## Remaining Component Designs
+
+- [ ] **03: Bugfix Mode** — Reproduce→done flow, regression test enforcement
 
 ## Future Enhancements
 
@@ -33,19 +46,13 @@ Upgrade the prompt templates in `prompts/` to produce higher-quality, more const
 - **Plan prompts:** Technical context section, structured project layout decisions, complexity tracking per task
 - **Task prompts:** Parallel markers `[P]`, user story grouping `[US1]`, phased execution (setup → foundational → per-story → polish), dependency graph, MVP-first delivery
 
-This is a qualitative iteration — no structural code changes, just better markdown templates refined through usage.
-
 ### Project Constitution
 
-A `.megapowers/constitution.md` file containing project-level architectural principles, coding standards, and constraints. Injected into every phase prompt alongside learnings. Ensures consistent output across sessions and contributors.
-
-Spec-kit's insight: when the LLM knows the project's governing principles, every generated artifact respects them without per-prompt reminders.
+A `.megapowers/constitution.md` file containing project-level architectural principles, coding standards, and constraints. Injected into every phase prompt alongside learnings.
 
 ### Clarify Sub-Phase
 
 An optional phase between brainstorm and spec that systematically identifies ambiguity. The LLM reviews brainstorm output, marks items `[NEEDS CLARIFICATION]`, and resolves them through targeted questions before writing the spec.
-
-Adds a new state to `FEATURE_TRANSITIONS` — the state machine already supports this.
 
 ### Cross-Artifact Analysis
 
@@ -54,10 +61,6 @@ An `/analyze` command that reads spec + plan + tasks and checks consistency:
 - Do all spec user stories have corresponding plan tasks?
 - Do task dependencies match the plan's ordering?
 - Are there plan items with no spec coverage (scope creep)?
-
-### Project Roadmap Awareness
-
-The process engine should read and reference the project's `ROADMAP.md` during brainstorm and planning phases. When a user proposes work, the LLM should know where it fits in the project's larger trajectory and flag conflicts or dependencies with other roadmap items.
 
 ### TDD Guard Refinements
 
@@ -71,10 +74,3 @@ The process engine should read and reference the project's `ROADMAP.md` during b
 - Specialized reviewer agents
 - Chain-of-agents patterns
 - Configurable strategy selection per project
-
-### Living Documentation
-
-- Auto-generate feature docs from specs
-- Behavior docs from acceptance tests
-- Changelog from completed issues
-- Design when reaching Done phase implementation
