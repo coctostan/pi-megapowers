@@ -198,6 +198,37 @@ describe("BRAINSTORM_PLAN_PHASES", () => {
   });
 });
 
+describe("PHASE_PROMPT_MAP — bugfix phases", () => {
+  it("maps reproduce to reproduce-bug.md", () => {
+    expect(PHASE_PROMPT_MAP["reproduce"]).toBe("reproduce-bug.md");
+  });
+});
+
+describe("prompt templates — reproduce-bug.md", () => {
+  it("reproduce-bug template exists and contains {{issue_slug}}", () => {
+    const template = getPhasePromptTemplate("reproduce");
+    expect(template.length).toBeGreaterThan(0);
+    expect(template).toContain("{{issue_slug}}");
+  });
+});
+
+describe("prompt templates — diagnose-bug.md", () => {
+  it("diagnose template contains {{reproduce_content}} placeholder", () => {
+    const template = getPhasePromptTemplate("diagnose");
+    expect(template).toContain("{{reproduce_content}}");
+  });
+
+  it("diagnose template contains {{issue_slug}} placeholder", () => {
+    const template = getPhasePromptTemplate("diagnose");
+    expect(template).toContain("{{issue_slug}}");
+  });
+
+  it("diagnose template mentions Fixed When section", () => {
+    const template = getPhasePromptTemplate("diagnose");
+    expect(template).toContain("Fixed When");
+  });
+});
+
 describe("prompt templates — new template files exist", () => {
   it("capture-learnings.md exists and contains {{spec_content}}", () => {
     const { readFileSync } = require("node:fs");
