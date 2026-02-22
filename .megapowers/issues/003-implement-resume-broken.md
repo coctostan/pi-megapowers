@@ -1,7 +1,7 @@
 ---
 title: "Implement phase resume doesn't detect completion"
 type: bugfix
-status: open
+status: done
 created: 2026-02-22
 ---
 

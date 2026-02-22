@@ -1,9 +1,9 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { createInitialState, getValidTransitions, type MegapowersState, type Phase } from "./state-machine.js";
+import { createInitialState, getValidTransitions, OPEN_ENDED_PHASES, type MegapowersState, type Phase } from "./state-machine.js";
 import { createStore, type Store } from "./store.js";
 import { createJJ, formatChangeDescription, type JJ } from "./jj.js";
 import { createUI, type MegapowersUI } from "./ui.js";
-import { buildImplementTaskVars, formatAcceptanceCriteriaList, loadPromptFile, BRAINSTORM_PLAN_PHASES, interpolatePrompt, getPhasePromptTemplate } from "./prompts.js";
+import { buildImplementTaskVars, formatAcceptanceCriteriaList, loadPromptFile, BRAINSTORM_PLAN_PHASES, interpolatePrompt, getPhasePromptTemplate, allTasksComplete } from "./prompts.js";
 import { extractPlanTasks } from "./plan-parser.js";
 import { processAgentOutput } from "./artifact-router.js";
 import { resolveStartupState } from "./state-recovery.js";
@@ -116,6 +116,16 @@ export default function megapowers(pi: ExtensionAPI): void {
           if (state.currentTaskIndex === -1) state.currentTaskIndex = 0;
           store.saveState(state);
         }
+      }
+    }
+
+    // Auto-advance: if in implement phase and all tasks are done, offer verify transition
+    if (state.activeIssue && state.phase === "implement" && state.planTasks.length > 0) {
+      const allDone = state.planTasks.every(t => t.completed);
+      if (allDone && ctx.hasUI) {
+        ctx.ui.notify("All implementation tasks complete. Ready to advance to verify.", "info");
+        state = await ui.handlePhaseTransition(ctx, state, store, jj);
+        pi.appendEntry("megapowers-state", state);
       }
     }
 
@@ -278,6 +288,33 @@ export default function megapowers(pi: ExtensionAPI): void {
 
   // --- TDD Guard: intercept file writes ---
 
+  // --- Artifact protection: block writes to artifacts during read-only phases ---
+
+  const READ_ONLY_PHASES: Phase[] = ["review", "verify", "code-review"];
+  const PROTECTED_ARTIFACTS = ["spec.md", "plan.md", "brainstorm.md", "reproduce.md", "diagnosis.md"];
+
+  pi.on("tool_call", async (event, _ctx) => {
+    if (!state.phase || !state.activeIssue) return;
+    if (!READ_ONLY_PHASES.includes(state.phase)) return;
+
+    const toolName = event.toolName;
+    if (toolName !== "write" && toolName !== "edit") return;
+
+    const filePath: string | undefined = (event.input as any)?.path;
+    if (!filePath) return;
+
+    // Block writes to protected artifact files (by basename match)
+    const basename = filePath.split("/").pop() ?? "";
+    if (PROTECTED_ARTIFACTS.includes(basename)) {
+      return {
+        block: true,
+        reason: `Cannot modify ${basename} during ${state.phase} phase. Artifacts are read-only in review/verify/code-review.`,
+      };
+    }
+  });
+
+  // --- TDD Guard: intercept file writes ---
+
   pi.on("tool_call", async (event, _ctx) => {
     if (state.phase !== "implement") return;
     if (state.planTasks.length === 0) return;
@@ -385,7 +422,9 @@ export default function megapowers(pi: ExtensionAPI): void {
     }
 
     // Interactive-only: offer phase transition and update dashboard
-    if (ctx.hasUI) {
+    // Open-ended phases (brainstorm, reproduce, diagnose) suppress auto-prompts —
+    // transitions happen only via explicit /phase next command.
+    if (ctx.hasUI && !OPEN_ENDED_PHASES.has(phase)) {
       const validNext = getValidTransitions(state.workflow, phase);
       if (validNext.length > 0) {
         state = await ui.handlePhaseTransition(ctx, state, store, jj);

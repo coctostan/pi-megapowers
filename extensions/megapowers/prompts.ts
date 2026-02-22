@@ -63,12 +63,34 @@ export function buildPhasePrompt(
 
 // --- Task implementation helpers ---
 
+/**
+ * Check if all plan tasks are completed.
+ */
+export function allTasksComplete(tasks: PlanTask[]): boolean {
+  return tasks.length > 0 && tasks.every(t => t.completed);
+}
+
 export function buildImplementTaskVars(
   tasks: PlanTask[],
   currentIndex: number
 ): Record<string, string> {
-  const currentTask = tasks[currentIndex];
   const total = tasks.length;
+
+  // All tasks done: provide clear summary instead of uninterpolated vars
+  if (allTasksComplete(tasks)) {
+    const summaries = tasks
+      .map(t => `✓ Task ${t.index}: ${t.description}`)
+      .join("\n");
+    return {
+      current_task_index: "—",
+      total_tasks: String(total),
+      current_task_description: "All tasks complete. Advance to verify phase.",
+      previous_task_summaries: summaries,
+      all_tasks_complete: "true",
+    };
+  }
+
+  const currentTask = tasks[currentIndex];
 
   let previousSummaries: string;
   if (currentIndex === 0) {
@@ -90,6 +112,7 @@ export function buildImplementTaskVars(
       ? `Task ${currentTask.index}: ${currentTask.description}`
       : "No more tasks.",
     previous_task_summaries: previousSummaries,
+    all_tasks_complete: "false",
   };
 }
 

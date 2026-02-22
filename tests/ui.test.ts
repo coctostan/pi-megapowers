@@ -347,13 +347,15 @@ describe("handleDonePhase", () => {
     expect(closed?.status).toBe("done");
   });
 
-  it("returns state unchanged when 'Done' is selected", async () => {
+  it("closes issue and resets state when 'Done' is selected", async () => {
     const store = createStore(tmp);
     const ui = createUI();
     const jj = createMockJJ();
+    const issue = store.createIssue("test", "feature", "desc");
+    store.updateIssueStatus(issue.slug, "in-progress");
     const state: MegapowersState = {
       ...createInitialState(),
-      activeIssue: "001-test",
+      activeIssue: issue.slug,
       workflow: "feature",
       phase: "done",
     };
@@ -363,8 +365,11 @@ describe("handleDonePhase", () => {
 
     const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
 
-    expect(result.activeIssue).toBe("001-test");
-    expect(result.phase).toBe("done");
+    expect(result.activeIssue).toBeNull();
+    expect(result.phase).toBeNull();
+    // Issue should be marked done in the store
+    const updated = store.listIssues().find(i => i.slug === issue.slug);
+    expect(updated?.status).toBe("done");
   });
 
   it("returns state unchanged when selection is cancelled", async () => {
@@ -378,9 +383,10 @@ describe("handleDonePhase", () => {
       phase: "done",
     };
 
-    const ctx = createMockCtx(); // returns null by default
+    const ctx = createMockCtx(); // returns null by default (cancel)
     const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
 
+    expect(result.activeIssue).toBe("001-test");
     expect(result.phase).toBe("done");
   });
 

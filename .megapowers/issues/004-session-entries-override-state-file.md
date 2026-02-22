@@ -1,7 +1,7 @@
 ---
 title: "Session entries override state.json, making state changes impossible"
 type: bugfix
-status: in-progress
+status: done
 created: 2026-02-22
 related: 003-implement-resume-broken
 ---

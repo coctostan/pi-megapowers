@@ -296,8 +296,13 @@ export function createUI(): MegapowersUI {
 
       while (continueMenu) {
         const choice = await ctx.ui.select("Wrap-up actions:", actions);
-        if (!choice || choice.startsWith("Done")) {
-          // "Done" or dismissed — close the issue and reset state
+        if (!choice) {
+          // Dismissed — leave state unchanged, stay in done phase
+          continueMenu = false;
+          break;
+        }
+        if (choice.startsWith("Done")) {
+          // Explicitly chose to finish — close the issue and reset state
           store.updateIssueStatus(state.activeIssue, "done");
           newState = createInitialState();
           store.saveState(newState);

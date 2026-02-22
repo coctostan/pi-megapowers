@@ -4,7 +4,9 @@ import {
   getValidTransitions,
   canTransition,
   transition,
+  OPEN_ENDED_PHASES,
   type MegapowersState,
+  type Phase,
   type PlanTask,
   type AcceptanceCriterion,
 } from "../extensions/megapowers/state-machine.js";
@@ -269,5 +271,27 @@ describe("MegapowersState — doneMode type", () => {
       doneMode: "generate-bugfix-summary",
     };
     expect(state.doneMode).toBe("generate-bugfix-summary");
+  });
+});
+
+describe("OPEN_ENDED_PHASES", () => {
+  it("contains brainstorm, reproduce, and diagnose", () => {
+    expect(OPEN_ENDED_PHASES.has("brainstorm")).toBe(true);
+    expect(OPEN_ENDED_PHASES.has("reproduce")).toBe(true);
+    expect(OPEN_ENDED_PHASES.has("diagnose")).toBe(true);
+  });
+
+  it("does not contain gate-driven phases", () => {
+    const gateDriven: Phase[] = ["spec", "plan", "review", "implement", "verify", "code-review", "done"];
+    for (const phase of gateDriven) {
+      expect(OPEN_ENDED_PHASES.has(phase)).toBe(false);
+    }
+  });
+
+  it("all open-ended phases have valid forward transitions", () => {
+    // Brainstorm is feature-only, reproduce/diagnose are bugfix-only
+    expect(getValidTransitions("feature", "brainstorm").length).toBeGreaterThan(0);
+    expect(getValidTransitions("bugfix", "reproduce").length).toBeGreaterThan(0);
+    expect(getValidTransitions("bugfix", "diagnose").length).toBeGreaterThan(0);
   });
 });

@@ -7,6 +7,7 @@ import {
   formatAcceptanceCriteriaList,
   loadPromptFile,
   BRAINSTORM_PLAN_PHASES,
+  allTasksComplete,
 } from "../extensions/megapowers/prompts.js";
 import type { Phase } from "../extensions/megapowers/state-machine.js";
 import type { PlanTask, AcceptanceCriterion } from "../extensions/megapowers/state-machine.js";
@@ -117,6 +118,42 @@ describe("buildImplementTaskVars", () => {
     expect(vars.current_task_index).toBe("1");
     expect(vars.total_tasks).toBe("1");
     expect(vars.previous_task_summaries).toBe("None — this is the first task.");
+  });
+
+  it("handles all tasks complete — provides summary instead of task vars", () => {
+    const tasks: PlanTask[] = [
+      { index: 1, description: "Set up DB schema", completed: true },
+      { index: 2, description: "Create API endpoint", completed: true },
+      { index: 3, description: "Write integration tests", completed: true },
+    ];
+    const vars = buildImplementTaskVars(tasks, 3);
+    expect(vars.current_task_description).toContain("All tasks complete");
+    expect(vars.all_tasks_complete).toBe("true");
+    expect(vars.previous_task_summaries).toContain("✓ Task 1");
+    expect(vars.previous_task_summaries).toContain("✓ Task 2");
+    expect(vars.previous_task_summaries).toContain("✓ Task 3");
+  });
+});
+
+describe("allTasksComplete", () => {
+  it("returns true when all tasks are completed", () => {
+    const tasks: PlanTask[] = [
+      { index: 1, description: "A", completed: true },
+      { index: 2, description: "B", completed: true },
+    ];
+    expect(allTasksComplete(tasks)).toBe(true);
+  });
+
+  it("returns false when some tasks are incomplete", () => {
+    const tasks: PlanTask[] = [
+      { index: 1, description: "A", completed: true },
+      { index: 2, description: "B", completed: false },
+    ];
+    expect(allTasksComplete(tasks)).toBe(false);
+  });
+
+  it("returns false for empty task list", () => {
+    expect(allTasksComplete([])).toBe(false);
   });
 });
 

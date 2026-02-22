@@ -67,6 +67,12 @@ const BUGFIX_TRANSITIONS: Record<BugfixPhase, BugfixPhase[]> = {
   done: [],
 };
 
+/**
+ * Open-ended phases suppress automatic phase-transition prompts after every message.
+ * Transitions from these phases happen only via explicit /phase next command.
+ */
+export const OPEN_ENDED_PHASES: ReadonlySet<Phase> = new Set(["brainstorm", "reproduce", "diagnose"]);
+
 // --- Functions ---
 
 export function createInitialState(): MegapowersState {
