@@ -26,14 +26,20 @@ function getPromptsDir(): string {
   return join(thisDir, "..", "..", "prompts");
 }
 
-export function getPhasePromptTemplate(phase: Phase): string {
-  const filename = PHASE_PROMPT_MAP[phase];
-  if (!filename) return "";
+export function loadPromptFile(filename: string): string {
   try {
     return readFileSync(join(getPromptsDir(), filename), "utf-8");
   } catch {
     return "";
   }
+}
+
+export const BRAINSTORM_PLAN_PHASES: Phase[] = ["brainstorm", "plan"];
+
+export function getPhasePromptTemplate(phase: Phase): string {
+  const filename = PHASE_PROMPT_MAP[phase];
+  if (!filename) return "";
+  return loadPromptFile(filename);
 }
 
 // --- Interpolation ---

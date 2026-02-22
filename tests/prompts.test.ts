@@ -5,6 +5,8 @@ import {
   PHASE_PROMPT_MAP,
   buildImplementTaskVars,
   formatAcceptanceCriteriaList,
+  loadPromptFile,
+  BRAINSTORM_PLAN_PHASES,
 } from "../extensions/megapowers/prompts.js";
 import type { Phase } from "../extensions/megapowers/state-machine.js";
 import type { PlanTask, AcceptanceCriterion } from "../extensions/megapowers/state-machine.js";
@@ -163,6 +165,36 @@ describe("prompt templates — done phase template updates", () => {
   it("done (generate-docs) template contains {{learnings}} placeholder", () => {
     const template = getPhasePromptTemplate("done");
     expect(template).toContain("{{learnings}}");
+  });
+});
+
+describe("loadPromptFile", () => {
+  it("loads capture-learnings.md by filename", () => {
+    const content = loadPromptFile("capture-learnings.md");
+    expect(content.length).toBeGreaterThan(0);
+    expect(content).toContain("{{spec_content}}");
+  });
+
+  it("loads write-changelog.md by filename", () => {
+    const content = loadPromptFile("write-changelog.md");
+    expect(content.length).toBeGreaterThan(0);
+  });
+
+  it("returns empty string for non-existent file", () => {
+    expect(loadPromptFile("nonexistent.md")).toBe("");
+  });
+});
+
+describe("BRAINSTORM_PLAN_PHASES", () => {
+  it("includes brainstorm and plan", () => {
+    expect(BRAINSTORM_PLAN_PHASES).toContain("brainstorm");
+    expect(BRAINSTORM_PLAN_PHASES).toContain("plan");
+  });
+
+  it("does not include implement, verify, or done", () => {
+    expect(BRAINSTORM_PLAN_PHASES).not.toContain("implement");
+    expect(BRAINSTORM_PLAN_PHASES).not.toContain("verify");
+    expect(BRAINSTORM_PLAN_PHASES).not.toContain("done");
   });
 });
 
