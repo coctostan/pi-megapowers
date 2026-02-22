@@ -97,6 +97,23 @@ export default function megapowers(pi: ExtensionAPI): void {
       }
     }
 
+    // Recovery: if in implement phase with empty planTasks, re-parse from plan.md
+    if (state.activeIssue && state.phase === "implement" && state.planTasks.length === 0) {
+      const planContent = store.readPlanFile(state.activeIssue, "plan.md");
+      if (planContent) {
+        const tasks = extractPlanTasks(planContent);
+        if (tasks.length > 0) {
+          state = {
+            ...state,
+            planTasks: tasks,
+            currentTaskIndex: tasks.findIndex(t => !t.completed),
+          };
+          if (state.currentTaskIndex === -1) state.currentTaskIndex = 0;
+          store.saveState(state);
+        }
+      }
+    }
+
     // jj validation
     if (state.activeIssue && state.jjChangeId && await jj.isJJRepo()) {
       const currentId = await jj.getCurrentChangeId();
