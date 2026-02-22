@@ -297,6 +297,11 @@ export function createUI(): MegapowersUI {
       while (continueMenu) {
         const choice = await ctx.ui.select("Wrap-up actions:", actions);
         if (!choice || choice.startsWith("Done")) {
+          // "Done" or dismissed — close the issue and reset state
+          store.updateIssueStatus(state.activeIssue, "done");
+          newState = createInitialState();
+          store.saveState(newState);
+          ctx.ui.notify("Issue closed.", "info");
           continueMenu = false;
           break;
         }
