@@ -261,3 +261,13 @@ describe("doneMode field", () => {
     expect(next.doneMode).toBeNull();
   });
 });
+
+describe("MegapowersState — doneMode type", () => {
+  it("accepts generate-bugfix-summary as a valid doneMode", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      doneMode: "generate-bugfix-summary",
+    };
+    expect(state.doneMode).toBe("generate-bugfix-summary");
+  });
+});

@@ -210,3 +210,41 @@ describe("processAgentOutput — diagnose phase", () => {
     expect(result.artifacts[0].filename).toBe("diagnosis.md");
   });
 });
+
+describe("processAgentOutput — reproduce phase", () => {
+  it("saves reproduce.md when text is long enough", () => {
+    const text = "## Steps to Reproduce\n1. Run the app\n2. Click button\n3. See error\n\n## Expected\nNo error\n\n## Actual\nCrash. Extra padding for length.";
+    const result = processAgentOutput(text, "reproduce", makeState({ phase: "reproduce", workflow: "bugfix" }));
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.artifacts[0].filename).toBe("reproduce.md");
+    expect(result.notifications).toContain("Reproduction report saved.");
+  });
+
+  it("ignores short reproduce text", () => {
+    const text = "I see the bug.";
+    const result = processAgentOutput(text, "reproduce", makeState({ phase: "reproduce", workflow: "bugfix" }));
+    expect(result.artifacts).toHaveLength(0);
+  });
+});
+
+describe("processAgentOutput — diagnose phase with Fixed When", () => {
+  it("extracts acceptance criteria from ## Fixed When section", () => {
+    const text = `## Root Cause\nThe regex is wrong.\n\n## Fixed When\n1. Parser handles multi-line input\n2. Empty string returns empty array\n\nExtra padding to exceed the 100 character minimum for artifact saving threshold.`;
+    const result = processAgentOutput(text, "diagnose", makeState({ phase: "diagnose", workflow: "bugfix" }));
+    expect(result.artifacts[0].filename).toBe("diagnosis.md");
+    expect(result.stateUpdate.acceptanceCriteria).toHaveLength(2);
+    expect(result.stateUpdate.acceptanceCriteria![0].text).toBe("Parser handles multi-line input");
+  });
+
+  it("clears acceptanceCriteria when no Fixed When section (prevents stale criteria)", () => {
+    const text = "## Root Cause\nThe bug is in the parser.\n\n## Fix\nUpdate the regex. Extra padding to get over the 100 char minimum.";
+    const stateWithOldCriteria = makeState({
+      phase: "diagnose",
+      workflow: "bugfix",
+      acceptanceCriteria: [{ id: "old-1", text: "stale criterion", status: "pending" as const }],
+    });
+    const result = processAgentOutput(text, "diagnose", stateWithOldCriteria);
+    expect(result.artifacts).toHaveLength(1);
+    expect(result.stateUpdate.acceptanceCriteria).toEqual([]);
+  });
+});

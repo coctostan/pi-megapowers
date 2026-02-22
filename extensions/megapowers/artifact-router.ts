@@ -1,5 +1,5 @@
 import type { MegapowersState, Phase, AcceptanceCriterion, PlanTask } from "./state-machine.js";
-import { extractAcceptanceCriteria } from "./spec-parser.js";
+import { extractAcceptanceCriteria, extractFixedWhenCriteria } from "./spec-parser.js";
 import { extractPlanTasks } from "./plan-parser.js";
 
 export interface Artifact {
@@ -51,8 +51,15 @@ export function processAgentOutput(
     notifications.push(`Plan saved. ${tasks.length} tasks extracted.`);
   }
 
+  if (phase === "reproduce" && text.length > 100) {
+    artifacts.push({ filename: "reproduce.md", content: text });
+    notifications.push("Reproduction report saved.");
+  }
+
   if (phase === "diagnose" && text.length > 100) {
     artifacts.push({ filename: "diagnosis.md", content: text });
+    const criteria = extractFixedWhenCriteria(text);
+    stateUpdate.acceptanceCriteria = criteria;
     notifications.push("Diagnosis saved.");
   }
 

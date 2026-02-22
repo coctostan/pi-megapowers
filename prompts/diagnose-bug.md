@@ -4,7 +4,7 @@ You are diagnosing a bug.
 Issue: {{issue_slug}}
 
 ## Reproduction
-{{diagnosis_content}}
+{{reproduce_content}}
 
 ## Instructions
 - Trace through the code to find root cause
@@ -13,3 +13,23 @@ Issue: {{issue_slug}}
 - Write a clear diagnosis
 
 Do NOT fix the bug yet. Just diagnose.
+
+## Output Format
+
+# Diagnosis
+
+## Root Cause
+[What is broken and why]
+
+## Affected Code
+[Files and functions involved]
+
+## Risk Assessment
+[What else could break if this is changed]
+
+## Fixed When (optional)
+If this is a complex bug, list numbered acceptance criteria:
+1. [criterion 1]
+2. [criterion 2]
+
+Leave this section out for simple, single-cause bugs where a regression test is sufficient.

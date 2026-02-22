@@ -148,6 +148,21 @@ export default function megapowers(pi: ExtensionAPI): void {
         const content = store.readPlanFile(state.activeIssue, file);
         if (content) vars[varName] = content;
       }
+
+      // Bugfix mode: alias reproduce/diagnosis to brainstorm/spec variables
+      // so shared templates (write-plan.md, etc.) get bugfix context
+      if (state.workflow === "bugfix") {
+        const reproduce = store.readPlanFile(state.activeIssue, "reproduce.md");
+        const diagnosis = store.readPlanFile(state.activeIssue, "diagnosis.md");
+        if (reproduce) {
+          vars.brainstorm_content = reproduce;
+          vars.reproduce_content = reproduce;
+        }
+        if (diagnosis) {
+          vars.spec_content = diagnosis;
+          vars.diagnosis_content = diagnosis;
+        }
+      }
     }
 
     // Acceptance criteria formatting
@@ -194,6 +209,7 @@ export default function megapowers(pi: ExtensionAPI): void {
         "generate-docs": "generate-docs.md",
         "capture-learnings": "capture-learnings.md",
         "write-changelog": "write-changelog.md",
+        "generate-bugfix-summary": "generate-bugfix-summary.md",
       };
       const filename = doneModeTemplateMap[state.doneMode];
       if (filename) {
@@ -342,6 +358,10 @@ export default function megapowers(pi: ExtensionAPI): void {
         if (state.doneMode === "generate-docs") {
           store.writeFeatureDoc(activeIssue, text);
           ctx.ui.notify(`Feature doc saved to .megapowers/docs/${activeIssue}.md`, "info");
+        }
+        if (state.doneMode === "generate-bugfix-summary") {
+          store.writeFeatureDoc(activeIssue, text);
+          ctx.ui.notify(`Bugfix summary saved to .megapowers/docs/${activeIssue}.md`, "info");
         }
         if (state.doneMode === "write-changelog") {
           store.appendChangelog(text);

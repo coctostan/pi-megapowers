@@ -41,7 +41,7 @@ export interface MegapowersState {
   currentTaskIndex: number;
   tddTaskState: TddTaskState | null;
   taskJJChanges: Record<number, string>;
-  doneMode: "generate-docs" | "capture-learnings" | "write-changelog" | null;
+  doneMode: "generate-docs" | "capture-learnings" | "write-changelog" | "generate-bugfix-summary" | null;
 }
 
 // --- Transition Tables ---

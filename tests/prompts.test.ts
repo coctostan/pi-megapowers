@@ -198,6 +198,65 @@ describe("BRAINSTORM_PLAN_PHASES", () => {
   });
 });
 
+describe("PHASE_PROMPT_MAP — bugfix phases", () => {
+  it("maps reproduce to reproduce-bug.md", () => {
+    expect(PHASE_PROMPT_MAP["reproduce"]).toBe("reproduce-bug.md");
+  });
+});
+
+describe("prompt templates — reproduce-bug.md", () => {
+  it("reproduce-bug template exists and contains {{issue_slug}}", () => {
+    const template = getPhasePromptTemplate("reproduce");
+    expect(template.length).toBeGreaterThan(0);
+    expect(template).toContain("{{issue_slug}}");
+  });
+});
+
+describe("prompt templates — diagnose-bug.md", () => {
+  it("diagnose template contains {{reproduce_content}} placeholder", () => {
+    const template = getPhasePromptTemplate("diagnose");
+    expect(template).toContain("{{reproduce_content}}");
+  });
+
+  it("diagnose template contains {{issue_slug}} placeholder", () => {
+    const template = getPhasePromptTemplate("diagnose");
+    expect(template).toContain("{{issue_slug}}");
+  });
+
+  it("diagnose template mentions Fixed When section", () => {
+    const template = getPhasePromptTemplate("diagnose");
+    expect(template).toContain("Fixed When");
+  });
+});
+
+describe("prompt templates — generate-bugfix-summary.md", () => {
+  it("bugfix summary template exists and is loadable", () => {
+    const content = loadPromptFile("generate-bugfix-summary.md");
+    expect(content.length).toBeGreaterThan(0);
+  });
+
+  it("bugfix summary template contains expected placeholders", () => {
+    const content = loadPromptFile("generate-bugfix-summary.md");
+    expect(content).toContain("{{reproduce_content}}");
+    expect(content).toContain("{{diagnosis_content}}");
+    expect(content).toContain("{{plan_content}}");
+    expect(content).toContain("{{files_changed}}");
+    expect(content).toContain("{{learnings}}");
+  });
+});
+
+describe("prompt templates — bugfix plan variable injection", () => {
+  it("write-plan template contains {{spec_content}} (used for diagnosis in bugfix)", () => {
+    const template = getPhasePromptTemplate("plan");
+    expect(template).toContain("{{spec_content}}");
+  });
+
+  it("write-plan template contains {{brainstorm_content}} (used for reproduce in bugfix)", () => {
+    const template = getPhasePromptTemplate("plan");
+    expect(template).toContain("{{brainstorm_content}}");
+  });
+});
+
 describe("prompt templates — new template files exist", () => {
   it("capture-learnings.md exists and contains {{spec_content}}", () => {
     const { readFileSync } = require("node:fs");

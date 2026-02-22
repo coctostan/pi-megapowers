@@ -14,7 +14,7 @@ export const PHASE_PROMPT_MAP: Record<Phase, string> = {
   verify: "verify.md",
   "code-review": "code-review.md",
   done: "generate-docs.md",
-  reproduce: "diagnose-bug.md",
+  reproduce: "reproduce-bug.md",
   diagnose: "diagnose-bug.md",
 };
 

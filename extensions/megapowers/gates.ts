@@ -85,6 +85,20 @@ export function checkGate(state: MegapowersState, target: Phase, store: Store): 
       return { pass: true };
     }
 
+    case "reproduce→diagnose": {
+      if (!store.planFileExists(state.activeIssue, "reproduce.md")) {
+        return { pass: false, reason: "reproduce.md not found. Document the bug reproduction first." };
+      }
+      return { pass: true };
+    }
+
+    case "diagnose→plan": {
+      if (!store.planFileExists(state.activeIssue, "diagnosis.md")) {
+        return { pass: false, reason: "diagnosis.md not found. Complete the diagnosis first." };
+      }
+      return { pass: true };
+    }
+
     default:
       return { pass: true };
   }

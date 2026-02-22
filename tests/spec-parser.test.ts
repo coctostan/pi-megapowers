@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { extractAcceptanceCriteria, hasOpenQuestions } from "../extensions/megapowers/spec-parser.js";
+import { extractAcceptanceCriteria, hasOpenQuestions, extractFixedWhenCriteria } from "../extensions/megapowers/spec-parser.js";
 
 describe("extractAcceptanceCriteria", () => {
   it("extracts numbered criteria from ## Acceptance Criteria section", () => {
@@ -90,5 +90,31 @@ describe("hasOpenQuestions", () => {
   it("returns true when Open Questions has content", () => {
     const spec = `## Acceptance Criteria\n1. It works\n\n## Open Questions\n- What about edge case X?`;
     expect(hasOpenQuestions(spec)).toBe(true);
+  });
+});
+
+describe("extractFixedWhenCriteria", () => {
+  it("extracts numbered criteria from ## Fixed When section", () => {
+    const diagnosis = `# Diagnosis\n\n## Root Cause\nThe regex is wrong.\n\n## Fixed When\n1. Parser correctly handles multi-line input\n2. Edge case with empty string returns empty array\n`;
+    const criteria = extractFixedWhenCriteria(diagnosis);
+    expect(criteria).toHaveLength(2);
+    expect(criteria[0]).toEqual({ id: 1, text: "Parser correctly handles multi-line input", status: "pending" });
+    expect(criteria[1]).toEqual({ id: 2, text: "Edge case with empty string returns empty array", status: "pending" });
+  });
+
+  it("returns empty array when no Fixed When section", () => {
+    const diagnosis = `# Diagnosis\n\n## Root Cause\nSomething is broken.`;
+    expect(extractFixedWhenCriteria(diagnosis)).toEqual([]);
+  });
+
+  it("returns empty array when Fixed When section is empty", () => {
+    const diagnosis = `## Fixed When\n\n## Risk Assessment\nLow risk.`;
+    expect(extractFixedWhenCriteria(diagnosis)).toEqual([]);
+  });
+
+  it("stops at the next ## heading", () => {
+    const diagnosis = `## Fixed When\n1. First criterion\n2. Second criterion\n\n## Risk Assessment\n1. This should not be included\n`;
+    const criteria = extractFixedWhenCriteria(diagnosis);
+    expect(criteria).toHaveLength(2);
   });
 });
