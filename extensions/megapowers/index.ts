@@ -178,6 +178,7 @@ export default function megapowers(pi: ExtensionAPI): void {
       }
     }
 
+
     // Learnings + Roadmap: brainstorm and plan phases only
     if (BRAINSTORM_PLAN_PHASES.includes(state.phase)) {
       vars.learnings = store?.getLearnings() ?? "";
