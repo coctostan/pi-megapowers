@@ -1,0 +1,3 @@
+- Satellite tool_call hook was calling checkFileWrite() but ignoring result.newState, so TDD state never progressed. When extracting logic into pure helpers that return state transitions, make sure callers actually apply the returned newState.
+- isTTY === false is too broad a satellite detection signal — it fires in CI and piped output contexts. Always prefer an explicit opt-in env var (PI_SUBAGENT=1) over ambient environment heuristics.
+- Add .pi/superpowers-state.json to .gitignore early — it's the workflow-monitor runtime state and should never be committed.
