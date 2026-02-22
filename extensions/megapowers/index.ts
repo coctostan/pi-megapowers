@@ -147,6 +147,13 @@ export default function megapowers(pi: ExtensionAPI): void {
       // Check if the file has been updated externally (e.g. by another session or manual edit)
       // Only save if our in-memory state is at least as advanced as the file state
       const fileState = store.loadState();
+
+      // If the file state has been reset (no active issue), don't overwrite with stale in-memory state
+      if (!fileState.activeIssue && state.activeIssue) return;
+
+      // If the file state switched to a different issue, don't overwrite
+      if (fileState.activeIssue && state.activeIssue && fileState.activeIssue !== state.activeIssue) return;
+
       const phaseOrder = ["brainstorm", "spec", "reproduce", "diagnose", "plan", "review", "implement", "verify", "code-review", "done"];
       const filePhaseIdx = phaseOrder.indexOf(fileState.phase);
       const memPhaseIdx = phaseOrder.indexOf(state.phase);
