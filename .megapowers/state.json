@@ -45,7 +45,7 @@
     {
       "index": 1,
       "description": "**Task 1/2 swap** — Task 1's tests assert `completedTasks` and `megaEnabled` which don't exist until Task 2. Either swap them or merge type changes into Task 1.",
-      "completed": false,
+      "completed": true,
       "noTest": false
     },
     {
@@ -99,8 +99,12 @@
   ],
   "jjChangeId": null,
   "acceptanceCriteria": [],
-  "currentTaskIndex": 0,
-  "tddTaskState": null,
+  "currentTaskIndex": 1,
+  "tddTaskState": {
+    "taskIndex": 1,
+    "state": "test-written",
+    "skipped": false
+  },
   "taskJJChanges": {},
   "doneMode": null
 }

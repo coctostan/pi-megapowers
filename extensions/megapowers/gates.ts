@@ -58,14 +58,14 @@ export function checkGate(state: MegapowersState, target: Phase, store: Store): 
     }
 
     case "implement→verify": {
-      if (state.planTasks.length === 0) {
+      if ((state.planTasks ?? []).length === 0) {
         return { pass: false, reason: "No plan tasks found. Was the plan parsed correctly?" };
       }
-      const incomplete = state.planTasks.filter(t => !t.completed);
+      const incomplete = (state.planTasks ?? []).filter(t => !t.completed);
       if (incomplete.length > 0) {
         return {
           pass: false,
-          reason: `${incomplete.length} of ${state.planTasks.length} tasks still incomplete.`,
+          reason: `${incomplete.length} of ${(state.planTasks ?? []).length} tasks still incomplete.`,
         };
       }
       return { pass: true };

@@ -1,5 +1,3 @@
-import type { TddTaskState } from "./tdd-guard.js";
-
 // --- Types ---
 
 export type WorkflowType = "feature" | "bugfix";
@@ -13,6 +11,16 @@ export interface PhaseTransition {
   to: Phase;
   timestamp: number;
   jjChangeId?: string;
+}
+
+// Define TddTaskState locally instead of importing from tdd-guard.ts
+export type TddState = "no-test" | "test-written" | "impl-allowed";
+
+export interface TddTaskState {
+  taskIndex: number;
+  state: TddState;
+  skipped: boolean;
+  skipReason?: string;
 }
 
 export interface PlanTask {
@@ -37,13 +45,19 @@ export interface MegapowersState {
   phase: Phase | null;
   phaseHistory: PhaseTransition[];
   reviewApproved: boolean;
-  planTasks: PlanTask[];
-  jjChangeId: string | null;
-  acceptanceCriteria: AcceptanceCriterion[];
   currentTaskIndex: number;
+  completedTasks: number[];   // PlanTask.index values (1-based)
   tddTaskState: TddTaskState | null;
   taskJJChanges: Record<number, string>;
+  jjChangeId: string | null;
   doneMode: "generate-docs" | "capture-learnings" | "write-changelog" | "generate-bugfix-summary" | null;
+  megaEnabled: boolean;
+
+  // --- DEPRECATED: kept for compilation during migration, removed in Task 15 ---
+  /** @deprecated Use completedTasks + deriveTasks() instead */
+  planTasks?: PlanTask[];
+  /** @deprecated Use deriveAcceptanceCriteria() instead */
+  acceptanceCriteria?: AcceptanceCriterion[];
 }
 
 // --- Transition Tables ---
@@ -85,13 +99,14 @@ export function createInitialState(): MegapowersState {
     phase: null,
     phaseHistory: [],
     reviewApproved: false,
-    planTasks: [],
-    jjChangeId: null,
-    acceptanceCriteria: [],
     currentTaskIndex: 0,
+    completedTasks: [],
     tddTaskState: null,
     taskJJChanges: {},
+    jjChangeId: null,
     doneMode: null,
+    megaEnabled: true,
+    // planTasks and acceptanceCriteria intentionally omitted from initial state
   };
 }
 
@@ -109,7 +124,7 @@ export function canTransition(workflow: WorkflowType | null, from: Phase, to: Ph
   return getValidTransitions(workflow, from).includes(to);
 }
 
-export function transition(state: MegapowersState, to: Phase): MegapowersState {
+export function transition(state: MegapowersState, to: Phase, tasks?: PlanTask[]): MegapowersState {
   if (!state.activeIssue) {
     throw new Error("Cannot transition without an active issue");
   }
@@ -134,10 +149,18 @@ export function transition(state: MegapowersState, to: Phase): MegapowersState {
     next.reviewApproved = false;
   }
 
-  if (to === "implement") {
-    next.currentTaskIndex = next.planTasks.findIndex(t => !t.completed);
-    if (next.currentTaskIndex === -1) next.currentTaskIndex = 0;
+  if (to === "implement" && tasks) {
+    const completedSet = new Set(state.completedTasks);
+    const firstIncomplete = tasks.findIndex(t => !completedSet.has(t.index));
+    next.currentTaskIndex = firstIncomplete >= 0 ? firstIncomplete : 0;
     next.taskJJChanges = {};  // Reset per-task changes on re-entry
+  } else if (to === "implement") {
+    // Fallback: use deprecated planTasks if no tasks provided
+    if (state.planTasks && state.planTasks.length > 0) {
+      next.currentTaskIndex = state.planTasks.findIndex(t => !t.completed);
+      if (next.currentTaskIndex === -1) next.currentTaskIndex = 0;
+    }
+    next.taskJJChanges = {};
   }
 
   // Reset doneMode on every phase transition

@@ -58,8 +58,8 @@ export const DONE_MODE_LABELS: Record<string, string> = {
 export function renderStatusText(state: MegapowersState): string {
   if (!state.activeIssue) return "";
   const idNum = state.activeIssue.match(/^(\d+)/)?.[1] ?? "?";
-  const completed = state.planTasks.filter((t) => t.completed).length;
-  const total = state.planTasks.length;
+  const completed = (state.planTasks ?? []).filter((t) => t.completed).length;
+  const total = (state.planTasks ?? []).length;
   const taskInfo = total > 0 ? ` ${completed}/${total}` : "";
   const modeLabel = state.doneMode ? ` → ${DONE_MODE_LABELS[state.doneMode] ?? state.doneMode}` : "";
   return `📋 #${idNum} ${state.phase ?? "?"}${taskInfo}${modeLabel}`;
@@ -85,7 +85,7 @@ export function renderDashboardLines(state: MegapowersState, _issues: Issue[], t
   }
 
   // Phase guidance — show for phases without their own detailed content
-  if (state.phase && state.phase !== "done" && state.phase !== "implement" && !state.planTasks.length) {
+  if (state.phase && state.phase !== "done" && state.phase !== "implement" && !(state.planTasks ?? []).length) {
     const guidance = PHASE_GUIDANCE[state.phase];
     if (guidance) {
       lines.push(theme.fg("dim", guidance));
@@ -93,19 +93,19 @@ export function renderDashboardLines(state: MegapowersState, _issues: Issue[], t
   }
 
   // Task progress (implement phase or whenever tasks exist)
-  if (state.planTasks.length > 0) {
-    const completed = state.planTasks.filter((t) => t.completed).length;
-    lines.push(`${theme.fg("accent", "Tasks:")} ${completed}/${state.planTasks.length} complete`);
+  if ((state.planTasks ?? []).length > 0) {
+    const completed = (state.planTasks ?? []).filter((t) => t.completed).length;
+    lines.push(`${theme.fg("accent", "Tasks:")} ${completed}/${(state.planTasks ?? []).length} complete`);
 
     // Show current task in implement phase
-    if (state.phase === "implement" && state.currentTaskIndex < state.planTasks.length) {
-      const current = state.planTasks[state.currentTaskIndex];
+    if (state.phase === "implement" && state.currentTaskIndex < (state.planTasks ?? []).length) {
+      const current = (state.planTasks ?? [])[state.currentTaskIndex];
       lines.push(`${theme.fg("accent", "Current:")} Task ${current.index}: ${current.description}`);
     }
 
     // TDD guard state indicator (implement phase only)
     if (state.phase === "implement") {
-      const currentTask = state.planTasks[state.currentTaskIndex];
+      const currentTask = (state.planTasks ?? [])[state.currentTaskIndex];
       let tddIndicator: string;
 
       if (currentTask?.noTest || state.tddTaskState?.skipped) {
@@ -125,9 +125,9 @@ export function renderDashboardLines(state: MegapowersState, _issues: Issue[], t
   }
 
   // Acceptance criteria status (verify and code-review phases)
-  if (state.acceptanceCriteria.length > 0 && (state.phase === "verify" || state.phase === "code-review")) {
-    const passed = state.acceptanceCriteria.filter(c => c.status === "pass").length;
-    lines.push(`${theme.fg("accent", "Criteria:")} ${passed}/${state.acceptanceCriteria.length} passing`);
+  if ((state.acceptanceCriteria ?? []).length > 0 && (state.phase === "verify" || state.phase === "code-review")) {
+    const passed = (state.acceptanceCriteria ?? []).filter(c => c.status === "pass").length;
+    lines.push(`${theme.fg("accent", "Criteria:")} ${passed}/${(state.acceptanceCriteria ?? []).length} passing`);
   }
 
   // Done phase: show active mode and instruction

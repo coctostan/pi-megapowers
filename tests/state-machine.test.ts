@@ -20,7 +20,8 @@ describe("createInitialState", () => {
     expect(state.phase).toBeNull();
     expect(state.phaseHistory).toEqual([]);
     expect(state.reviewApproved).toBe(false);
-    expect(state.planTasks).toEqual([]);
+    expect(state.completedTasks).toEqual([]);
+    expect(state.megaEnabled).toBe(true);
     expect(state.jjChangeId).toBeNull();
   });
 });
@@ -149,10 +150,11 @@ describe("transition", () => {
 });
 
 describe("createInitialState — new fields", () => {
-  it("includes acceptanceCriteria and currentTaskIndex", () => {
+  it("includes completedTasks and currentTaskIndex", () => {
     const state = createInitialState();
-    expect(state.acceptanceCriteria).toEqual([]);
+    expect(state.completedTasks).toEqual([]);
     expect(state.currentTaskIndex).toBe(0);
+    expect(state.megaEnabled).toBe(true);
   });
 });
 

@@ -90,8 +90,8 @@ export function processAgentOutput(
 
   if (phase === "implement") {
     const completionMatch = /(?:task\s+(?:complete|done|finished)|##?\s*(?:what was implemented|checkpoint))/i.test(text);
-    if (completionMatch && state.currentTaskIndex < state.planTasks.length) {
-      const tasks = [...state.planTasks.map(t => ({ ...t }))];
+    if (completionMatch && state.currentTaskIndex < (state.planTasks ?? []).length) {
+      const tasks = [...(state.planTasks ?? []).map(t => ({ ...t }))];
       tasks[state.currentTaskIndex] = { ...tasks[state.currentTaskIndex], completed: true };
       const nextIncomplete = tasks.findIndex((t, i) => i > state.currentTaskIndex && !t.completed);
       const nextIndex = nextIncomplete >= 0 ? nextIncomplete : state.currentTaskIndex + 1;
@@ -104,8 +104,8 @@ export function processAgentOutput(
 
   if (phase === "verify" && text.length > 100) {
     artifacts.push({ filename: "verify.md", content: text });
-    if (state.acceptanceCriteria.length > 0) {
-      const updatedCriteria = state.acceptanceCriteria.map(c => {
+    if ((state.acceptanceCriteria ?? []).length > 0) {
+      const updatedCriteria = (state.acceptanceCriteria ?? []).map(c => {
         const criterionPattern = new RegExp(
           `criterion\\s+${c.id}[\\s\\S]*?\\*{0,2}verdict\\*{0,2}:?\\*{0,2}\\s*(pass|fail|partial)`,
           "i"

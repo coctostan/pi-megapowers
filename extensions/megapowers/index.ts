@@ -106,7 +106,7 @@ export default function megapowers(pi: ExtensionAPI): void {
     state = resolveStartupState(fileState, sessionEntryStates);
 
     // Recovery: if in implement phase with empty planTasks, re-parse from plan.md
-    if (state.activeIssue && state.phase === "implement" && state.planTasks.length === 0) {
+    if (state.activeIssue && state.phase === "implement" && (state.planTasks ?? []).length === 0) {
       const planContent = store.readPlanFile(state.activeIssue, "plan.md");
       if (planContent) {
         const tasks = extractPlanTasks(planContent);
@@ -124,8 +124,8 @@ export default function megapowers(pi: ExtensionAPI): void {
 
     // Auto-advance: if in implement phase and all tasks are done, notify user
     // (don't block startup with interactive prompts — user can /phase next)
-    if (state.activeIssue && state.phase === "implement" && state.planTasks.length > 0) {
-      const allDone = state.planTasks.every(t => t.completed);
+    if (state.activeIssue && state.phase === "implement" && (state.planTasks ?? []).length > 0) {
+      const allDone = (state.planTasks ?? []).every(t => t.completed);
       if (allDone && ctx.hasUI) {
         ctx.ui.notify("All implementation tasks complete. Use /phase next to advance to verify.", "info");
       }
@@ -175,10 +175,10 @@ export default function megapowers(pi: ExtensionAPI): void {
       // If both are in the same phase, protect planTasks from being overwritten with stale/empty data.
       // The file state with more completed tasks is more advanced.
       if (filePhaseIdx === memPhaseIdx && fileState.phase === "implement") {
-        const fileCompleted = fileState.planTasks.filter(t => t.completed).length;
-        const memCompleted = state.planTasks.filter(t => t.completed).length;
+        const fileCompleted = (fileState.planTasks ?? []).filter(t => t.completed).length;
+        const memCompleted = (state.planTasks ?? []).filter(t => t.completed).length;
         // Don't overwrite if file has more completed tasks, or file has tasks and memory doesn't
-        if (fileState.planTasks.length > 0 && state.planTasks.length === 0) return;
+        if ((fileState.planTasks ?? []).length > 0 && (state.planTasks ?? []).length === 0) return;
         if (fileCompleted > memCompleted) return;
       }
 
@@ -228,19 +228,19 @@ export default function megapowers(pi: ExtensionAPI): void {
     }
 
     // Acceptance criteria formatting
-    if (state.acceptanceCriteria.length > 0) {
-      vars.acceptance_criteria_list = formatAcceptanceCriteriaList(state.acceptanceCriteria);
+    if ((state.acceptanceCriteria ?? []).length > 0) {
+      vars.acceptance_criteria_list = formatAcceptanceCriteriaList(state.acceptanceCriteria ?? []);
     }
 
     // Implement phase: inject per-task context
-    if (state.phase === "implement" && state.planTasks.length > 0) {
-      Object.assign(vars, buildImplementTaskVars(state.planTasks, state.currentTaskIndex));
+    if (state.phase === "implement" && (state.planTasks ?? []).length > 0) {
+      Object.assign(vars, buildImplementTaskVars(state.planTasks ?? [], state.currentTaskIndex));
     }
 
     // Create per-task jj change if needed
-    if (state.phase === "implement" && state.planTasks.length > 0 && await jj.isJJRepo()) {
+    if (state.phase === "implement" && (state.planTasks ?? []).length > 0 && await jj.isJJRepo()) {
       if (shouldCreateTaskChange(state)) {
-        const task = state.planTasks[state.currentTaskIndex];
+        const task = (state.planTasks ?? [])[state.currentTaskIndex];
         const result = await createTaskChange(
           jj,
           state.activeIssue!,
@@ -344,7 +344,7 @@ export default function megapowers(pi: ExtensionAPI): void {
 
   pi.on("tool_call", async (event, _ctx) => {
     if (state.phase !== "implement") return;
-    if (state.planTasks.length === 0) return;
+    if ((state.planTasks ?? []).length === 0) return;
 
     // Only gate write and edit tools
     const toolName = event.toolName;
@@ -353,7 +353,7 @@ export default function megapowers(pi: ExtensionAPI): void {
     const filePath: string | undefined = (event.input as any)?.path;
     if (!filePath) return;
 
-    const currentTask = state.planTasks[state.currentTaskIndex];
+    const currentTask = (state.planTasks ?? [])[state.currentTaskIndex];
     if (!currentTask) return;
 
     // Initialize TDD state for current task if needed
@@ -422,7 +422,7 @@ export default function megapowers(pi: ExtensionAPI): void {
 
     // Inspect jj change for completed task
     if (phase === "implement" && result.stateUpdate.planTasks) {
-      const completedTask = state.planTasks[state.currentTaskIndex];
+      const completedTask = (state.planTasks ?? [])[state.currentTaskIndex];
       const changeId = completedTask ? state.taskJJChanges[completedTask.index] : undefined;
       if (changeId && completedTask && await jj.isJJRepo()) {
         try {
@@ -608,7 +608,7 @@ export default function megapowers(pi: ExtensionAPI): void {
           return;
         }
         // Initialize or reinitialize TDD state for current task
-        const currentTask = state.planTasks[state.currentTaskIndex];
+        const currentTask = (state.planTasks ?? [])[state.currentTaskIndex];
         if (!currentTask) {
           ctx.ui.notify("No active task to skip TDD for.", "info");
           return;

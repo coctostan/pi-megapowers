@@ -57,8 +57,9 @@ describe("state persistence", () => {
 
     const loaded = store.loadState();
     expect(loaded.activeIssue).toBe("001-test");
-    expect(loaded.acceptanceCriteria).toEqual([]);
+    expect(loaded.completedTasks).toEqual([]);
     expect(loaded.currentTaskIndex).toBe(0);
+    expect(loaded.megaEnabled).toBe(true);
   });
 
   it("persists tddTaskState through save/load", () => {
@@ -150,8 +151,8 @@ describe("state persistence", () => {
 
     const loaded = store.loadState();
     expect(loaded.planTasks).toHaveLength(2);
-    expect(loaded.planTasks[0].noTest).toBe(false);
-    expect(loaded.planTasks[1].noTest).toBe(false);
+    expect(loaded.planTasks![0].noTest).toBe(false);
+    expect(loaded.planTasks![1].noTest).toBe(false);
   });
 });
 

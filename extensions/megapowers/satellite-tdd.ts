@@ -10,9 +10,9 @@ export function createSatelliteTddState(
   state: Readonly<MegapowersState>
 ): TddTaskState | null {
   if (state.phase !== "implement") return null;
-  if (state.planTasks.length === 0) return null;
+  if ((state.planTasks ?? []).length === 0) return null;
 
-  const currentTask = state.planTasks[state.currentTaskIndex];
+  const currentTask = (state.planTasks ?? [])[state.currentTaskIndex];
   if (!currentTask) return null;
 
   if (state.tddTaskState && state.tddTaskState.taskIndex === currentTask.index) {
@@ -47,7 +47,7 @@ export function handleSatelliteToolCall(
   if (toolName !== "write" && toolName !== "edit") return null;
   if (!filePath) return null;
 
-  const currentTask = state.planTasks[state.currentTaskIndex];
+  const currentTask = (state.planTasks ?? [])[state.currentTaskIndex];
   if (!currentTask) return null;
 
   const result = checkFileWrite(filePath, state.phase, currentTask, tddState);
