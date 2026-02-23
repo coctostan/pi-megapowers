@@ -1,21 +1,22 @@
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { createInitialState, getValidTransitions, OPEN_ENDED_PHASES, type MegapowersState, type Phase } from "./state-machine.js";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { createWriteTool, createEditTool, createBashTool } from "@mariozechner/pi-coding-agent";
+import { getValidTransitions, OPEN_ENDED_PHASES, type Phase } from "./state-machine.js";
 import { createStore, type Store } from "./store.js";
-import { createJJ, formatChangeDescription, type JJ } from "./jj.js";
+import { createJJ, type JJ } from "./jj.js";
 import { createUI, filterTriageableIssues, formatTriageIssueList, type MegapowersUI } from "./ui.js";
-import { buildImplementTaskVars, formatAcceptanceCriteriaList, loadPromptFile, BRAINSTORM_PLAN_PHASES, interpolatePrompt, getPhasePromptTemplate, allTasksComplete, buildSourceIssuesContext } from "./prompts.js";
-import { extractPlanTasks } from "./plan-parser.js";
-import { processAgentOutput } from "./artifact-router.js";
-import { resolveStartupState } from "./state-recovery.js";
-import { checkFileWrite, isTestRunnerCommand, handleTestResult, type TddTaskState } from "./tdd-guard.js";
-import { createSatelliteTddState, handleSatelliteToolCall } from "./satellite-tdd.js";
-import { shouldCreateTaskChange, createTaskChange, inspectTaskChange, buildTaskCompletionReport } from "./task-coordinator.js";
-import { isSatelliteMode, loadSatelliteState } from "./satellite.js";
+import { loadPromptFile, interpolatePrompt } from "./prompts.js";
+import { isSatelliteMode } from "./satellite.js";
 import { createBatchHandler } from "./tools.js";
-import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
+import { readState, writeState } from "./state-io.js";
+import { handleSignal } from "./tool-signal.js";
+import { handleSaveArtifact } from "./tool-artifact.js";
+import { evaluateWriteOverride, recordTestFileWritten, processBashResult } from "./tool-overrides.js";
+import { buildInjectedPrompt } from "./prompt-inject.js";
+import { deriveTasks } from "./derived.js";
+import type { AgentMessage } from "@mariozechner/pi-agent-core";
+import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 
 // --- Helpers ---
 
@@ -40,44 +41,47 @@ export default function megapowers(pi: ExtensionAPI): void {
   });
 
   if (satellite) {
-    let satelliteState: Readonly<MegapowersState> | null = null;
-    let satelliteTddState: TddTaskState | null = null;
+    // Satellite sessions use disk-backed state (written by parent session).
+    // No module-level state needed — all reads/writes go through state-io.
 
-    pi.on("session_start", async (_event, ctx) => {
-      satelliteState = loadSatelliteState(ctx.cwd);
-      satelliteTddState = satelliteState ? createSatelliteTddState(satelliteState) : null;
-    });
-
-    pi.on("tool_call", async (event, _ctx) => {
-      if (!satelliteState || !satelliteTddState) return;
+    pi.on("tool_call", async (event, ctx) => {
+      const toolName = event.toolName;
+      if (toolName !== "write" && toolName !== "edit") return;
 
       const filePath: string | undefined = (event.input as any)?.path;
-      const result = handleSatelliteToolCall(event.toolName, filePath, satelliteState, satelliteTddState);
+      if (!filePath) return;
 
-      if (result && result.block) {
-        return { block: true, reason: result.reason };
+      const decision = evaluateWriteOverride(ctx.cwd, filePath);
+      if (!decision.allowed) {
+        return { block: true, reason: decision.reason };
       }
     });
 
-    pi.on("tool_result", async (event, _ctx) => {
-      if (!satelliteTddState) return;
-      if (satelliteTddState.state !== "test-written") return;
-      if (event.toolName !== "bash") return;
+    pi.on("tool_result", async (event, ctx) => {
+      const toolName = event.toolName;
 
-      const command = (event.input as any)?.command;
-      if (!command || !isTestRunnerCommand(command)) return;
+      // After a successful write of a test file, record TDD state transition
+      if ((toolName === "write" || toolName === "edit") && !event.isError) {
+        const filePath: string | undefined = (event.input as any)?.path;
+        if (filePath) {
+          const decision = evaluateWriteOverride(ctx.cwd, filePath);
+          if (decision.updateTddState) {
+            recordTestFileWritten(ctx.cwd);
+          }
+        }
+      }
 
-      const exitCode = event.isError ? 1 : 0;
-      const newState = handleTestResult(exitCode, satelliteTddState.state);
-      if (newState !== satelliteTddState.state) {
-        satelliteTddState.state = newState;
+      // After bash, track test runner results for TDD RED detection
+      if (toolName === "bash") {
+        const command = (event.input as any)?.command;
+        if (command) processBashResult(ctx.cwd, command, event.isError);
       }
     });
 
     return; // Skip all primary session setup
   }
 
-  let state: MegapowersState = createInitialState();
+  // Module-level capability objects (lazily initialized, not state)
   let store: Store;
   let jj: JJ;
   let ui: MegapowersUI;
@@ -89,60 +93,26 @@ export default function megapowers(pi: ExtensionAPI): void {
     jj = createJJ(pi);
     ui = createUI();
 
-    // Load persisted state
-    const fileState = store.loadState();
+    // Read state from disk (authoritative source of truth)
+    const state = readState(ctx.cwd);
 
-    // Collect session entry states for crash recovery
-    const sessionEntryStates: MegapowersState[] = [];
-    for (const entry of ctx.sessionManager.getEntries()) {
-      if (entry.type === "custom" && (entry as any).customType === "megapowers-state") {
-        try {
-          sessionEntryStates.push((entry as any).data as MegapowersState);
-        } catch { /* ignore corrupt entries */ }
-      }
+    // Reset megaEnabled to true on every session start (AC40)
+    if (!state.megaEnabled) {
+      writeState(ctx.cwd, { ...state, megaEnabled: true });
     }
 
-    // state.json is authoritative; session entries only for crash recovery
-    state = resolveStartupState(fileState, sessionEntryStates);
-
-    // Recovery: if in implement phase with empty planTasks, re-parse from plan.md
-    if (state.activeIssue && state.phase === "implement" && (state.planTasks ?? []).length === 0) {
-      const planContent = store.readPlanFile(state.activeIssue, "plan.md");
-      if (planContent) {
-        const tasks = extractPlanTasks(planContent);
-        if (tasks.length > 0) {
-          state = {
-            ...state,
-            planTasks: tasks,
-            currentTaskIndex: tasks.findIndex(t => !t.completed),
-          };
-          if (state.currentTaskIndex === -1) state.currentTaskIndex = 0;
-          store.saveState(state);
-        }
-      }
-    }
-
-    // Auto-advance: if in implement phase and all tasks are done, notify user
-    // (don't block startup with interactive prompts — user can /phase next)
-    if (state.activeIssue && state.phase === "implement" && (state.planTasks ?? []).length > 0) {
-      const allDone = (state.planTasks ?? []).every(t => t.completed);
-      if (allDone && ctx.hasUI) {
-        ctx.ui.notify("All implementation tasks complete. Use /phase next to advance to verify.", "info");
-      }
-    }
-
-    // jj validation
-    if (state.activeIssue && state.jjChangeId && await jj.isJJRepo()) {
+    // jj validation: check for change ID mismatch
+    const currentState = readState(ctx.cwd);
+    if (currentState.activeIssue && currentState.jjChangeId && await jj.isJJRepo()) {
       const currentId = await jj.getCurrentChangeId();
-      if (currentId && currentId !== state.jjChangeId) {
+      if (currentId && currentId !== currentState.jjChangeId) {
         if (ctx.hasUI) {
           const choice = await ctx.ui.select(
-            `jj change mismatch: on ${currentId.slice(0, 8)}, expected ${state.jjChangeId.slice(0, 8)} for ${state.activeIssue}`,
+            `jj change mismatch: on ${currentId.slice(0, 8)}, expected ${currentState.jjChangeId.slice(0, 8)} for ${currentState.activeIssue}`,
             ["Continue on current change", "Ignore (update stored ID)"]
           );
           if (choice?.startsWith("Ignore")) {
-            state = { ...state, jjChangeId: currentId };
-            store.saveState(state);
+            writeState(ctx.cwd, { ...currentState, jjChangeId: currentId });
           }
         }
       }
@@ -150,361 +120,229 @@ export default function megapowers(pi: ExtensionAPI): void {
 
     // Render dashboard
     if (ctx.hasUI) {
-      ui.renderDashboard(ctx, state, store);
-    }
-  });
-
-  pi.on("session_shutdown", async () => {
-    if (store) {
-      // Check if the file has been updated externally (e.g. by another session or manual edit)
-      // Only save if our in-memory state is at least as advanced as the file state
-      const fileState = store.loadState();
-
-      // If the file state has been reset (no active issue), don't overwrite with stale in-memory state
-      if (!fileState.activeIssue && state.activeIssue) return;
-
-      // If the file state switched to a different issue, don't overwrite
-      if (fileState.activeIssue && state.activeIssue && fileState.activeIssue !== state.activeIssue) return;
-
-      const phaseOrder = ["brainstorm", "spec", "reproduce", "diagnose", "plan", "review", "implement", "verify", "code-review", "done"];
-      const filePhaseIdx = phaseOrder.indexOf(fileState.phase);
-      const memPhaseIdx = phaseOrder.indexOf(state.phase);
-      // If file is ahead of in-memory, don't overwrite
-      if (filePhaseIdx > memPhaseIdx) return;
-
-      // If both are in the same phase, protect planTasks from being overwritten with stale/empty data.
-      // The file state with more completed tasks is more advanced.
-      if (filePhaseIdx === memPhaseIdx && fileState.phase === "implement") {
-        const fileCompleted = (fileState.planTasks ?? []).filter(t => t.completed).length;
-        const memCompleted = (state.planTasks ?? []).filter(t => t.completed).length;
-        // Don't overwrite if file has more completed tasks, or file has tasks and memory doesn't
-        if ((fileState.planTasks ?? []).length > 0 && (state.planTasks ?? []).length === 0) return;
-        if (fileCompleted > memCompleted) return;
-      }
-
-      store.saveState(state);
+      ui.renderDashboard(ctx, readState(ctx.cwd), store);
     }
   });
 
   // --- Prompt injection ---
 
-  pi.on("before_agent_start", async (_event, _ctx) => {
-    if (!state.activeIssue || !state.phase) return;
+  pi.on("before_agent_start", async (_event, ctx) => {
+    if (!store) store = createStore(ctx.cwd);
+    if (!jj) jj = createJJ(pi);
 
-    const vars: Record<string, string> = {
-      issue_slug: state.activeIssue,
-      phase: state.phase,
-    };
-
-    // Load all artifacts for prompt context
-    if (store) {
-      const artifactMap: Record<string, string> = {
-        "brainstorm.md": "brainstorm_content",
-        "spec.md": "spec_content",
-        "plan.md": "plan_content",
-        "diagnosis.md": "diagnosis_content",
-        "verify.md": "verify_content",
-        "code-review.md": "code_review_content",
-      };
-      for (const [file, varName] of Object.entries(artifactMap)) {
-        const content = store.readPlanFile(state.activeIssue, file);
-        if (content) vars[varName] = content;
-      }
-
-      // Bugfix mode: alias reproduce/diagnosis to brainstorm/spec variables
-      // so shared templates (write-plan.md, etc.) get bugfix context
-      if (state.workflow === "bugfix") {
-        const reproduce = store.readPlanFile(state.activeIssue, "reproduce.md");
-        const diagnosis = store.readPlanFile(state.activeIssue, "diagnosis.md");
-        if (reproduce) {
-          vars.brainstorm_content = reproduce;
-          vars.reproduce_content = reproduce;
-        }
-        if (diagnosis) {
-          vars.spec_content = diagnosis;
-          vars.diagnosis_content = diagnosis;
-        }
-      }
-    }
-
-    // Acceptance criteria formatting
-    if ((state.acceptanceCriteria ?? []).length > 0) {
-      vars.acceptance_criteria_list = formatAcceptanceCriteriaList(state.acceptanceCriteria ?? []);
-    }
-
-    // Implement phase: inject per-task context
-    if (state.phase === "implement" && (state.planTasks ?? []).length > 0) {
-      Object.assign(vars, buildImplementTaskVars(state.planTasks ?? [], state.currentTaskIndex));
-    }
-
-    // Create per-task jj change if needed
-    if (state.phase === "implement" && (state.planTasks ?? []).length > 0 && await jj.isJJRepo()) {
-      const derivedTasks = (state.planTasks ?? []); // TODO: replace with deriveTasks(cwd, state.activeIssue!) after refactor
-      if (shouldCreateTaskChange({ ...state, tasks: derivedTasks })) {
-        const task = (state.planTasks ?? [])[state.currentTaskIndex];
-        const result = await createTaskChange(
-          jj,
-          state.activeIssue!,
-          task.index,
-          task.description,
-          state.jjChangeId ?? undefined
-        );
-        if (result.changeId) {
-          state = { ...state, taskJJChanges: { ...state.taskJJChanges, [task.index]: result.changeId } };
-          store.saveState(state);
-        }
-      }
-    }
-
-
-    // Learnings + Roadmap: brainstorm and plan phases only
-    if (BRAINSTORM_PLAN_PHASES.includes(state.phase)) {
-      vars.learnings = store?.getLearnings() ?? "";
-      vars.roadmap = store?.readRoadmap() ?? "";
-    }
-
-    // Select prompt template (done phase requires doneMode)
-    let template = state.phase === "done" ? "" : getPhasePromptTemplate(state.phase);
-
-    // Done phase: select prompt based on doneMode
-    if (state.phase === "done" && state.doneMode && store) {
-      const doneModeTemplateMap: Record<string, string> = {
-        "generate-docs": "generate-docs.md",
-        "capture-learnings": "capture-learnings.md",
-        "write-changelog": "write-changelog.md",
-        "generate-bugfix-summary": "generate-bugfix-summary.md",
-      };
-      const filename = doneModeTemplateMap[state.doneMode];
-      if (filename) {
-        const modeTemplate = loadPromptFile(filename);
-        if (modeTemplate) template = modeTemplate;
-      }
-      // files_changed for done-phase artifact prompts
-      if (state.jjChangeId && await jj.isJJRepo()) {
-        try { vars.files_changed = await jj.diff(state.jjChangeId); } catch { vars.files_changed = ""; }
-      } else {
-        vars.files_changed = "";
-      }
-      vars.learnings = store.getLearnings();
-    }
-
-    // Batch issue: inject source issue content
-    if (store && state.activeIssue) {
-      const issue = store.getIssue(state.activeIssue);
-      if (issue && issue.sources.length > 0) {
-        const sourceIssues = store.getSourceIssues(state.activeIssue);
-        const sourceContext = buildSourceIssuesContext(sourceIssues);
-        if (sourceContext) {
-          vars.source_issues_context = sourceContext;
-        }
-      }
-    }
-
-    let finalPrompt = interpolatePrompt(template, vars);
-    if (!finalPrompt) return;
-
-    if (vars.source_issues_context) {
-      finalPrompt = finalPrompt + "\n\n" + vars.source_issues_context;
-    }
+    const prompt = buildInjectedPrompt(ctx.cwd, store, jj);
+    if (!prompt) return;
 
     return {
       message: {
         customType: "megapowers-context",
-        content: finalPrompt,
+        content: prompt,
         display: false,
       },
     };
   });
 
-  // --- Artifact protection: block writes to artifacts during read-only phases ---
+  // --- Write/edit override: disk-backed write policy ---
 
-  const READ_ONLY_PHASES: Phase[] = ["review", "verify", "code-review"];
-  const PROTECTED_ARTIFACTS = ["spec.md", "plan.md", "brainstorm.md", "reproduce.md", "diagnosis.md"];
-
-  pi.on("tool_call", async (event, _ctx) => {
-    if (!state.phase || !state.activeIssue) return;
-    if (!READ_ONLY_PHASES.includes(state.phase)) return;
-
+  pi.on("tool_call", async (event, ctx) => {
     const toolName = event.toolName;
     if (toolName !== "write" && toolName !== "edit") return;
 
     const filePath: string | undefined = (event.input as any)?.path;
     if (!filePath) return;
 
-    // Block writes to protected artifact files (by basename match)
-    const basename = filePath.split("/").pop() ?? "";
-    if (PROTECTED_ARTIFACTS.includes(basename)) {
-      return {
-        block: true,
-        reason: `Cannot modify ${basename} during ${state.phase} phase. Artifacts are read-only in review/verify/code-review.`,
-      };
+    const decision = evaluateWriteOverride(ctx.cwd, filePath);
+    if (!decision.allowed) {
+      return { block: true, reason: decision.reason };
     }
   });
 
-  // --- TDD Guard: intercept file writes ---
+  // --- After write/edit: track test file writes; after bash: track test results ---
 
-  pi.on("tool_call", async (event, _ctx) => {
-    if (state.phase !== "implement") return;
-    if ((state.planTasks ?? []).length === 0) return;
-
-    // Only gate write and edit tools
+  pi.on("tool_result", async (event, ctx) => {
     const toolName = event.toolName;
-    if (toolName !== "write" && toolName !== "edit") return;
 
-    const filePath: string | undefined = (event.input as any)?.path;
-    if (!filePath) return;
-
-    const currentTask = (state.planTasks ?? [])[state.currentTaskIndex];
-    if (!currentTask) return;
-
-    // Initialize TDD state for current task if needed
-    if (!state.tddTaskState || state.tddTaskState.taskIndex !== currentTask.index) {
-      state.tddTaskState = {
-        taskIndex: currentTask.index,
-        state: "no-test",
-        skipped: false,
-      };
+    if ((toolName === "write" || toolName === "edit") && !event.isError) {
+      const filePath: string | undefined = (event.input as any)?.path;
+      if (filePath) {
+        const decision = evaluateWriteOverride(ctx.cwd, filePath);
+        if (decision.updateTddState) {
+          recordTestFileWritten(ctx.cwd);
+        }
+      }
     }
 
-    const result = checkFileWrite(filePath, state.phase, currentTask, state.tddTaskState);
-
-    if (result.newState && state.tddTaskState) {
-      state.tddTaskState = { ...state.tddTaskState, state: result.newState };
-      if (store) store.saveState(state);
-    }
-
-    if (!result.allow) {
-      return { block: true, reason: result.reason };
+    if (toolName === "bash") {
+      const command = (event.input as any)?.command;
+      if (command) processBashResult(ctx.cwd, command, event.isError);
     }
   });
 
-  // --- TDD Guard: detect test runner results ---
-
-  pi.on("tool_result", async (event, _ctx) => {
-    if (state.phase !== "implement") return;
-    if (event.toolName !== "bash") return;
-    if (!state.tddTaskState || state.tddTaskState.state !== "test-written") return;
-
-    const command = (event.input as any)?.command;
-    if (!command || !isTestRunnerCommand(command)) return;
-
-    // event.isError is true when bash exits with non-zero code
-    const exitCode = event.isError ? 1 : 0;
-
-    const newState = handleTestResult(exitCode, state.tddTaskState.state);
-    if (newState !== state.tddTaskState.state) {
-      state.tddTaskState = { ...state.tddTaskState, state: newState };
-      if (store) store.saveState(state);
-    }
-  });
-
-  // --- Agent completion: capture artifacts and offer transitions ---
+  // --- Agent completion: offer phase transitions ---
 
   pi.on("agent_end", async (event, ctx) => {
-    const activeIssue = state.activeIssue;
+    if (!store) store = createStore(ctx.cwd);
+    if (!jj) jj = createJJ(pi);
+    if (!ui) ui = createUI();
+
+    const state = readState(ctx.cwd);
+    if (!state.activeIssue || !state.phase) return;
+
     const phase = state.phase;
-    if (!activeIssue || !phase || !store) return;
 
-    const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
-    if (!lastAssistant) return;
-    const text = getAssistantText(lastAssistant);
-    if (!text) return;
-
-    // Delegate to tested pure function
-    const result = processAgentOutput(text, phase, state);
-
-    // Apply artifacts
-    if (result.artifacts.length > 0) {
-      store.ensurePlanDir(activeIssue);
-      for (const artifact of result.artifacts) {
-        store.writePlanFile(activeIssue, artifact.filename, artifact.content);
-      }
-    }
-
-    // Inspect jj change for completed task
-    if (phase === "implement" && result.stateUpdate.planTasks) {
-      const completedTask = (state.planTasks ?? [])[state.currentTaskIndex];
-      const changeId = completedTask ? state.taskJJChanges[completedTask.index] : undefined;
-      if (changeId && completedTask && await jj.isJJRepo()) {
-        try {
-          const inspection = await inspectTaskChange(jj, changeId);
-          const report = buildTaskCompletionReport(completedTask.index, completedTask.description, inspection);
-          result.notifications.push(report);
-        } catch {
-          // jj inspection is best-effort — don't block completion
+    // Done-phase artifact capture (when LLM generates content from doneMode prompt)
+    if (phase === "done" && state.doneMode) {
+      const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
+      if (lastAssistant) {
+        const text = getAssistantText(lastAssistant);
+        if (text && text.length > 100) {
+          if (state.doneMode === "generate-docs" || state.doneMode === "generate-bugfix-summary") {
+            store.writeFeatureDoc(state.activeIssue, text);
+            if (ctx.hasUI) ctx.ui.notify(`Feature doc saved to .megapowers/docs/${state.activeIssue}.md`, "info");
+          }
+          if (state.doneMode === "write-changelog") {
+            store.appendChangelog(text);
+            if (ctx.hasUI) ctx.ui.notify("Changelog entry appended to .megapowers/CHANGELOG.md", "info");
+          }
+          if (state.doneMode !== "capture-learnings") {
+            writeState(ctx.cwd, { ...state, doneMode: null });
+          }
         }
       }
     }
 
-    // Apply state updates
-    if (Object.keys(result.stateUpdate).length > 0) {
-      state = { ...state, ...result.stateUpdate };
-      store.saveState(state);
-    }
-
-    // Send notifications
-    if (ctx.hasUI) {
-      for (const msg of result.notifications) {
-        ctx.ui.notify(msg, "info");
-      }
-    }
-
-    // Interactive-only: offer phase transition and update dashboard
+    // Interactive-only: offer phase transitions
     // Open-ended phases (brainstorm, reproduce, diagnose) suppress auto-prompts —
-    // transitions happen only via explicit /phase next command.
+    // transitions happen only via explicit /phase next or megapowers_signal
     if (ctx.hasUI && !OPEN_ENDED_PHASES.has(phase)) {
-      const validNext = getValidTransitions(state.workflow, phase);
+      const freshState = readState(ctx.cwd);
+      const validNext = getValidTransitions(freshState.workflow, phase);
       if (validNext.length > 0) {
-        state = await ui.handlePhaseTransition(ctx, state, store, jj);
-        pi.appendEntry("megapowers-state", state);
+        const newState = await ui.handlePhaseTransition(ctx, freshState, store, jj);
+        writeState(ctx.cwd, newState);
       }
 
-      // Done phase: capture artifacts from doneMode LLM output
-      if (state.phase === "done" && state.doneMode && activeIssue && text.length > 100) {
-        if (state.doneMode === "generate-docs") {
-          store.writeFeatureDoc(activeIssue, text);
-          ctx.ui.notify(`Feature doc saved to .megapowers/docs/${activeIssue}.md`, "info");
-        }
-        if (state.doneMode === "generate-bugfix-summary") {
-          store.writeFeatureDoc(activeIssue, text);
-          ctx.ui.notify(`Bugfix summary saved to .megapowers/docs/${activeIssue}.md`, "info");
-        }
-        if (state.doneMode === "write-changelog") {
-          store.appendChangelog(text);
-          ctx.ui.notify("Changelog entry appended to .megapowers/CHANGELOG.md", "info");
-        }
-        // capture-learnings: user manually reviews and uses /learn command
-        // Clear doneMode after artifact capture (except capture-learnings which persists)
-        if (state.doneMode !== "capture-learnings") {
-          state = { ...state, doneMode: null };
-          store.saveState(state);
-        }
+      // Done phase: wrap-up menu
+      const afterTransition = readState(ctx.cwd);
+      if (afterTransition.phase === "done") {
+        const afterDone = await ui.handleDonePhase(ctx, afterTransition, store, jj);
+        writeState(ctx.cwd, afterDone);
       }
 
-      // Done phase: trigger wrap-up menu
-      if (state.phase === "done") {
-        state = await ui.handleDonePhase(ctx, state, store, jj);
-        store.saveState(state);
-        pi.appendEntry("megapowers-state", state);
-      }
-
-      ui.renderDashboard(ctx, state, store);
+      ui.renderDashboard(ctx, readState(ctx.cwd), store);
     }
+  });
+
+  // --- Tools: megapowers_signal ---
+
+  pi.registerTool({
+    name: "megapowers_signal",
+    label: "Megapowers Signal",
+    description: "Signal a megapowers state transition. Actions: task_done (mark current implement task complete), review_approve (approve plan in review phase), phase_next (advance to next workflow phase).",
+    parameters: Type.Object({
+      action: Type.Union([
+        Type.Literal("task_done"),
+        Type.Literal("review_approve"),
+        Type.Literal("phase_next"),
+      ]),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (!jj) jj = createJJ(pi);
+      const result = handleSignal(ctx.cwd, params.action, jj);
+      if (result.error) {
+        return { content: [{ type: "text", text: `Error: ${result.error}` }], details: undefined };
+      }
+      if (ctx.hasUI && store && ui) {
+        ui.renderDashboard(ctx, readState(ctx.cwd), store);
+      }
+      return { content: [{ type: "text", text: result.message ?? "OK" }], details: undefined };
+    },
+  });
+
+  // --- Tools: megapowers_save_artifact ---
+
+  pi.registerTool({
+    name: "megapowers_save_artifact",
+    label: "Save Artifact",
+    description: "Save a phase artifact to disk. Use phase names: spec, plan, brainstorm, reproduce, diagnosis, verify, code-review.",
+    parameters: Type.Object({
+      phase: Type.String(),
+      content: Type.String(),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const result = handleSaveArtifact(ctx.cwd, params.phase, params.content);
+      if (result.error) {
+        return { content: [{ type: "text", text: `Error: ${result.error}` }], details: undefined };
+      }
+      return { content: [{ type: "text", text: result.message ?? "Artifact saved." }], details: undefined };
+    },
+  });
+
+  // --- Tools: create_batch ---
+
+  pi.registerTool({
+    name: "create_batch",
+    label: "Create Batch Issue",
+    description: "Create a batch issue grouping source issues.",
+    parameters: Type.Object({
+      title: Type.String(),
+      type: StringEnum(["bugfix", "feature"] as const),
+      sourceIds: Type.Array(Type.Number()),
+      description: Type.String(),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (!store) store = createStore(ctx.cwd);
+      const result = createBatchHandler(store, params);
+      if ("error" in result) {
+        return { content: [{ type: "text", text: result.error }], details: undefined };
+      }
+      return {
+        content: [{ type: "text", text: `Created batch: ${result.slug} (id: ${result.id})` }],
+        details: undefined,
+      };
+    },
   });
 
   // --- Commands ---
 
   pi.registerCommand("mega", {
-    description: "Show megapowers dashboard",
-    handler: async (_args, ctx) => {
+    description: "Megapowers dashboard and controls (usage: /mega | /mega on | /mega off)",
+    handler: async (args, ctx) => {
       if (!store) store = createStore(ctx.cwd);
-      ui = ui ?? createUI();
-      ui.renderDashboard(ctx, state, store);
+      if (!ui) ui = createUI();
+
+      const sub = args.trim().toLowerCase();
+
+      if (sub === "off") {
+        const state = readState(ctx.cwd);
+        writeState(ctx.cwd, { ...state, megaEnabled: false });
+        // Hide custom tools from LLM (AC38)
+        const activeTools = pi.getActiveTools().filter(
+          t => t !== "megapowers_signal" && t !== "megapowers_save_artifact"
+        );
+        pi.setActiveTools(activeTools);
+        if (ctx.hasUI) ctx.ui.notify("Megapowers OFF — all enforcement disabled.", "info");
+        return;
+      }
+
+      if (sub === "on") {
+        const state = readState(ctx.cwd);
+        writeState(ctx.cwd, { ...state, megaEnabled: true });
+        // Restore custom tools (AC38)
+        const activeTools = pi.getActiveTools();
+        if (!activeTools.includes("megapowers_signal")) {
+          pi.setActiveTools([...activeTools, "megapowers_signal", "megapowers_save_artifact"]);
+        }
+        if (ctx.hasUI) ctx.ui.notify("Megapowers ON — enforcement restored.", "info");
+        return;
+      }
+
+      ui.renderDashboard(ctx, readState(ctx.cwd), store);
     },
   });
 
   pi.registerCommand("issue", {
-    description: "Create or list issues (usage: /issue new | /issue list)",
+    description: "Create or switch issues (usage: /issue new | /issue list | /issue <slug>)",
     getArgumentCompletions: (prefix) => {
       const subs = ["new", "list"];
       const filtered = subs.filter((s) => s.startsWith(prefix));
@@ -514,8 +352,10 @@ export default function megapowers(pi: ExtensionAPI): void {
       if (!store) store = createStore(ctx.cwd);
       if (!jj) jj = createJJ(pi);
       if (!ui) ui = createUI();
-      state = await ui.handleIssueCommand(ctx, state, store, jj, args);
-      pi.appendEntry("megapowers-state", state);
+
+      const state = readState(ctx.cwd);
+      const newState = await ui.handleIssueCommand(ctx, state, store, jj, args);
+      writeState(ctx.cwd, newState);
     },
   });
 
@@ -525,7 +365,7 @@ export default function megapowers(pi: ExtensionAPI): void {
       if (!store) store = createStore(ctx.cwd);
       const issues = filterTriageableIssues(store.listIssues());
       if (issues.length === 0) {
-        ctx.ui.notify("No open issues to triage.", "info");
+        if (ctx.hasUI) ctx.ui.notify("No open issues to triage.", "info");
         return;
       }
       const issueList = formatTriageIssueList(issues);
@@ -536,23 +376,33 @@ export default function megapowers(pi: ExtensionAPI): void {
   });
 
   pi.registerCommand("phase", {
-    description: "Show current phase or transition (usage: /phase | /phase next)",
+    description: "Phase management (usage: /phase | /phase next)",
     handler: async (args, ctx) => {
       if (!store) store = createStore(ctx.cwd);
       if (!jj) jj = createJJ(pi);
       if (!ui) ui = createUI();
 
       if (args.trim() === "next") {
-        state = await ui.handlePhaseTransition(ctx, state, store, jj);
-        pi.appendEntry("megapowers-state", state);
-      } else {
-        if (state.phase && state.workflow) {
-          ctx.ui.notify(
-            `Phase: ${state.phase}\nWorkflow: ${state.workflow}\nIssue: ${state.activeIssue ?? "none"}`,
-            "info"
-          );
+        const result = handleSignal(ctx.cwd, "phase_next", jj);
+        if (result.error) {
+          if (ctx.hasUI) ctx.ui.notify(result.error, "error");
         } else {
-          ctx.ui.notify("No active workflow. Use /issue to start.", "info");
+          if (ctx.hasUI) {
+            ctx.ui.notify(result.message ?? "Phase advanced.", "info");
+            ui.renderDashboard(ctx, readState(ctx.cwd), store);
+          }
+        }
+      } else {
+        const state = readState(ctx.cwd);
+        if (state.phase && state.workflow) {
+          if (ctx.hasUI) {
+            ctx.ui.notify(
+              `Phase: ${state.phase}\nWorkflow: ${state.workflow}\nIssue: ${state.activeIssue ?? "none"}`,
+              "info"
+            );
+          }
+        } else {
+          if (ctx.hasUI) ctx.ui.notify("No active workflow. Use /issue to start.", "info");
         }
       }
     },
@@ -561,17 +411,19 @@ export default function megapowers(pi: ExtensionAPI): void {
   pi.registerCommand("done", {
     description: "Trigger wrap-up menu (when in done phase)",
     handler: async (_args, ctx) => {
-      if (state.phase !== "done") {
-        ctx.ui.notify("Not in done phase. Use /phase next to advance.", "info");
-        return;
-      }
       if (!store) store = createStore(ctx.cwd);
       if (!jj) jj = createJJ(pi);
       if (!ui) ui = createUI();
-      state = await ui.handleDonePhase(ctx, state, store, jj);
-      store.saveState(state);
-      pi.appendEntry("megapowers-state", state);
-      ui.renderDashboard(ctx, state, store);
+
+      const state = readState(ctx.cwd);
+      if (state.phase !== "done") {
+        if (ctx.hasUI) ctx.ui.notify("Not in done phase. Use /phase next to advance.", "info");
+        return;
+      }
+
+      const newState = await ui.handleDonePhase(ctx, state, store, jj);
+      writeState(ctx.cwd, newState);
+      if (ctx.hasUI) ui.renderDashboard(ctx, readState(ctx.cwd), store);
     },
   });
 
@@ -582,12 +434,12 @@ export default function megapowers(pi: ExtensionAPI): void {
 
       if (args.trim()) {
         store.appendLearning(args.trim());
-        ctx.ui.notify("Learning captured.", "info");
+        if (ctx.hasUI) ctx.ui.notify("Learning captured.", "info");
       } else {
         const learning = await ctx.ui.input("What did you learn?");
         if (learning?.trim()) {
           store.appendLearning(learning.trim());
-          ctx.ui.notify("Learning captured.", "info");
+          if (ctx.hasUI) ctx.ui.notify("Learning captured.", "info");
         }
       }
     },
@@ -601,67 +453,104 @@ export default function megapowers(pi: ExtensionAPI): void {
       return filtered.length > 0 ? filtered.map((s) => ({ value: s, label: s })) : null;
     },
     handler: async (args, ctx) => {
+      if (!store) store = createStore(ctx.cwd);
+      if (!ui) ui = createUI();
       const sub = args.trim();
 
       if (sub === "skip") {
+        const state = readState(ctx.cwd);
         if (state.phase !== "implement") {
-          ctx.ui.notify("Not in implement phase.", "info");
+          if (ctx.hasUI) ctx.ui.notify("Not in implement phase.", "info");
           return;
         }
-        // Initialize or reinitialize TDD state for current task
-        const currentTask = (state.planTasks ?? [])[state.currentTaskIndex];
+        const tasks = state.activeIssue ? deriveTasks(ctx.cwd, state.activeIssue) : [];
+        const currentTask = tasks[state.currentTaskIndex];
         if (!currentTask) {
-          ctx.ui.notify("No active task to skip TDD for.", "info");
+          if (ctx.hasUI) ctx.ui.notify("No active task to skip TDD for.", "info");
           return;
         }
-        if (!state.tddTaskState || state.tddTaskState.taskIndex !== currentTask.index) {
-          state.tddTaskState = {
-            taskIndex: currentTask.index,
-            state: "no-test",
-            skipped: false,
-          };
+        const taskIndex = currentTask.index;
+        const tddState = state.tddTaskState?.taskIndex === taskIndex
+          ? state.tddTaskState
+          : { taskIndex, state: "no-test" as const, skipped: false };
+        writeState(ctx.cwd, {
+          ...state,
+          tddTaskState: { ...tddState, skipped: true, skipReason: "User-approved runtime skip" },
+        });
+        if (ctx.hasUI) {
+          ctx.ui.notify("TDD enforcement skipped for current task.", "info");
+          ui.renderDashboard(ctx, readState(ctx.cwd), store);
         }
-        state.tddTaskState = {
-          ...state.tddTaskState,
-          skipped: true,
-          skipReason: "User-approved runtime skip",
-        };
-        if (store) store.saveState(state);
-        ctx.ui.notify("TDD enforcement skipped for current task.", "info");
-        if (ui) ui.renderDashboard(ctx, state, store);
         return;
       }
 
       if (sub === "status") {
+        const state = readState(ctx.cwd);
         const tddInfo = state.tddTaskState
           ? `Task ${state.tddTaskState.taskIndex}: ${state.tddTaskState.state}${state.tddTaskState.skipped ? " (skipped)" : ""}`
           : "No active TDD state";
-        ctx.ui.notify(`TDD Guard: ${tddInfo}\nPhase: ${state.phase ?? "none"}`, "info");
+        if (ctx.hasUI) ctx.ui.notify(`TDD Guard: ${tddInfo}\nPhase: ${state.phase ?? "none"}`, "info");
         return;
       }
 
-      ctx.ui.notify("Usage: /tdd skip | /tdd status", "info");
+      if (ctx.hasUI) ctx.ui.notify("Usage: /tdd skip | /tdd status", "info");
     },
   });
 
-  pi.registerTool({
-    name: "create_batch",
-    description: "Create a batch issue grouping source issues.",
-    parameters: Type.Object({
-      title: Type.String(),
-      type: StringEnum(["bugfix", "feature"] as const),
-      sourceIds: Type.Array(Type.Number()),
-      description: Type.String(),
-    }),
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+  pi.registerCommand("task", {
+    description: "Task management (usage: /task done)",
+    getArgumentCompletions: (prefix) => {
+      const subs = ["done"];
+      const filtered = subs.filter((s) => s.startsWith(prefix));
+      return filtered.length > 0 ? filtered.map((s) => ({ value: s, label: s })) : null;
+    },
+    handler: async (args, ctx) => {
       if (!store) store = createStore(ctx.cwd);
-      const result = createBatchHandler(store, params);
-      if ("error" in result) {
-        return { content: [{ type: "text", text: result.error }] };
+      if (!jj) jj = createJJ(pi);
+      if (!ui) ui = createUI();
+      const sub = args.trim();
+
+      if (sub === "done") {
+        const result = handleSignal(ctx.cwd, "task_done", jj);
+        if (result.error) {
+          if (ctx.hasUI) ctx.ui.notify(result.error, "error");
+        } else {
+          if (ctx.hasUI) {
+            ctx.ui.notify(result.message ?? "Task marked complete.", "info");
+            ui.renderDashboard(ctx, readState(ctx.cwd), store);
+          }
+        }
+        return;
       }
-      return {
-        content: [{ type: "text", text: `Created batch: ${result.slug} (id: ${result.id})` }],
-      };
+
+      if (ctx.hasUI) ctx.ui.notify("Usage: /task done", "info");
+    },
+  });
+
+  pi.registerCommand("review", {
+    description: "Review management (usage: /review approve)",
+    getArgumentCompletions: (prefix) => {
+      const subs = ["approve"];
+      const filtered = subs.filter((s) => s.startsWith(prefix));
+      return filtered.length > 0 ? filtered.map((s) => ({ value: s, label: s })) : null;
+    },
+    handler: async (args, ctx) => {
+      if (!store) store = createStore(ctx.cwd);
+      if (!jj) jj = createJJ(pi);
+      if (!ui) ui = createUI();
+      const sub = args.trim();
+
+      if (sub === "approve") {
+        const result = handleSignal(ctx.cwd, "review_approve");
+        if (result.error) {
+          if (ctx.hasUI) ctx.ui.notify(result.error, "error");
+        } else {
+          if (ctx.hasUI) ctx.ui.notify(result.message ?? "Review approved.", "info");
+        }
+        return;
+      }
+
+      if (ctx.hasUI) ctx.ui.notify("Usage: /review approve", "info");
     },
   });
 }

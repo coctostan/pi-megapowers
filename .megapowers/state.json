@@ -2,7 +2,7 @@
   "version": 1,
   "activeIssue": "030-state-source-of-truth-refactor",
   "workflow": "feature",
-  "phase": "implement",
+  "phase": "verify",
   "phaseHistory": [
     {
       "from": "brainstorm",
@@ -38,13 +38,18 @@
       "from": "plan",
       "to": "implement",
       "timestamp": 1771878436010
+    },
+    {
+      "from": "implement",
+      "to": "verify",
+      "timestamp": 1771883110036
     }
   ],
   "reviewApproved": false,
-  "currentTaskIndex": 8,
+  "currentTaskIndex": 9,
   "completedTasks": [],
   "tddTaskState": {
-    "taskIndex": 8,
+    "taskIndex": 9,
     "state": "test-written",
     "skipped": false
   },
@@ -104,7 +109,7 @@
     {
       "index": 9,
       "description": "**Task 15 — incomplete** — Says \"full implementations follow the same pattern\" for `/issue`, `/done`, `/learn`, `/triage` and `create_batch`. That's ~200 lines of existing functionality that needs porting. Should include full code or split into sub-tasks.",
-      "completed": false,
+      "completed": true,
       "noTest": false
     }
   ],
