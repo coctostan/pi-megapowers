@@ -41,6 +41,17 @@
     }
   ],
   "reviewApproved": false,
+  "currentTaskIndex": 2,
+  "completedTasks": [],
+  "tddTaskState": {
+    "taskIndex": 2,
+    "state": "test-written",
+    "skipped": false
+  },
+  "taskJJChanges": {},
+  "jjChangeId": null,
+  "doneMode": null,
+  "megaEnabled": true,
   "planTasks": [
     {
       "index": 1,
@@ -51,7 +62,7 @@
     {
       "index": 2,
       "description": "**Task 3 (AC10) — `hasOpenQuestions` too loose** — Current impl treats any non-sentinel non-blank line as an open question. Spec says only list items (`- `, `1. `) containing `?` count. Needs tightening.",
-      "completed": false,
+      "completed": true,
       "noTest": false
     },
     {
@@ -97,14 +108,5 @@
       "noTest": false
     }
   ],
-  "jjChangeId": null,
-  "acceptanceCriteria": [],
-  "currentTaskIndex": 1,
-  "tddTaskState": {
-    "taskIndex": 1,
-    "state": "test-written",
-    "skipped": false
-  },
-  "taskJJChanges": {},
-  "doneMode": null
+  "acceptanceCriteria": []
 }

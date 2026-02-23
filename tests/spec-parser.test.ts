@@ -93,6 +93,50 @@ describe("hasOpenQuestions", () => {
   });
 });
 
+describe("hasOpenQuestions — sentinel detection", () => {
+  const sentinels = [
+    "None", "None.", "N/A", "n/a", "No open questions", "No open questions.",
+    "(none)", "(None)", "- None", "- N/A", "1. None", "* None",
+  ];
+
+  for (const sentinel of sentinels) {
+    it(`returns false for "${sentinel}"`, () => {
+      const spec = `## Acceptance Criteria\n1. Works\n\n## Open Questions\n${sentinel}\n`;
+      expect(hasOpenQuestions(spec)).toBe(false);
+    });
+  }
+
+  it("returns false for empty section", () => {
+    const spec = `## Acceptance Criteria\n1. Works\n\n## Open Questions\n\n## Out of Scope\n`;
+    expect(hasOpenQuestions(spec)).toBe(false);
+  });
+
+  it("returns false for non-list commentary without question marks", () => {
+    const spec = `## Open Questions\nNo outstanding questions at this time.\n`;
+    expect(hasOpenQuestions(spec)).toBe(false);
+  });
+
+  it("returns true for list items with question marks", () => {
+    const spec = `## Open Questions\n- What about edge case X?\n- Should we support Y?\n`;
+    expect(hasOpenQuestions(spec)).toBe(true);
+  });
+
+  it("returns true for numbered items with question marks", () => {
+    const spec = `## Open Questions\n1. How should we handle auth?\n2. What's the migration path?\n`;
+    expect(hasOpenQuestions(spec)).toBe(true);
+  });
+
+  it("returns false for list items without question marks", () => {
+    const spec = `## Open Questions\n- None at this time\n- All resolved\n`;
+    expect(hasOpenQuestions(spec)).toBe(false);
+  });
+
+  it("returns true when mix of sentinel and real question", () => {
+    const spec = `## Open Questions\n- None\n- But what about caching?\n`;
+    expect(hasOpenQuestions(spec)).toBe(true);
+  });
+});
+
 describe("extractFixedWhenCriteria", () => {
   it("extracts numbered criteria from ## Fixed When section", () => {
     const diagnosis = `# Diagnosis\n\n## Root Cause\nThe regex is wrong.\n\n## Fixed When\n1. Parser correctly handles multi-line input\n2. Edge case with empty string returns empty array\n`;
