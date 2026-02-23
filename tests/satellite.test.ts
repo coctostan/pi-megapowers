@@ -1,10 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { isSatelliteMode, loadSatelliteState } from "../extensions/megapowers/satellite.js";
-import { createInitialState } from "../extensions/megapowers/state-machine.js";
-import { createStore } from "../extensions/megapowers/store.js";
-import { mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
+import { describe, it, expect } from "bun:test";
+import { isSatelliteMode } from "../extensions/megapowers/satellite.js";
+import { readFileSync } from "node:fs";
 
 describe("isSatelliteMode", () => {
   it("returns false when TTY is attached and no subagent signal", () => {
@@ -28,33 +24,10 @@ describe("isSatelliteMode", () => {
   });
 });
 
-describe("loadSatelliteState", () => {
-  let tmp: string;
-
-  beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), "megapowers-satellite-test-"));
-  });
-
-  afterEach(() => {
-    rmSync(tmp, { recursive: true, force: true });
-  });
-
-  it("returns frozen state from store", () => {
-    const store = createStore(tmp);
-    const state = createInitialState();
-    state.activeIssue = "001-test";
-    state.phase = "implement";
-    store.saveState(state);
-
-    const loaded = loadSatelliteState(tmp);
-    expect(loaded.activeIssue).toBe("001-test");
-    expect(loaded.phase).toBe("implement");
-    expect(() => { (loaded as any).phase = "plan"; }).toThrow();
-  });
-
-  it("returns frozen initial state when no state file exists", () => {
-    const loaded = loadSatelliteState(tmp);
-    expect(loaded.activeIssue).toBeNull();
-    expect(() => { (loaded as any).phase = "plan"; }).toThrow();
+describe("satellite module cleanup", () => {
+  it("does not export loadSatelliteState or depend on createStore", () => {
+    const source = readFileSync("extensions/megapowers/satellite.ts", "utf8");
+    expect(source).not.toContain("loadSatelliteState");
+    expect(source).not.toContain("createStore");
   });
 });

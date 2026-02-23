@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createStore } from "../extensions/megapowers/store.js";
 import { createBatchHandler } from "../extensions/megapowers/tools.js";
+import { readState } from "../extensions/megapowers/state-io.js";
 
 let tmp: string;
 let store: ReturnType<typeof createStore>;
@@ -82,14 +83,14 @@ describe("createBatchHandler", () => {
 
   it("does not change workflow state (AC 6)", () => {
     store.createIssue("Bug A", "bugfix", "desc");
-    const stateBefore = store.loadState();
+    const stateBefore = readState(tmp);
     createBatchHandler(store, {
       title: "Batch",
       type: "bugfix",
       sourceIds: [1],
       description: "desc",
     });
-    const stateAfter = store.loadState();
+    const stateAfter = readState(tmp);
     expect(stateAfter.activeIssue).toBe(stateBefore.activeIssue);
     expect(stateAfter.phase).toBe(stateBefore.phase);
     expect(stateAfter.workflow).toBe(stateBefore.workflow);

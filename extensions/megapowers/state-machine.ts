@@ -13,7 +13,6 @@ export interface PhaseTransition {
   jjChangeId?: string;
 }
 
-// Define TddTaskState locally instead of importing from tdd-guard.ts
 export type TddState = "no-test" | "test-written" | "impl-allowed";
 
 export interface TddTaskState {
@@ -52,12 +51,6 @@ export interface MegapowersState {
   jjChangeId: string | null;
   doneMode: "generate-docs" | "capture-learnings" | "write-changelog" | "generate-bugfix-summary" | null;
   megaEnabled: boolean;
-
-  // --- DEPRECATED: kept for compilation during migration, removed in Task 15 ---
-  /** @deprecated Use completedTasks + deriveTasks() instead */
-  planTasks?: PlanTask[];
-  /** @deprecated Use deriveAcceptanceCriteria() instead */
-  acceptanceCriteria?: AcceptanceCriterion[];
 }
 
 // --- Transition Tables ---
@@ -106,7 +99,6 @@ export function createInitialState(): MegapowersState {
     jjChangeId: null,
     doneMode: null,
     megaEnabled: true,
-    // planTasks and acceptanceCriteria intentionally omitted from initial state
   };
 }
 
@@ -155,11 +147,6 @@ export function transition(state: MegapowersState, to: Phase, tasks?: PlanTask[]
     next.currentTaskIndex = firstIncomplete >= 0 ? firstIncomplete : 0;
     next.taskJJChanges = {};  // Reset per-task changes on re-entry
   } else if (to === "implement") {
-    // Fallback: use deprecated planTasks if no tasks provided
-    if (state.planTasks && state.planTasks.length > 0) {
-      next.currentTaskIndex = state.planTasks.findIndex(t => !t.completed);
-      if (next.currentTaskIndex === -1) next.currentTaskIndex = 0;
-    }
     next.taskJJChanges = {};
   }
 

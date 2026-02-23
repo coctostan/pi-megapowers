@@ -64,6 +64,14 @@ describe("getPhasePromptTemplate", () => {
   });
 });
 
+describe("prompts module cleanup", () => {
+  it("does not contain buildPhasePrompt helper", () => {
+    const { readFileSync } = require("node:fs");
+    const source = readFileSync("extensions/megapowers/prompts.ts", "utf8");
+    expect(source).not.toContain("buildPhasePrompt(");
+  });
+});
+
 describe("PHASE_PROMPT_MAP — new phases", () => {
   it("maps code-review to a prompt file", () => {
     expect(PHASE_PROMPT_MAP["code-review"]).toBeDefined();

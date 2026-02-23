@@ -1,6 +1,3 @@
-import { createStore } from "./store.js";
-import type { MegapowersState } from "./state-machine.js";
-
 // --- Detection ---
 
 export interface SatelliteDetectionContext {
@@ -21,10 +18,3 @@ export function isSatelliteMode(ctx: SatelliteDetectionContext): boolean {
   return ctx.env.PI_SUBAGENT === "1";
 }
 
-// --- Read-only state loading ---
-
-export function loadSatelliteState(projectRoot: string): Readonly<MegapowersState> {
-  const store = createStore(projectRoot);
-  const state = store.loadState();
-  return Object.freeze(state);
-}
