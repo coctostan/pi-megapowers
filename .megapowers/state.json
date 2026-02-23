@@ -41,10 +41,10 @@
     }
   ],
   "reviewApproved": false,
-  "currentTaskIndex": 6,
+  "currentTaskIndex": 7,
   "completedTasks": [],
   "tddTaskState": {
-    "taskIndex": 6,
+    "taskIndex": 7,
     "state": "test-written",
     "skipped": false
   },
@@ -92,7 +92,7 @@
     {
       "index": 7,
       "description": "**Task 11 — test import mismatch** — Test imports `checkBashOverride`, impl exports `processBashResult`.",
-      "completed": false,
+      "completed": true,
       "noTest": false
     },
     {
