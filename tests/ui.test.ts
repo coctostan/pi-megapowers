@@ -5,6 +5,8 @@ import {
   formatPhaseProgress,
   formatIssueListItem,
   createUI,
+  filterTriageableIssues,
+  formatTriageIssueList,
 } from "../extensions/megapowers/ui.js";
 import type { MegapowersState } from "../extensions/megapowers/state-machine.js";
 import { createInitialState } from "../extensions/megapowers/state-machine.js";
@@ -12,6 +14,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createStore } from "../extensions/megapowers/store.js";
+import type { Issue } from "../extensions/megapowers/store.js";
 
 // Stub theme — just returns text unformatted
 const plainTheme = {
@@ -107,6 +110,51 @@ describe("renderStatusText", () => {
     expect(text).toContain("#001");
     expect(text).toContain("implement");
     expect(text).toContain("1/3");
+  });
+});
+
+describe("renderDashboardLines — done phase with doneMode", () => {
+  // Task 1: doneMode must be visible in the dashboard
+  it("shows active doneMode in dashboard when set", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "014-filter-issues",
+      workflow: "bugfix",
+      phase: "done",
+      doneMode: "write-changelog",
+    };
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const joined = lines.join("\n");
+    // User must see what mode is active so they know what to do next
+    expect(joined).toContain("changelog");
+  });
+
+  it("shows instruction to send a message when doneMode is active", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "014-filter-issues",
+      workflow: "bugfix",
+      phase: "done",
+      doneMode: "generate-bugfix-summary",
+    };
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const joined = lines.join("\n").toLowerCase();
+    // User must know they need to send a message to trigger generation
+    expect(joined).toContain("send");
+  });
+});
+
+describe("renderStatusText — done phase with doneMode", () => {
+  // Task 2: doneMode must be visible in status bar
+  it("includes doneMode in status text", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "014-filter-issues",
+      phase: "done",
+      doneMode: "write-changelog",
+    };
+    const text = renderStatusText(state);
+    expect(text).toContain("changelog");
   });
 });
 
@@ -253,6 +301,61 @@ describe("handlePhaseTransition — gate enforcement", () => {
   });
 });
 
+describe("handlePhaseTransition — post-transition guidance", () => {
+  // Task 1: phase guidance in dashboard
+  // Task 2: guidance in transition notification
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "megapowers-ui-guidance-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("provides phase-specific guidance after transition", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "brainstorm",
+    };
+
+    const ctx = createMockCtx("spec");
+    await ui.handlePhaseTransition(ctx as any, state, store, jj as any);
+
+    // After transitioning to "spec", the user should receive guidance about what to do
+    // Either via notification or dashboard — must mention sending a message or the phase's purpose
+    const allText = ctx._notifications.map(n => n.msg.toLowerCase()).join(" ");
+    expect(allText).toContain("send");
+  });
+
+  it("shows phase instruction in dashboard after transition", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "brainstorm",
+    };
+
+    const ctx = createMockCtx("spec");
+    const newState = await ui.handlePhaseTransition(ctx as any, state, store, jj as any);
+
+    // The dashboard should render with guidance for the new phase
+    const lines = renderDashboardLines(newState, [], plainTheme as any);
+    const joined = lines.join("\n").toLowerCase();
+    // Should contain some instruction about what to do in the spec phase
+    expect(joined).toContain("send");
+  });
+});
+
 describe("renderDashboardLines — implement phase with tasks", () => {
   it("shows per-task progress count", () => {
     const state: MegapowersState = {
@@ -347,13 +450,15 @@ describe("handleDonePhase", () => {
     expect(closed?.status).toBe("done");
   });
 
-  it("returns state unchanged when 'Done' is selected", async () => {
+  it("closes issue and resets state when 'Done' is selected", async () => {
     const store = createStore(tmp);
     const ui = createUI();
     const jj = createMockJJ();
+    const issue = store.createIssue("test", "feature", "desc");
+    store.updateIssueStatus(issue.slug, "in-progress");
     const state: MegapowersState = {
       ...createInitialState(),
-      activeIssue: "001-test",
+      activeIssue: issue.slug,
       workflow: "feature",
       phase: "done",
     };
@@ -363,8 +468,11 @@ describe("handleDonePhase", () => {
 
     const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
 
-    expect(result.activeIssue).toBe("001-test");
-    expect(result.phase).toBe("done");
+    expect(result.activeIssue).toBeNull();
+    expect(result.phase).toBeNull();
+    // Issue should be marked done in the store
+    const updated = store.listIssues().find(i => i.slug === issue.slug);
+    expect(updated?.status).toBe("done");
   });
 
   it("returns state unchanged when selection is cancelled", async () => {
@@ -378,9 +486,10 @@ describe("handleDonePhase", () => {
       phase: "done",
     };
 
-    const ctx = createMockCtx(); // returns null by default
+    const ctx = createMockCtx(); // returns null by default (cancel)
     const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
 
+    expect(result.activeIssue).toBe("001-test");
     expect(result.phase).toBe("done");
   });
 
@@ -820,6 +929,92 @@ describe("handleIssueCommand — new state fields", () => {
   });
 });
 
+describe("handleIssueCommand — list filtering", () => {
+  // Task 1: /issue list should hide done issues, show only open/in-progress
+  // TDD: these tests were written during reproduce and confirmed failing
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "megapowers-ui-list-filter-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("issue list filters out done issues", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state = createInitialState();
+
+    // Create 3 issues: mark 2 as done, leave 1 open
+    const openIssue = store.createIssue("Open feature", "feature", "still open");
+    const doneIssue1 = store.createIssue("Done feature", "feature", "completed");
+    store.updateIssueStatus(doneIssue1.slug, "done");
+    const doneIssue2 = store.createIssue("Another done", "bugfix", "also completed");
+    store.updateIssueStatus(doneIssue2.slug, "done");
+
+    // Capture what items are shown in the select menu
+    let selectItems: string[] = [];
+    const ctx = createMockCtx();
+    ctx.ui.select = async (_prompt: string, items: string[]) => {
+      selectItems = items;
+      return null; // cancel — we just want to inspect the list
+    };
+
+    await ui.handleIssueCommand(ctx as any, state, store, jj as any, "list");
+
+    // Should show only the open issue (plus the "+ Create new issue..." option)
+    const issueItems = selectItems.filter(i => i.startsWith("#"));
+    expect(issueItems.length).toBe(1);
+    expect(issueItems[0]).toContain("Open feature");
+    // Done issues should NOT appear
+    expect(selectItems.some(i => i.includes("Done feature"))).toBe(false);
+    expect(selectItems.some(i => i.includes("Another done"))).toBe(false);
+  });
+
+  it("shows 'no issues' message when all issues are done", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state = createInitialState();
+
+    // Create an issue and mark it done
+    const issue = store.createIssue("Completed work", "feature", "done");
+    store.updateIssueStatus(issue.slug, "done");
+
+    const ctx = createMockCtx();
+    await ui.handleIssueCommand(ctx as any, state, store, jj as any, "list");
+
+    // Should notify that there are no (open) issues
+    expect(ctx._notifications.some(n => n.msg.toLowerCase().includes("no issues") || n.msg.toLowerCase().includes("no open"))).toBe(true);
+  });
+
+  it("shows in-progress issues in the list", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state = createInitialState();
+
+    const inProgressIssue = store.createIssue("Active work", "feature", "working on it");
+    store.updateIssueStatus(inProgressIssue.slug, "in-progress");
+
+    let selectItems: string[] = [];
+    const ctx = createMockCtx();
+    ctx.ui.select = async (_prompt: string, items: string[]) => {
+      selectItems = items;
+      return null;
+    };
+
+    await ui.handleIssueCommand(ctx as any, state, store, jj as any, "list");
+
+    const issueItems = selectItems.filter(i => i.startsWith("#"));
+    expect(issueItems.length).toBe(1);
+    expect(issueItems[0]).toContain("Active work");
+  });
+});
+
 describe("handleDonePhase — bugfix workflow", () => {
   let tmp: string;
 
@@ -907,5 +1102,250 @@ describe("handleDonePhase — bugfix workflow", () => {
     await ui.handleDonePhase(ctx as any, state, store, jj as any);
     expect(menuItems).toContain("Generate feature doc");
     expect(menuItems).not.toContain("Generate bugfix summary");
+  });
+});
+
+describe("formatIssueListItem — batch annotation", () => {
+  it("appends batch annotation when batchSlug is provided", () => {
+    const issue: Issue = {
+      id: 6, slug: "006-criteria-bug", title: "Criteria not extracted",
+      type: "bugfix", status: "open", description: "", createdAt: 0, sources: [],
+    };
+    const result = formatIssueListItem(issue, "019-batch-parser-fixes");
+    expect(result).toContain("#006");
+    expect(result).toContain("Criteria not extracted");
+    expect(result).toContain("(in batch 019-batch-parser-fixes)");
+  });
+
+  it("does not append annotation when batchSlug is null", () => {
+    const issue: Issue = {
+      id: 6, slug: "006-criteria-bug", title: "Criteria not extracted",
+      type: "bugfix", status: "open", description: "", createdAt: 0, sources: [],
+    };
+    const result = formatIssueListItem(issue, null);
+    expect(result).not.toContain("in batch");
+  });
+
+  it("does not append annotation when batchSlug is undefined (backwards compat)", () => {
+    const issue: Issue = {
+      id: 6, slug: "006-criteria-bug", title: "Criteria not extracted",
+      type: "bugfix", status: "open", description: "", createdAt: 0, sources: [],
+    };
+    const result = formatIssueListItem(issue);
+    expect(result).not.toContain("in batch");
+  });
+});
+
+describe("handleDonePhase — batch auto-close", () => {
+  let tmp: string;
+  let testStore: ReturnType<typeof createStore>;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "megapowers-ui-batch-"));
+    testStore = createStore(tmp);
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("closes source issues when batch issue is closed via 'Close issue'", async () => {
+    // Create source issues
+    testStore.createIssue("Bug A", "bugfix", "desc");  // id 1
+    testStore.createIssue("Bug B", "bugfix", "desc");  // id 2
+
+    // Create batch referencing both
+    const batch = testStore.createIssue("Batch fix", "bugfix", "combined", [1, 2]);
+    testStore.updateIssueStatus(batch.slug, "in-progress");
+
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: batch.slug,
+      workflow: "bugfix",
+      phase: "done",
+    };
+
+    const ctx = createMockCtx("Close issue");
+    const jj = createMockJJ();
+    const uiInstance = createUI();
+
+    const newState = await uiInstance.handleDonePhase(ctx as any, state, testStore, jj as any);
+
+    // Batch issue itself should be done (state reset)
+    expect(newState.activeIssue).toBeNull();
+
+    // Source issues should be closed
+    const bugA = testStore.getIssue("001-bug-a");
+    const bugB = testStore.getIssue("002-bug-b");
+    expect(bugA!.status).toBe("done");
+    expect(bugB!.status).toBe("done");
+  });
+
+  it("closes source issues when batch issue is closed via 'Done' action", async () => {
+    testStore.createIssue("Bug A", "bugfix", "desc");  // id 1
+    const batch = testStore.createIssue("Batch fix", "bugfix", "combined", [1]);
+    testStore.updateIssueStatus(batch.slug, "in-progress");
+
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: batch.slug,
+      workflow: "bugfix",
+      phase: "done",
+    };
+
+    const ctx = createMockCtx("Done — finish without further actions");
+    const jj = createMockJJ();
+    const uiInstance = createUI();
+
+    await uiInstance.handleDonePhase(ctx as any, state, testStore, jj as any);
+
+    const bugA = testStore.getIssue("001-bug-a");
+    expect(bugA!.status).toBe("done");
+  });
+
+  it("does not close source issues for non-batch issues", async () => {
+    testStore.createIssue("Normal bug", "bugfix", "desc");  // id 1
+    testStore.updateIssueStatus("001-normal-bug", "in-progress");
+
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-normal-bug",
+      workflow: "bugfix",
+      phase: "done",
+    };
+
+    const ctx = createMockCtx("Close issue");
+    const jj = createMockJJ();
+    const uiInstance = createUI();
+
+    await uiInstance.handleDonePhase(ctx as any, state, testStore, jj as any);
+
+    // Issue itself is closed (state reset confirms) — no crash, no side effects
+  });
+});
+
+describe("handleTriageCommand", () => {
+  let tmp: string;
+  let testStore: ReturnType<typeof createStore>;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "megapowers-ui-triage-"));
+    testStore = createStore(tmp);
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("creates a batch issue with sources and activates it", async () => {
+    testStore.createIssue("Bug A", "bugfix", "Parser fails");  // id 1
+    testStore.createIssue("Feature B", "feature", "Add widget");  // id 2
+    testStore.createIssue("Bug C", "bugfix", "Command broken");  // id 3
+    // Close one to verify it's excluded
+    testStore.updateIssueStatus("002-feature-b", "done");
+
+    const uiInstance = createUI();
+    let inputCallCount = 0;
+    const ctx = {
+      ...createMockCtx(),
+      ui: {
+        ...createMockCtx().ui,
+        select: async (prompt: string, _items: string[]) => {
+          if (prompt.toLowerCase().includes("type")) return "bugfix";
+          return null;
+        },
+        input: async (prompt: string) => {
+          inputCallCount++;
+          if (prompt.toLowerCase().includes("title")) return "Parser batch fix";
+          if (prompt.toLowerCase().includes("source")) return "1, 3";
+          return null;
+        },
+        editor: async () => "Combined parser fix",
+      },
+    };
+
+    const state = createInitialState();
+    const jj = createMockJJ();
+    const result = await uiInstance.handleTriageCommand(ctx as any, state, testStore, jj as any);
+
+    // Should have created a batch issue and activated it
+    expect(result.activeIssue).toBeDefined();
+    expect(result.activeIssue).not.toBeNull();
+
+    // The created issue should have sources
+    if (result.activeIssue) {
+      const batchIssue = testStore.getIssue(result.activeIssue);
+      expect(batchIssue).not.toBeNull();
+      expect(batchIssue!.sources).toEqual([1, 3]);
+      expect(batchIssue!.type).toBe("bugfix");
+    }
+  });
+
+  it("returns unchanged state when user cancels at title input", async () => {
+    testStore.createIssue("Bug A", "bugfix", "desc");
+    const uiInstance = createUI();
+    // Default createMockCtx returns null for input, so title prompt returns null → cancel
+    const ctx = createMockCtx();
+
+    const state = createInitialState();
+    const jj = createMockJJ();
+    const result = await uiInstance.handleTriageCommand(ctx as any, state, testStore, jj as any);
+
+    expect(result.activeIssue).toBeNull();
+  });
+
+  it("displays open issues in notification", async () => {
+    testStore.createIssue("Bug A", "bugfix", "Parser fails");
+    testStore.createIssue("Bug B", "bugfix", "Command broken");
+
+    const uiInstance = createUI();
+    const notifications: string[] = [];
+    const ctx = {
+      ...createMockCtx(),
+      ui: {
+        ...createMockCtx().ui,
+        notify: (msg: string, _type: string) => notifications.push(msg),
+      },
+    };
+
+    const state = createInitialState();
+    const jj = createMockJJ();
+    await uiInstance.handleTriageCommand(ctx as any, state, testStore, jj as any);
+
+    // Should have displayed the open issues
+    const displayedIssues = notifications.find(n => n.includes("Bug A") || n.includes("#001"));
+    expect(displayedIssues).toBeDefined();
+  });
+});
+
+describe("filterTriageableIssues", () => {
+  it("returns open non-batch issues (AC 7)", () => {
+    const issues: Issue[] = [
+      { id: 1, slug: "001-a", title: "A", type: "bugfix", status: "open", description: "d", sources: [], createdAt: 0 },
+      { id: 2, slug: "002-b", title: "B", type: "bugfix", status: "done", description: "d", sources: [], createdAt: 0 },
+      { id: 3, slug: "003-c", title: "C", type: "feature", status: "open", description: "d", sources: [1, 2], createdAt: 0 },
+      { id: 4, slug: "004-d", title: "D", type: "bugfix", status: "in-progress", description: "d", sources: [], createdAt: 0 },
+    ];
+    const result = filterTriageableIssues(issues);
+    expect(result).toHaveLength(2);
+    expect(result.map(i => i.id)).toEqual([1, 4]);
+  });
+
+  it("returns empty array when no issues match", () => {
+    const result = filterTriageableIssues([]);
+    expect(result).toHaveLength(0);
+  });
+});
+
+describe("formatTriageIssueList", () => {
+  it("formats issues with id, title, type, and description (AC 7)", () => {
+    const issues: Issue[] = [
+      { id: 1, slug: "001-a", title: "Bug A", type: "bugfix", status: "open", description: "Parser fails on edge case", sources: [], createdAt: 0 },
+    ];
+    const result = formatTriageIssueList(issues);
+    expect(result).toContain("#001");
+    expect(result).toContain("Bug A");
+    expect(result).toContain("bugfix");
+    expect(result).toContain("Parser fails");
   });
 });

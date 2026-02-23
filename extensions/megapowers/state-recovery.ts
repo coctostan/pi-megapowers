@@ -9,12 +9,9 @@ export function resolveStartupState(
   fileState: MegapowersState,
   sessionEntryStates: MegapowersState[]
 ): MegapowersState {
-  if (fileState.activeIssue) {
-    return fileState;
-  }
-  let state = fileState;
-  for (const entry of sessionEntryStates) {
-    state = entry;
-  }
-  return state;
+  // File state is ALWAYS authoritative. Period.
+  // If it has an active issue, use it.
+  // If it has no active issue, that means the issue was completed or reset — respect that.
+  // Session entries are never used. They caused state resurrection bugs.
+  return fileState;
 }

@@ -1,7 +1,7 @@
 ---
 id: 2
 type: bugfix
-status: open
+status: done
 created: 2026-02-22T16:55:00.000Z
 ---
 

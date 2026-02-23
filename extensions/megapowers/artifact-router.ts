@@ -34,33 +34,45 @@ export function processAgentOutput(
   }
 
   if (phase === "spec" && text.length > 100) {
-    artifacts.push({ filename: "spec.md", content: text });
-    const criteria = extractAcceptanceCriteria(text);
-    if (criteria.length > 0) {
-      stateUpdate.acceptanceCriteria = criteria;
+    // Require structural marker to avoid overwriting spec with conversational responses
+    if (/##\s+Acceptance Criteria/i.test(text) || /##\s+(Goal|Overview|Scope)/i.test(text)) {
+      artifacts.push({ filename: "spec.md", content: text });
+      const criteria = extractAcceptanceCriteria(text);
+      if (criteria.length > 0) {
+        stateUpdate.acceptanceCriteria = criteria;
+      }
+      notifications.push(`Spec saved. ${criteria.length} acceptance criteria extracted.`);
     }
-    notifications.push(`Spec saved. ${criteria.length} acceptance criteria extracted.`);
   }
 
   if (phase === "plan" && text.length > 100) {
-    artifacts.push({ filename: "plan.md", content: text });
-    const tasks = extractPlanTasks(text);
-    stateUpdate.planTasks = tasks;
-    stateUpdate.currentTaskIndex = 0;
-    stateUpdate.tddTaskState = null;
-    notifications.push(`Plan saved. ${tasks.length} tasks extracted.`);
+    // Require task headers to avoid overwriting plan with conversational responses
+    if (/###\s+Task\s+\d/i.test(text) || /^\d+\.\s+\*\*Task/m.test(text)) {
+      artifacts.push({ filename: "plan.md", content: text });
+      const tasks = extractPlanTasks(text);
+      stateUpdate.planTasks = tasks;
+      stateUpdate.currentTaskIndex = 0;
+      stateUpdate.tddTaskState = null;
+      notifications.push(`Plan saved. ${tasks.length} tasks extracted.`);
+    }
   }
 
   if (phase === "reproduce" && text.length > 100) {
-    artifacts.push({ filename: "reproduce.md", content: text });
-    notifications.push("Reproduction report saved.");
+    // Require structural marker for reproduction reports
+    if (/##\s+(Steps to Reproduce|Reproduction|Environment|Actual|Expected)/i.test(text)) {
+      artifacts.push({ filename: "reproduce.md", content: text });
+      notifications.push("Reproduction report saved.");
+    }
   }
 
   if (phase === "diagnose" && text.length > 100) {
-    artifacts.push({ filename: "diagnosis.md", content: text });
-    const criteria = extractFixedWhenCriteria(text);
-    stateUpdate.acceptanceCriteria = criteria;
-    notifications.push("Diagnosis saved.");
+    // Require structural marker for diagnosis reports
+    if (/##\s+(Root Cause|Diagnosis|Analysis|Fixed When|Fix)/i.test(text)) {
+      artifacts.push({ filename: "diagnosis.md", content: text });
+      const criteria = extractFixedWhenCriteria(text);
+      stateUpdate.acceptanceCriteria = criteria;
+      notifications.push("Diagnosis saved.");
+    }
   }
 
   if (phase === "review") {
@@ -70,7 +82,8 @@ export function processAgentOutput(
       stateUpdate.reviewApproved = true;
       notifications.push("Review: plan approved.");
     }
-    if (text.length > 100) {
+    // Require structural marker for review artifacts
+    if (text.length > 100 && /\b(verdict|status)\b[:\s]*(pass|approved|revise)/i.test(text)) {
       artifacts.push({ filename: "review.md", content: text });
     }
   }

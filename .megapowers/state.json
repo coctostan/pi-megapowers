@@ -1,94 +1,24 @@
 {
   "version": 1,
-  "activeIssue": "001-bugfix-feature",
+  "activeIssue": "026-triage-llm-driven-batching",
   "workflow": "feature",
   "phase": "implement",
   "phaseHistory": [
-    {
-      "from": "brainstorm",
-      "to": "spec",
-      "timestamp": 1771781859670
-    },
-    {
-      "from": "spec",
-      "to": "plan",
-      "timestamp": 1771782441440
-    },
-    {
-      "from": "plan",
-      "to": "review",
-      "timestamp": 1771783001558
-    },
-    {
-      "from": "review",
-      "to": "plan",
-      "timestamp": 1771792891389
-    },
-    {
-      "from": "plan",
-      "to": "implement",
-      "timestamp": 1771793075707
-    }
+    { "from": "brainstorm", "to": "spec", "timestamp": 1771862016307 },
+    { "from": "spec", "to": "plan", "timestamp": 1771862994652 },
+    { "from": "plan", "to": "review", "timestamp": 1771863913100 },
+    { "from": "review", "to": "implement", "timestamp": 1771864910671 }
   ],
-  "reviewApproved": false,
+  "reviewApproved": true,
   "planTasks": [
-    {
-      "index": 1,
-      "description": "Create reproduce-bug.md prompt template",
-      "completed": false,
-      "noTest": false
-    },
-    {
-      "index": 2,
-      "description": "Update diagnose-bug.md with optional Fixed When section",
-      "completed": false,
-      "noTest": false
-    },
-    {
-      "index": 3,
-      "description": "Create generate-bugfix-summary.md prompt template",
-      "completed": false,
-      "noTest": false
-    },
-    {
-      "index": 4,
-      "description": "Add bugfix gates (reproduce→diagnose, diagnose→plan)",
-      "completed": false,
-      "noTest": false
-    },
-    {
-      "index": 5,
-      "description": "Add reproduce artifact routing and Fixed When AC extraction",
-      "completed": false,
-      "noTest": false
-    },
-    {
-      "index": 6,
-      "description": "Add bugfix prompt variable mapping",
-      "completed": false,
-      "noTest": false
-    },
-    {
-      "index": 7,
-      "description": "Add bugfix done-phase menu to UI",
-      "completed": false,
-      "noTest": false
-    },
-    {
-      "index": 8,
-      "description": "Update MegapowersState doneMode type",
-      "completed": false,
-      "noTest": false
-    }
+    { "index": 1, "description": "Register `create_batch` tool with extracted handler", "completed": true, "noTest": false },
+    { "index": 2, "description": "Refactor `/triage` command", "completed": true, "noTest": false, "dependsOn": [1] },
+    { "index": 3, "description": "Update triage prompt template", "completed": true, "noTest": false, "dependsOn": [1] }
   ],
   "jjChangeId": null,
   "acceptanceCriteria": [],
-  "currentTaskIndex": 0,
-  "tddTaskState": {
-    "taskIndex": 1,
-    "state": "impl-allowed",
-    "skipped": false
-  },
+  "currentTaskIndex": 2,
+  "tddTaskState": null,
   "taskJJChanges": {},
   "doneMode": null
 }

@@ -1,9 +1,9 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { createInitialState, getValidTransitions, type MegapowersState, type Phase } from "./state-machine.js";
+import { createInitialState, getValidTransitions, OPEN_ENDED_PHASES, type MegapowersState, type Phase } from "./state-machine.js";
 import { createStore, type Store } from "./store.js";
 import { createJJ, formatChangeDescription, type JJ } from "./jj.js";
-import { createUI, type MegapowersUI } from "./ui.js";
-import { buildImplementTaskVars, formatAcceptanceCriteriaList, loadPromptFile, BRAINSTORM_PLAN_PHASES, interpolatePrompt, getPhasePromptTemplate } from "./prompts.js";
+import { createUI, filterTriageableIssues, formatTriageIssueList, type MegapowersUI } from "./ui.js";
+import { buildImplementTaskVars, formatAcceptanceCriteriaList, loadPromptFile, BRAINSTORM_PLAN_PHASES, interpolatePrompt, getPhasePromptTemplate, allTasksComplete, buildSourceIssuesContext } from "./prompts.js";
 import { extractPlanTasks } from "./plan-parser.js";
 import { processAgentOutput } from "./artifact-router.js";
 import { resolveStartupState } from "./state-recovery.js";
@@ -11,8 +11,11 @@ import { checkFileWrite, isTestRunnerCommand, handleTestResult, type TddTaskStat
 import { createSatelliteTddState, handleSatelliteToolCall } from "./satellite-tdd.js";
 import { shouldCreateTaskChange, createTaskChange, inspectTaskChange, buildTaskCompletionReport } from "./task-coordinator.js";
 import { isSatelliteMode, loadSatelliteState } from "./satellite.js";
+import { createBatchHandler } from "./tools.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
+import { Type } from "@sinclair/typebox";
+import { StringEnum } from "@mariozechner/pi-ai";
 
 // --- Helpers ---
 
@@ -119,6 +122,16 @@ export default function megapowers(pi: ExtensionAPI): void {
       }
     }
 
+    // Auto-advance: if in implement phase and all tasks are done, offer verify transition
+    if (state.activeIssue && state.phase === "implement" && state.planTasks.length > 0) {
+      const allDone = state.planTasks.every(t => t.completed);
+      if (allDone && ctx.hasUI) {
+        ctx.ui.notify("All implementation tasks complete. Ready to advance to verify.", "info");
+        state = await ui.handlePhaseTransition(ctx, state, store, jj);
+        pi.appendEntry("megapowers-state", state);
+      }
+    }
+
     // jj validation
     if (state.activeIssue && state.jjChangeId && await jj.isJJRepo()) {
       const currentId = await jj.getCurrentChangeId();
@@ -143,7 +156,35 @@ export default function megapowers(pi: ExtensionAPI): void {
   });
 
   pi.on("session_shutdown", async () => {
-    if (store) store.saveState(state);
+    if (store) {
+      // Check if the file has been updated externally (e.g. by another session or manual edit)
+      // Only save if our in-memory state is at least as advanced as the file state
+      const fileState = store.loadState();
+
+      // If the file state has been reset (no active issue), don't overwrite with stale in-memory state
+      if (!fileState.activeIssue && state.activeIssue) return;
+
+      // If the file state switched to a different issue, don't overwrite
+      if (fileState.activeIssue && state.activeIssue && fileState.activeIssue !== state.activeIssue) return;
+
+      const phaseOrder = ["brainstorm", "spec", "reproduce", "diagnose", "plan", "review", "implement", "verify", "code-review", "done"];
+      const filePhaseIdx = phaseOrder.indexOf(fileState.phase);
+      const memPhaseIdx = phaseOrder.indexOf(state.phase);
+      // If file is ahead of in-memory, don't overwrite
+      if (filePhaseIdx > memPhaseIdx) return;
+
+      // If both are in the same phase, protect planTasks from being overwritten with stale/empty data.
+      // The file state with more completed tasks is more advanced.
+      if (filePhaseIdx === memPhaseIdx && fileState.phase === "implement") {
+        const fileCompleted = fileState.planTasks.filter(t => t.completed).length;
+        const memCompleted = state.planTasks.filter(t => t.completed).length;
+        // Don't overwrite if file has more completed tasks, or file has tasks and memory doesn't
+        if (fileState.planTasks.length > 0 && state.planTasks.length === 0) return;
+        if (fileCompleted > memCompleted) return;
+      }
+
+      store.saveState(state);
+    }
   });
 
   // --- Prompt injection ---
@@ -247,8 +288,24 @@ export default function megapowers(pi: ExtensionAPI): void {
       vars.learnings = store.getLearnings();
     }
 
-    const finalPrompt = interpolatePrompt(template, vars);
+    // Batch issue: inject source issue content
+    if (store && state.activeIssue) {
+      const issue = store.getIssue(state.activeIssue);
+      if (issue && issue.sources.length > 0) {
+        const sourceIssues = store.getSourceIssues(state.activeIssue);
+        const sourceContext = buildSourceIssuesContext(sourceIssues);
+        if (sourceContext) {
+          vars.source_issues_context = sourceContext;
+        }
+      }
+    }
+
+    let finalPrompt = interpolatePrompt(template, vars);
     if (!finalPrompt) return;
+
+    if (vars.source_issues_context) {
+      finalPrompt = finalPrompt + "\n\n" + vars.source_issues_context;
+    }
 
     return {
       message: {
@@ -257,6 +314,31 @@ export default function megapowers(pi: ExtensionAPI): void {
         display: false,
       },
     };
+  });
+
+  // --- Artifact protection: block writes to artifacts during read-only phases ---
+
+  const READ_ONLY_PHASES: Phase[] = ["review", "verify", "code-review"];
+  const PROTECTED_ARTIFACTS = ["spec.md", "plan.md", "brainstorm.md", "reproduce.md", "diagnosis.md"];
+
+  pi.on("tool_call", async (event, _ctx) => {
+    if (!state.phase || !state.activeIssue) return;
+    if (!READ_ONLY_PHASES.includes(state.phase)) return;
+
+    const toolName = event.toolName;
+    if (toolName !== "write" && toolName !== "edit") return;
+
+    const filePath: string | undefined = (event.input as any)?.path;
+    if (!filePath) return;
+
+    // Block writes to protected artifact files (by basename match)
+    const basename = filePath.split("/").pop() ?? "";
+    if (PROTECTED_ARTIFACTS.includes(basename)) {
+      return {
+        block: true,
+        reason: `Cannot modify ${basename} during ${state.phase} phase. Artifacts are read-only in review/verify/code-review.`,
+      };
+    }
   });
 
   // --- TDD Guard: intercept file writes ---
@@ -368,7 +450,9 @@ export default function megapowers(pi: ExtensionAPI): void {
     }
 
     // Interactive-only: offer phase transition and update dashboard
-    if (ctx.hasUI) {
+    // Open-ended phases (brainstorm, reproduce, diagnose) suppress auto-prompts —
+    // transitions happen only via explicit /phase next command.
+    if (ctx.hasUI && !OPEN_ENDED_PHASES.has(phase)) {
       const validNext = getValidTransitions(state.workflow, phase);
       if (validNext.length > 0) {
         state = await ui.handlePhaseTransition(ctx, state, store, jj);
@@ -432,6 +516,22 @@ export default function megapowers(pi: ExtensionAPI): void {
       if (!ui) ui = createUI();
       state = await ui.handleIssueCommand(ctx, state, store, jj, args);
       pi.appendEntry("megapowers-state", state);
+    },
+  });
+
+  pi.registerCommand("triage", {
+    description: "Triage open issues into batches",
+    handler: async (_args, ctx) => {
+      if (!store) store = createStore(ctx.cwd);
+      const issues = filterTriageableIssues(store.listIssues());
+      if (issues.length === 0) {
+        ctx.ui.notify("No open issues to triage.", "info");
+        return;
+      }
+      const issueList = formatTriageIssueList(issues);
+      const template = loadPromptFile("triage.md");
+      const prompt = interpolatePrompt(template, { open_issues: issueList });
+      pi.sendUserMessage(prompt);
     },
   });
 
@@ -541,6 +641,27 @@ export default function megapowers(pi: ExtensionAPI): void {
       }
 
       ctx.ui.notify("Usage: /tdd skip | /tdd status", "info");
+    },
+  });
+
+  pi.registerTool({
+    name: "create_batch",
+    description: "Create a batch issue grouping source issues.",
+    parameters: Type.Object({
+      title: Type.String(),
+      type: StringEnum(["bugfix", "feature"] as const),
+      sourceIds: Type.Array(Type.Number()),
+      description: Type.String(),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (!store) store = createStore(ctx.cwd);
+      const result = createBatchHandler(store, params);
+      if ("error" in result) {
+        return { content: [{ type: "text", text: result.error }] };
+      }
+      return {
+        content: [{ type: "text", text: `Created batch: ${result.slug} (id: ${result.id})` }],
+      };
     },
   });
 }

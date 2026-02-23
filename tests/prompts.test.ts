@@ -7,8 +7,11 @@ import {
   formatAcceptanceCriteriaList,
   loadPromptFile,
   BRAINSTORM_PLAN_PHASES,
+  allTasksComplete,
+  buildSourceIssuesContext,
 } from "../extensions/megapowers/prompts.js";
 import type { Phase } from "../extensions/megapowers/state-machine.js";
+import type { Issue } from "../extensions/megapowers/store.js";
 import type { PlanTask, AcceptanceCriterion } from "../extensions/megapowers/state-machine.js";
 
 describe("PHASE_PROMPT_MAP", () => {
@@ -117,6 +120,42 @@ describe("buildImplementTaskVars", () => {
     expect(vars.current_task_index).toBe("1");
     expect(vars.total_tasks).toBe("1");
     expect(vars.previous_task_summaries).toBe("None — this is the first task.");
+  });
+
+  it("handles all tasks complete — provides summary instead of task vars", () => {
+    const tasks: PlanTask[] = [
+      { index: 1, description: "Set up DB schema", completed: true },
+      { index: 2, description: "Create API endpoint", completed: true },
+      { index: 3, description: "Write integration tests", completed: true },
+    ];
+    const vars = buildImplementTaskVars(tasks, 3);
+    expect(vars.current_task_description).toContain("All tasks complete");
+    expect(vars.all_tasks_complete).toBe("true");
+    expect(vars.previous_task_summaries).toContain("✓ Task 1");
+    expect(vars.previous_task_summaries).toContain("✓ Task 2");
+    expect(vars.previous_task_summaries).toContain("✓ Task 3");
+  });
+});
+
+describe("allTasksComplete", () => {
+  it("returns true when all tasks are completed", () => {
+    const tasks: PlanTask[] = [
+      { index: 1, description: "A", completed: true },
+      { index: 2, description: "B", completed: true },
+    ];
+    expect(allTasksComplete(tasks)).toBe(true);
+  });
+
+  it("returns false when some tasks are incomplete", () => {
+    const tasks: PlanTask[] = [
+      { index: 1, description: "A", completed: true },
+      { index: 2, description: "B", completed: false },
+    ];
+    expect(allTasksComplete(tasks)).toBe(false);
+  });
+
+  it("returns false for empty task list", () => {
+    expect(allTasksComplete([])).toBe(false);
   });
 });
 
@@ -257,6 +296,69 @@ describe("prompt templates — bugfix plan variable injection", () => {
   });
 });
 
+describe("implement prompt — subagent delegation instructions", () => {
+  it("implement-task template includes concrete subagent tool name and invocation format", () => {
+    const template = getPhasePromptTemplate("implement");
+    // The prompt should tell the LLM the actual tool name to invoke
+    expect(template).toContain("subagent");
+    // It should include concrete invocation syntax, not just a vague mention
+    // Currently fails: the prompt says "delegate to a subagent tool (if available)"
+    // but never specifies the tool name, parameters, or agent to use
+    expect(template).toMatch(/agent.*worker|worker.*agent/i);
+  });
+
+  it("implement-task template specifies when to delegate vs work inline", () => {
+    const template = getPhasePromptTemplate("implement");
+    // The prompt should have clear criteria for delegation decisions
+    // e.g., "delegate when the task has no dependencies on incomplete tasks"
+    expect(template).toMatch(/when to delegate|delegation criteria|delegate.*independent|independent.*delegate/i);
+  });
+
+  it("buildImplementTaskVars includes information about independent tasks for delegation", () => {
+    const tasks: PlanTask[] = [
+      { index: 1, description: "Set up shared types", completed: true, noTest: false },
+      { index: 2, description: "Build auth module", completed: false, noTest: false, dependsOn: [1] },
+      { index: 3, description: "Build logging module", completed: false, noTest: false },
+    ];
+    const vars = buildImplementTaskVars(tasks, 1);
+    expect(vars).toHaveProperty("remaining_tasks");
+    // Task 3 is independent (no dependsOn, or all deps completed)
+    expect(vars.remaining_tasks).toContain("Task 3");
+  });
+
+  it("remaining_tasks marks tasks with unmet dependencies", () => {
+    const tasks: PlanTask[] = [
+      { index: 1, description: "Types", completed: false, noTest: false },
+      { index: 2, description: "Auth", completed: false, noTest: false, dependsOn: [1] },
+      { index: 3, description: "Logging", completed: false, noTest: false },
+    ];
+    const vars = buildImplementTaskVars(tasks, 0);
+    // Task 2 depends on incomplete task 1 — should be marked blocked
+    expect(vars.remaining_tasks).toContain("Task 3");
+    expect(vars.remaining_tasks).toMatch(/Task 2.*blocked|blocked.*Task 2/i);
+  });
+
+  it("remaining_tasks is sentinel when no tasks remain after current", () => {
+    const tasks: PlanTask[] = [
+      { index: 1, description: "Only task", completed: false, noTest: false },
+    ];
+    const vars = buildImplementTaskVars(tasks, 0);
+    expect(vars.remaining_tasks).toBe("None — this is the only remaining task.");
+  });
+
+  it("remaining_tasks shows tasks as ready when their dependencies are complete", () => {
+    const tasks: PlanTask[] = [
+      { index: 1, description: "Types", completed: true, noTest: false },
+      { index: 2, description: "Auth", completed: false, noTest: false, dependsOn: [1] },
+      { index: 3, description: "Logging", completed: false, noTest: false, dependsOn: [1] },
+    ];
+    const vars = buildImplementTaskVars(tasks, 1);
+    // Task 3 depends on task 1 which is complete — should be ready
+    expect(vars.remaining_tasks).toContain("Task 3");
+    expect(vars.remaining_tasks).not.toMatch(/Task 3.*blocked/i);
+  });
+});
+
 describe("prompt templates — new template files exist", () => {
   it("capture-learnings.md exists and contains {{spec_content}}", () => {
     const { readFileSync } = require("node:fs");
@@ -278,5 +380,60 @@ describe("prompt templates — new template files exist", () => {
     const content = readFileSync(join(promptsDir, "write-changelog.md"), "utf-8");
     expect(content.length).toBeGreaterThan(50);
     expect(content).toContain("{{spec_content}}");
+  });
+});
+
+describe("triage prompt template", () => {
+  it("triage.md template file exists and loads", () => {
+    const content = loadPromptFile("triage.md");
+    expect(content.length).toBeGreaterThan(0);
+  });
+
+  it("triage template contains open issues placeholder", () => {
+    const content = loadPromptFile("triage.md");
+    expect(content).toContain("{{open_issues}}");
+  });
+
+  it("triage template interpolates open issues content", () => {
+    const template = loadPromptFile("triage.md");
+    const result = interpolatePrompt(template, {
+      open_issues: "- #006 Acceptance criteria not extracted [bugfix]\n- #013 /mega does nothing [bugfix]",
+    });
+    expect(result).toContain("#006");
+    expect(result).toContain("#013");
+    expect(result).not.toContain("{{open_issues}}");
+  });
+
+  it("references create_batch tool (AC 13)", () => {
+    const content = loadPromptFile("triage.md");
+    expect(content).toContain("create_batch");
+  });
+
+  it("instructs to discuss before creating (AC 11)", () => {
+    const content = loadPromptFile("triage.md");
+    expect(content).toMatch(/before|discuss|confirm|adjust|agree/i);
+  });
+
+  it("instructs against single-issue batches (AC 12)", () => {
+    const content = loadPromptFile("triage.md");
+    expect(content).toMatch(/single.issue|one.issue|at least (two|2)/i);
+  });
+});
+
+describe("buildSourceIssuesContext", () => {
+  it("returns formatted context for source issues", () => {
+    const sources: Issue[] = [
+      { id: 6, slug: "006-criteria-bug", title: "Criteria not extracted", type: "bugfix", status: "open", description: "The parser fails to extract acceptance criteria.", createdAt: 0, sources: [] },
+      { id: 17, slug: "017-no-test-tasks", title: "No-test tasks fail", type: "bugfix", status: "open", description: "Tasks marked [no-test] are not detected as complete.", createdAt: 0, sources: [] },
+    ];
+    const result = buildSourceIssuesContext(sources);
+    expect(result).toContain("006-criteria-bug");
+    expect(result).toContain("Criteria not extracted");
+    expect(result).toContain("The parser fails to extract acceptance criteria.");
+    expect(result).toContain("017-no-test-tasks");
+  });
+
+  it("returns empty string for empty source list", () => {
+    expect(buildSourceIssuesContext([])).toBe("");
   });
 });

@@ -31,10 +31,13 @@ These phases work identically to feature mode, except:
 
 ### done
 The done-phase menu includes bugfix-specific options:
-- **Generate bugfix summary** — produces a durable summary document from all artifacts (reproduction, diagnosis, plan, files changed, learnings)
-- **Write changelog** — standard changelog entry
+- **Generate bugfix summary** — sets `doneMode` to `"generate-bugfix-summary"` and produces a durable summary document from all artifacts (reproduction, diagnosis, plan, files changed, learnings)
+- **Write changelog entry** — standard changelog entry
 - **Capture learnings** — save insights for future reference
-- **Done** — close the issue
+- **Close issue** — marks issue as done and resets state
+- **Squash task changes into phase change** — consolidates jj changes (stays in menu after)
+
+Note: Feature mode shows "Generate feature doc" instead of "Generate bugfix summary". The remaining options are shared.
 
 ## Phase Gates
 
@@ -50,3 +53,9 @@ The done-phase menu includes bugfix-specific options:
 | reproduce | `reproduce-bug.md` | `{{issue_slug}}` |
 | diagnose | `diagnose-bug.md` | `{{issue_slug}}`, `{{reproduce_content}}` |
 | done (summary) | `generate-bugfix-summary.md` | `{{issue_slug}}`, `{{reproduce_content}}`, `{{diagnosis_content}}`, `{{plan_content}}`, `{{files_changed}}`, `{{learnings}}` |
+
+## Implementation notes
+
+- **Section extraction**: Both `extractAcceptanceCriteria` (specs) and `extractFixedWhenCriteria` (diagnoses) share a common `extractNumberedSection` helper in `spec-parser.ts`. They differ only by the heading pattern matched.
+- **Variable aliasing**: In `index.ts`, bugfix mode sets `brainstorm_content = reproduce_content` and `spec_content = diagnosis_content` so that shared templates like `write-plan.md` work without modification.
+- **State type**: `MegapowersState.doneMode` includes `"generate-bugfix-summary"` alongside feature values (`"generate-docs"`, `"capture-learnings"`, `"write-changelog"`).

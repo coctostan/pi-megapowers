@@ -55,6 +55,14 @@ describe("processAgentOutput — spec phase", () => {
     expect(result.stateUpdate.acceptanceCriteria).toBeUndefined();
     expect(result.notifications).toContain("Spec saved. 0 acceptance criteria extracted.");
   });
+
+  it("rejects conversational responses without structural markers", () => {
+    const text = "The spec has 17 acceptance criteria and covers all the required functionality. Ready to move to the plan phase whenever you are. Let me know if you'd like me to revise anything.";
+    const result = processAgentOutput(text, "spec", makeState({ phase: "spec" }));
+
+    expect(result.artifacts).toHaveLength(0);
+    expect(result.notifications).toHaveLength(0);
+  });
 });
 
 describe("processAgentOutput — plan phase", () => {
@@ -79,6 +87,14 @@ describe("processAgentOutput — plan phase", () => {
 
     expect(result.stateUpdate.planTasks).toBeDefined();
     expect(result.stateUpdate.tddTaskState).toBeNull();
+  });
+
+  it("rejects conversational responses without task headers", () => {
+    const text = "Here's a summary of the plan: 8 tasks covering setup, implementation, and testing. The plan looks comprehensive and should take about 3 days. Ready to start implementation whenever you are.";
+    const result = processAgentOutput(text, "plan", makeState({ phase: "plan" }));
+
+    expect(result.artifacts).toHaveLength(0);
+    expect(result.stateUpdate.planTasks).toBeUndefined();
   });
 });
 
@@ -224,6 +240,29 @@ describe("processAgentOutput — reproduce phase", () => {
     const text = "I see the bug.";
     const result = processAgentOutput(text, "reproduce", makeState({ phase: "reproduce", workflow: "bugfix" }));
     expect(result.artifacts).toHaveLength(0);
+  });
+
+  it("rejects conversational responses without structural markers", () => {
+    const text = "I've confirmed the bug exists and can reproduce it reliably. The issue happens when the user clicks the submit button with an empty form. It occurs on both Chrome and Firefox. Ready to diagnose.";
+    const result = processAgentOutput(text, "reproduce", makeState({ phase: "reproduce", workflow: "bugfix" }));
+    expect(result.artifacts).toHaveLength(0);
+  });
+});
+
+describe("processAgentOutput — diagnose phase rejection", () => {
+  it("rejects conversational responses without structural markers", () => {
+    const text = "I've identified the issue. The parser is failing because the regex doesn't handle multi-line input correctly. The fix should be straightforward — we need to update the regex flags. Ready to plan.";
+    const result = processAgentOutput(text, "diagnose", makeState({ phase: "diagnose", workflow: "bugfix" }));
+    expect(result.artifacts).toHaveLength(0);
+  });
+});
+
+describe("processAgentOutput — review phase rejection", () => {
+  it("rejects conversational review responses without verdict", () => {
+    const text = "The plan looks solid overall. I've reviewed all 8 tasks and the dependencies are well-ordered. The testing approach is comprehensive. No major concerns — this should be ready to implement. Just let me know when you want to proceed.";
+    const result = processAgentOutput(text, "review", makeState({ phase: "review" }));
+    expect(result.artifacts).toHaveLength(0);
+    expect(result.stateUpdate.reviewApproved).toBeUndefined();
   });
 });
 

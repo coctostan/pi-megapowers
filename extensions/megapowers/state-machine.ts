@@ -20,6 +20,8 @@ export interface PlanTask {
   description: string;
   completed: boolean;
   noTest: boolean;
+  /** Task indices this task depends on — parsed from [depends: N, M] annotations */
+  dependsOn?: number[];
 }
 
 export interface AcceptanceCriterion {
@@ -66,6 +68,12 @@ const BUGFIX_TRANSITIONS: Record<BugfixPhase, BugfixPhase[]> = {
   verify: ["done"],
   done: [],
 };
+
+/**
+ * Open-ended phases suppress automatic phase-transition prompts after every message.
+ * Transitions from these phases happen only via explicit /phase next command.
+ */
+export const OPEN_ENDED_PHASES: ReadonlySet<Phase> = new Set(["brainstorm", "reproduce", "diagnose"]);
 
 // --- Functions ---
 

@@ -21,7 +21,7 @@ describe("resolveStartupState", () => {
     expect(result.phase).toBe("verify");
   });
 
-  it("uses session entries for crash recovery when file state has no active issue", () => {
+  it("ignores session entries when file state has no active issue (no resurrection)", () => {
     const fileState = createInitialState();
     const sessionState: MegapowersState = {
       ...createInitialState(),
@@ -30,11 +30,11 @@ describe("resolveStartupState", () => {
       workflow: "feature",
     };
     const result = resolveStartupState(fileState, [sessionState]);
-    expect(result.phase).toBe("implement");
-    expect(result.activeIssue).toBe("001-test");
+    expect(result.phase).toBeNull();
+    expect(result.activeIssue).toBeNull();
   });
 
-  it("uses last session entry when multiple exist", () => {
+  it("ignores multiple session entries — file state always wins", () => {
     const fileState = createInitialState();
     const session1: MegapowersState = {
       ...createInitialState(),
@@ -49,7 +49,8 @@ describe("resolveStartupState", () => {
       workflow: "feature",
     };
     const result = resolveStartupState(fileState, [session1, session2]);
-    expect(result.phase).toBe("implement");
+    expect(result.phase).toBeNull();
+    expect(result.activeIssue).toBeNull();
   });
 
   it("returns file state as-is when no session entries exist", () => {

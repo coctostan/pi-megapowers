@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Phase, PlanTask, AcceptanceCriterion } from "./state-machine.js";
+import type { Issue } from "./store.js";
 
 // --- Prompt file mapping ---
 
@@ -63,12 +64,60 @@ export function buildPhasePrompt(
 
 // --- Task implementation helpers ---
 
+/**
+ * Check if all plan tasks are completed.
+ */
+export function allTasksComplete(tasks: PlanTask[]): boolean {
+  return tasks.length > 0 && tasks.every(t => t.completed);
+}
+
+function buildRemainingTasksSummary(
+  tasks: PlanTask[],
+  currentIndex: number
+): string {
+  const remaining = tasks.filter((t, i) => i > currentIndex && !t.completed);
+  if (remaining.length === 0) {
+    return "None — this is the only remaining task.";
+  }
+
+  const completedIndices = new Set(
+    tasks.filter(t => t.completed).map(t => t.index)
+  );
+
+  return remaining
+    .map(t => {
+      const deps = t.dependsOn ?? [];
+      const unmetDeps = deps.filter(d => !completedIndices.has(d));
+      if (unmetDeps.length > 0) {
+        return `○ Task ${t.index}: ${t.description} [blocked — waiting on task(s) ${unmetDeps.join(", ")}]`;
+      }
+      return `○ Task ${t.index}: ${t.description} [ready — can be delegated to subagent]`;
+    })
+    .join("\n");
+}
+
 export function buildImplementTaskVars(
   tasks: PlanTask[],
   currentIndex: number
 ): Record<string, string> {
-  const currentTask = tasks[currentIndex];
   const total = tasks.length;
+
+  // All tasks done: provide clear summary instead of uninterpolated vars
+  if (allTasksComplete(tasks)) {
+    const summaries = tasks
+      .map(t => `✓ Task ${t.index}: ${t.description}`)
+      .join("\n");
+    return {
+      current_task_index: "—",
+      total_tasks: String(total),
+      current_task_description: "All tasks complete. Advance to verify phase.",
+      previous_task_summaries: summaries,
+      all_tasks_complete: "true",
+      remaining_tasks: "None — all tasks complete.",
+    };
+  }
+
+  const currentTask = tasks[currentIndex];
 
   let previousSummaries: string;
   if (currentIndex === 0) {
@@ -90,6 +139,8 @@ export function buildImplementTaskVars(
       ? `Task ${currentTask.index}: ${currentTask.description}`
       : "No more tasks.",
     previous_task_summaries: previousSummaries,
+    all_tasks_complete: "false",
+    remaining_tasks: buildRemainingTasksSummary(tasks, currentIndex),
   };
 }
 
@@ -97,4 +148,20 @@ export function formatAcceptanceCriteriaList(criteria: AcceptanceCriterion[]): s
   return criteria
     .map(c => `${c.id}. ${c.text} [${c.status}]`)
     .join("\n");
+}
+
+
+export function buildSourceIssuesContext(sourceIssues: Issue[]): string {
+  if (sourceIssues.length === 0) return "";
+
+  const sections = sourceIssues.map(issue => {
+    return `### Issue #${String(issue.id).padStart(3, "0")}: ${issue.title}
+- **Slug:** ${issue.slug}
+- **Type:** ${issue.type}
+- **Status:** ${issue.status}
+
+${issue.description}`;
+  });
+
+  return `## Source Issues (Batch Context)\n\nThis is a batch issue addressing the following individual issues:\n\n${sections.join("\n\n---\n\n")}`;
 }
