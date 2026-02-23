@@ -21,7 +21,44 @@
     }
   ],
   "reviewApproved": false,
-  "planTasks": [],
+  "planTasks": [
+    {
+      "index": 1,
+      "description": "Add `dependsOn` to `PlanTask` interface",
+      "completed": false,
+      "noTest": true
+    },
+    {
+      "index": 2,
+      "description": "Parse `[depends: N, M]` annotations in plan-parser",
+      "completed": false,
+      "noTest": false
+    },
+    {
+      "index": 3,
+      "description": "Add `remaining_tasks` to `buildImplementTaskVars`",
+      "completed": false,
+      "noTest": false,
+      "dependsOn": [
+        1
+      ]
+    },
+    {
+      "index": 4,
+      "description": "Update implement-task.md prompt with concrete subagent instructions",
+      "completed": false,
+      "noTest": false,
+      "dependsOn": [
+        3
+      ]
+    },
+    {
+      "index": 5,
+      "description": "Update write-plan.md to document `[depends: N]` annotation",
+      "completed": false,
+      "noTest": true
+    }
+  ],
   "jjChangeId": null,
   "acceptanceCriteria": [
     {
