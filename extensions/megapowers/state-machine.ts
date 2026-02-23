@@ -20,6 +20,7 @@ export interface PlanTask {
   description: string;
   completed: boolean;
   noTest: boolean;
+  /** Task indices this task depends on — parsed from [depends: N, M] annotations */
   dependsOn?: number[];
 }
 

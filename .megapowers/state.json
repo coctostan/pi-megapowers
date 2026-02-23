@@ -1,97 +1,13 @@
 {
   "version": 1,
-  "activeIssue": "009-implement-no-subagent-delegation",
-  "workflow": "bugfix",
-  "phase": "implement",
-  "phaseHistory": [
-    {
-      "from": "reproduce",
-      "to": "diagnose",
-      "timestamp": 1771816131573
-    },
-    {
-      "from": "diagnose",
-      "to": "plan",
-      "timestamp": 1771816459003
-    },
-    {
-      "from": "plan",
-      "to": "implement",
-      "timestamp": 1771816536221
-    }
-  ],
+  "activeIssue": null,
+  "workflow": null,
+  "phase": null,
+  "phaseHistory": [],
   "reviewApproved": false,
-  "planTasks": [
-    {
-      "index": 1,
-      "description": "Add `dependsOn` to `PlanTask` interface",
-      "completed": false,
-      "noTest": true
-    },
-    {
-      "index": 2,
-      "description": "Parse `[depends: N, M]` annotations in plan-parser",
-      "completed": false,
-      "noTest": false
-    },
-    {
-      "index": 3,
-      "description": "Add `remaining_tasks` to `buildImplementTaskVars`",
-      "completed": false,
-      "noTest": false,
-      "dependsOn": [
-        1
-      ]
-    },
-    {
-      "index": 4,
-      "description": "Update implement-task.md prompt with concrete subagent instructions",
-      "completed": false,
-      "noTest": false,
-      "dependsOn": [
-        3
-      ]
-    },
-    {
-      "index": 5,
-      "description": "Update write-plan.md to document `[depends: N]` annotation",
-      "completed": false,
-      "noTest": true
-    }
-  ],
+  "planTasks": [],
   "jjChangeId": null,
-  "acceptanceCriteria": [
-    {
-      "id": 1,
-      "text": "`PlanTask` includes optional `dependsOn?: number[]` field",
-      "status": "pending"
-    },
-    {
-      "id": 2,
-      "text": "`plan-parser.ts` extracts `[depends: N, M]` annotations into `dependsOn` arrays",
-      "status": "pending"
-    },
-    {
-      "id": 3,
-      "text": "Plans without dependency annotations parse identically to today",
-      "status": "pending"
-    },
-    {
-      "id": 4,
-      "text": "`buildImplementTaskVars()` includes `remaining_tasks` listing incomplete tasks with dependency status",
-      "status": "pending"
-    },
-    {
-      "id": 5,
-      "text": "`prompts/implement-task.md` has concrete subagent instructions: tool name, schema, and delegation criteria",
-      "status": "pending"
-    },
-    {
-      "id": 6,
-      "text": "Existing tests pass with no regressions",
-      "status": "pending"
-    }
-  ],
+  "acceptanceCriteria": [],
   "currentTaskIndex": 0,
   "tddTaskState": null,
   "taskJJChanges": {},

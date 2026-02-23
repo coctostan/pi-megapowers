@@ -1,7 +1,7 @@
 ---
 id: 9
 type: bugfix
-status: in-progress
+status: done
 created: 2026-02-22T17:00:00.000Z
 ---
 
