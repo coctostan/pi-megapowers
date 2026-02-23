@@ -5,10 +5,29 @@ Issue: {{issue_slug}}
 Phase: implement — Task {{current_task_index}} of {{total_tasks}}
 
 ## Execution Mode
-You may work on this task inline or delegate to a subagent tool (if available).
-- **Inline:** Work directly in this session. TDD is enforced via tdd-guard.
-- **Subagent:** Delegate the task. TDD is enforced in the subagent's satellite session.
-- Either way, signal task completion when done so megapowers can inspect and advance.
+
+### Work inline (default)
+Work directly in this session. TDD is enforced via tdd-guard.
+
+### Delegate to subagent (when available)
+If the `subagent` tool is available and there are independent remaining tasks, delegate them for parallel execution.
+
+**When to delegate:** Delegate a task when it is marked `[ready — can be delegated to subagent]` in the remaining tasks list below. These tasks have no unmet dependencies and can run in parallel with your current work.
+
+**How to invoke:**
+```
+subagent({ agent: "worker", task: "Implement Task N: <description>. Follow TDD: write failing test, make it pass, refactor. Files: <relevant files from plan>. Plan context: <paste relevant task section from plan>" })
+```
+
+**Do NOT delegate** when:
+- The task depends on incomplete tasks (marked `[blocked]`)
+- There is only one remaining task
+- The task modifies the same files as your current task
+
+Either way, signal task completion when done so megapowers can inspect and advance.
+
+## Remaining Tasks
+{{remaining_tasks}}
 
 ## Current Task
 {{current_task_description}}

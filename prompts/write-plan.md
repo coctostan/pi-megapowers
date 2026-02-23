@@ -22,7 +22,7 @@ For each task:
 ### Task structure:
 
 ```
-### Task N: [Name]
+### Task N: [Name] [depends: 1, 2]
 
 **Files:**
 - Create: `exact/path/to/file.ts`
@@ -39,6 +39,7 @@ For each task:
 ## Rules
 - Tasks must be **independently verifiable** — if a task has "and" in it, split it
 - Task order must **respect dependencies** — foundational pieces first
+- **Annotate dependencies** — if a task requires output from prior tasks, add `[depends: N, M]` to the title (e.g., `### Task 3: Integration [depends: 1, 2]`). Omit for tasks with no dependencies.
 - **YAGNI** — no tasks for speculative features
 - **DRY** — extract shared code into utilities, don't duplicate
 - Each acceptance criterion from the spec should be covered by at least one task

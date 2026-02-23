@@ -20,6 +20,7 @@ export interface PlanTask {
   description: string;
   completed: boolean;
   noTest: boolean;
+  dependsOn?: number[];
 }
 
 export interface AcceptanceCriterion {

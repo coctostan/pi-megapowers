@@ -294,6 +294,69 @@ describe("prompt templates — bugfix plan variable injection", () => {
   });
 });
 
+describe("implement prompt — subagent delegation instructions", () => {
+  it("implement-task template includes concrete subagent tool name and invocation format", () => {
+    const template = getPhasePromptTemplate("implement");
+    // The prompt should tell the LLM the actual tool name to invoke
+    expect(template).toContain("subagent");
+    // It should include concrete invocation syntax, not just a vague mention
+    // Currently fails: the prompt says "delegate to a subagent tool (if available)"
+    // but never specifies the tool name, parameters, or agent to use
+    expect(template).toMatch(/agent.*worker|worker.*agent/i);
+  });
+
+  it("implement-task template specifies when to delegate vs work inline", () => {
+    const template = getPhasePromptTemplate("implement");
+    // The prompt should have clear criteria for delegation decisions
+    // e.g., "delegate when the task has no dependencies on incomplete tasks"
+    expect(template).toMatch(/when to delegate|delegation criteria|delegate.*independent|independent.*delegate/i);
+  });
+
+  it("buildImplementTaskVars includes information about independent tasks for delegation", () => {
+    const tasks: PlanTask[] = [
+      { index: 1, description: "Set up shared types", completed: true, noTest: false },
+      { index: 2, description: "Build auth module", completed: false, noTest: false, dependsOn: [1] },
+      { index: 3, description: "Build logging module", completed: false, noTest: false },
+    ];
+    const vars = buildImplementTaskVars(tasks, 1);
+    expect(vars).toHaveProperty("remaining_tasks");
+    // Task 3 is independent (no dependsOn, or all deps completed)
+    expect(vars.remaining_tasks).toContain("Task 3");
+  });
+
+  it("remaining_tasks marks tasks with unmet dependencies", () => {
+    const tasks: PlanTask[] = [
+      { index: 1, description: "Types", completed: false, noTest: false },
+      { index: 2, description: "Auth", completed: false, noTest: false, dependsOn: [1] },
+      { index: 3, description: "Logging", completed: false, noTest: false },
+    ];
+    const vars = buildImplementTaskVars(tasks, 0);
+    // Task 2 depends on incomplete task 1 — should be marked blocked
+    expect(vars.remaining_tasks).toContain("Task 3");
+    expect(vars.remaining_tasks).toMatch(/Task 2.*blocked|blocked.*Task 2/i);
+  });
+
+  it("remaining_tasks is sentinel when no tasks remain after current", () => {
+    const tasks: PlanTask[] = [
+      { index: 1, description: "Only task", completed: false, noTest: false },
+    ];
+    const vars = buildImplementTaskVars(tasks, 0);
+    expect(vars.remaining_tasks).toBe("None — this is the only remaining task.");
+  });
+
+  it("remaining_tasks shows tasks as ready when their dependencies are complete", () => {
+    const tasks: PlanTask[] = [
+      { index: 1, description: "Types", completed: true, noTest: false },
+      { index: 2, description: "Auth", completed: false, noTest: false, dependsOn: [1] },
+      { index: 3, description: "Logging", completed: false, noTest: false, dependsOn: [1] },
+    ];
+    const vars = buildImplementTaskVars(tasks, 1);
+    // Task 3 depends on task 1 which is complete — should be ready
+    expect(vars.remaining_tasks).toContain("Task 3");
+    expect(vars.remaining_tasks).not.toMatch(/Task 3.*blocked/i);
+  });
+});
+
 describe("prompt templates — new template files exist", () => {
   it("capture-learnings.md exists and contains {{spec_content}}", () => {
     const { readFileSync } = require("node:fs");

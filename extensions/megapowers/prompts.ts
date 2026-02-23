@@ -70,6 +70,31 @@ export function allTasksComplete(tasks: PlanTask[]): boolean {
   return tasks.length > 0 && tasks.every(t => t.completed);
 }
 
+function buildRemainingTasksSummary(
+  tasks: PlanTask[],
+  currentIndex: number
+): string {
+  const remaining = tasks.filter((t, i) => i > currentIndex && !t.completed);
+  if (remaining.length === 0) {
+    return "None — this is the only remaining task.";
+  }
+
+  const completedIndices = new Set(
+    tasks.filter(t => t.completed).map(t => t.index)
+  );
+
+  return remaining
+    .map(t => {
+      const deps = t.dependsOn ?? [];
+      const unmetDeps = deps.filter(d => !completedIndices.has(d));
+      if (unmetDeps.length > 0) {
+        return `○ Task ${t.index}: ${t.description} [blocked — waiting on task(s) ${unmetDeps.join(", ")}]`;
+      }
+      return `○ Task ${t.index}: ${t.description} [ready — can be delegated to subagent]`;
+    })
+    .join("\n");
+}
+
 export function buildImplementTaskVars(
   tasks: PlanTask[],
   currentIndex: number
@@ -87,6 +112,7 @@ export function buildImplementTaskVars(
       current_task_description: "All tasks complete. Advance to verify phase.",
       previous_task_summaries: summaries,
       all_tasks_complete: "true",
+      remaining_tasks: "None — all tasks complete.",
     };
   }
 
@@ -113,6 +139,7 @@ export function buildImplementTaskVars(
       : "No more tasks.",
     previous_task_summaries: previousSummaries,
     all_tasks_complete: "false",
+    remaining_tasks: buildRemainingTasksSummary(tasks, currentIndex),
   };
 }
 

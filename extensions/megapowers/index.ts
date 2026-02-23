@@ -169,6 +169,17 @@ export default function megapowers(pi: ExtensionAPI): void {
       const memPhaseIdx = phaseOrder.indexOf(state.phase);
       // If file is ahead of in-memory, don't overwrite
       if (filePhaseIdx > memPhaseIdx) return;
+
+      // If both are in the same phase, protect planTasks from being overwritten with stale/empty data.
+      // The file state with more completed tasks is more advanced.
+      if (filePhaseIdx === memPhaseIdx && fileState.phase === "implement") {
+        const fileCompleted = fileState.planTasks.filter(t => t.completed).length;
+        const memCompleted = state.planTasks.filter(t => t.completed).length;
+        // Don't overwrite if file has more completed tasks, or file has tasks and memory doesn't
+        if (fileState.planTasks.length > 0 && state.planTasks.length === 0) return;
+        if (fileCompleted > memCompleted) return;
+      }
+
       store.saveState(state);
     }
   });
