@@ -1,95 +1,13 @@
 {
   "version": 1,
-  "activeIssue": "030-state-source-of-truth-refactor",
-  "workflow": "feature",
-  "phase": "done",
-  "phaseHistory": [
-    {
-      "from": "brainstorm",
-      "to": "spec",
-      "timestamp": 1771872666408
-    },
-    {
-      "from": "spec",
-      "to": "plan",
-      "timestamp": 1771873016176
-    },
-    {
-      "from": "plan",
-      "to": "review",
-      "timestamp": 1771873696357
-    },
-    {
-      "from": "review",
-      "to": "plan",
-      "timestamp": 1771874195257
-    },
-    {
-      "from": "plan",
-      "to": "review",
-      "timestamp": 1771875551886
-    },
-    {
-      "from": "review",
-      "to": "plan",
-      "timestamp": 1771876221511
-    },
-    {
-      "from": "plan",
-      "to": "implement",
-      "timestamp": 1771878436010
-    },
-    {
-      "from": "implement",
-      "to": "verify",
-      "timestamp": 1771883110036
-    },
-    {
-      "from": "verify",
-      "to": "implement",
-      "timestamp": 1771883723294
-    },
-    {
-      "from": "implement",
-      "to": "verify",
-      "timestamp": 1771883966929
-    },
-    {
-      "from": "verify",
-      "to": "code-review",
-      "timestamp": 1771884080034
-    },
-    {
-      "from": "code-review",
-      "to": "done",
-      "timestamp": 1771884751975
-    }
-  ],
+  "activeIssue": null,
+  "workflow": null,
+  "phase": null,
+  "phaseHistory": [],
   "reviewApproved": false,
-  "currentTaskIndex": 15,
-  "completedTasks": [
-    1,
-    2,
-    3,
-    4,
-    5,
-    6,
-    7,
-    8,
-    9,
-    10,
-    11,
-    12,
-    13,
-    14,
-    15,
-    16
-  ],
-  "tddTaskState": {
-    "taskIndex": 16,
-    "state": "test-written",
-    "skipped": true
-  },
+  "currentTaskIndex": 0,
+  "completedTasks": [],
+  "tddTaskState": null,
   "taskJJChanges": {},
   "jjChangeId": null,
   "doneMode": null,
