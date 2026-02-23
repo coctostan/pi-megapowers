@@ -41,10 +41,10 @@
     }
   ],
   "reviewApproved": false,
-  "currentTaskIndex": 3,
+  "currentTaskIndex": 4,
   "completedTasks": [],
   "tddTaskState": {
-    "taskIndex": 3,
+    "taskIndex": 4,
     "state": "test-written",
     "skipped": false
   },
@@ -74,7 +74,7 @@
     {
       "index": 4,
       "description": "**AC38 — `megapowers_signal`/`megapowers_save_artifact` still callable when mega off** — The tools stay registered. If prompt removal is sufficient (LLM won't know about tools it's not told about), document that. Otherwise tools need to early-return with error when `megaEnabled: false`.",
-      "completed": false,
+      "completed": true,
       "noTest": false
     },
     {
