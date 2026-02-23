@@ -2,7 +2,7 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 import { createInitialState, getValidTransitions, OPEN_ENDED_PHASES, type MegapowersState, type Phase } from "./state-machine.js";
 import { createStore, type Store } from "./store.js";
 import { createJJ, formatChangeDescription, type JJ } from "./jj.js";
-import { createUI, type MegapowersUI } from "./ui.js";
+import { createUI, filterTriageableIssues, formatTriageIssueList, type MegapowersUI } from "./ui.js";
 import { buildImplementTaskVars, formatAcceptanceCriteriaList, loadPromptFile, BRAINSTORM_PLAN_PHASES, interpolatePrompt, getPhasePromptTemplate, allTasksComplete, buildSourceIssuesContext } from "./prompts.js";
 import { extractPlanTasks } from "./plan-parser.js";
 import { processAgentOutput } from "./artifact-router.js";
@@ -11,8 +11,11 @@ import { checkFileWrite, isTestRunnerCommand, handleTestResult, type TddTaskStat
 import { createSatelliteTddState, handleSatelliteToolCall } from "./satellite-tdd.js";
 import { shouldCreateTaskChange, createTaskChange, inspectTaskChange, buildTaskCompletionReport } from "./task-coordinator.js";
 import { isSatelliteMode, loadSatelliteState } from "./satellite.js";
+import { createBatchHandler } from "./tools.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
+import { Type } from "@sinclair/typebox";
+import { StringEnum } from "@mariozechner/pi-ai";
 
 // --- Helpers ---
 
@@ -520,10 +523,15 @@ export default function megapowers(pi: ExtensionAPI): void {
     description: "Triage open issues into batches",
     handler: async (_args, ctx) => {
       if (!store) store = createStore(ctx.cwd);
-      if (!jj) jj = createJJ(pi);
-      if (!ui) ui = createUI();
-      state = await ui.handleTriageCommand(ctx, state, store, jj);
-      pi.appendEntry("megapowers-state", state);
+      const issues = filterTriageableIssues(store.listIssues());
+      if (issues.length === 0) {
+        ctx.ui.notify("No open issues to triage.", "info");
+        return;
+      }
+      const issueList = formatTriageIssueList(issues);
+      const template = loadPromptFile("triage.md");
+      const prompt = interpolatePrompt(template, { open_issues: issueList });
+      pi.sendUserMessage(prompt);
     },
   });
 
@@ -633,6 +641,27 @@ export default function megapowers(pi: ExtensionAPI): void {
       }
 
       ctx.ui.notify("Usage: /tdd skip | /tdd status", "info");
+    },
+  });
+
+  pi.registerTool({
+    name: "create_batch",
+    description: "Create a batch issue grouping source issues.",
+    parameters: Type.Object({
+      title: Type.String(),
+      type: StringEnum(["bugfix", "feature"] as const),
+      sourceIds: Type.Array(Type.Number()),
+      description: Type.String(),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (!store) store = createStore(ctx.cwd);
+      const result = createBatchHandler(store, params);
+      if ("error" in result) {
+        return { content: [{ type: "text", text: result.error }] };
+      }
+      return {
+        content: [{ type: "text", text: `Created batch: ${result.slug} (id: ${result.id})` }],
+      };
     },
   });
 }

@@ -403,6 +403,21 @@ describe("triage prompt template", () => {
     expect(result).toContain("#013");
     expect(result).not.toContain("{{open_issues}}");
   });
+
+  it("references create_batch tool (AC 13)", () => {
+    const content = loadPromptFile("triage.md");
+    expect(content).toContain("create_batch");
+  });
+
+  it("instructs to discuss before creating (AC 11)", () => {
+    const content = loadPromptFile("triage.md");
+    expect(content).toMatch(/before|discuss|confirm|adjust|agree/i);
+  });
+
+  it("instructs against single-issue batches (AC 12)", () => {
+    const content = loadPromptFile("triage.md");
+    expect(content).toMatch(/single.issue|one.issue|at least (two|2)/i);
+  });
 });
 
 describe("buildSourceIssuesContext", () => {

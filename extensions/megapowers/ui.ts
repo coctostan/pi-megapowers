@@ -160,6 +160,18 @@ function closeSourceIssues(activeIssue: string, store: Store): void {
   }
 }
 
+// --- Triage helpers (pure functions) ---
+
+export function filterTriageableIssues(issues: Issue[]): Issue[] {
+  return issues.filter(i => i.status !== "done" && i.sources.length === 0);
+}
+
+export function formatTriageIssueList(issues: Issue[]): string {
+  return issues
+    .map(i => `- #${String(i.id).padStart(3, "0")} ${i.title} [${i.type}] — ${i.description.slice(0, 120)}`)
+    .join("\n");
+}
+
 // --- Interactive UI (uses ctx.ui) ---
 
 export interface MegapowersUI {

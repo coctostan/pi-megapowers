@@ -5,6 +5,8 @@ import {
   formatPhaseProgress,
   formatIssueListItem,
   createUI,
+  filterTriageableIssues,
+  formatTriageIssueList,
 } from "../extensions/megapowers/ui.js";
 import type { MegapowersState } from "../extensions/megapowers/state-machine.js";
 import { createInitialState } from "../extensions/megapowers/state-machine.js";
@@ -1313,5 +1315,37 @@ describe("handleTriageCommand", () => {
     // Should have displayed the open issues
     const displayedIssues = notifications.find(n => n.includes("Bug A") || n.includes("#001"));
     expect(displayedIssues).toBeDefined();
+  });
+});
+
+describe("filterTriageableIssues", () => {
+  it("returns open non-batch issues (AC 7)", () => {
+    const issues: Issue[] = [
+      { id: 1, slug: "001-a", title: "A", type: "bugfix", status: "open", description: "d", sources: [], createdAt: 0 },
+      { id: 2, slug: "002-b", title: "B", type: "bugfix", status: "done", description: "d", sources: [], createdAt: 0 },
+      { id: 3, slug: "003-c", title: "C", type: "feature", status: "open", description: "d", sources: [1, 2], createdAt: 0 },
+      { id: 4, slug: "004-d", title: "D", type: "bugfix", status: "in-progress", description: "d", sources: [], createdAt: 0 },
+    ];
+    const result = filterTriageableIssues(issues);
+    expect(result).toHaveLength(2);
+    expect(result.map(i => i.id)).toEqual([1, 4]);
+  });
+
+  it("returns empty array when no issues match", () => {
+    const result = filterTriageableIssues([]);
+    expect(result).toHaveLength(0);
+  });
+});
+
+describe("formatTriageIssueList", () => {
+  it("formats issues with id, title, type, and description (AC 7)", () => {
+    const issues: Issue[] = [
+      { id: 1, slug: "001-a", title: "Bug A", type: "bugfix", status: "open", description: "Parser fails on edge case", sources: [], createdAt: 0 },
+    ];
+    const result = formatTriageIssueList(issues);
+    expect(result).toContain("#001");
+    expect(result).toContain("Bug A");
+    expect(result).toContain("bugfix");
+    expect(result).toContain("Parser fails");
   });
 });
