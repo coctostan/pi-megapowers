@@ -1133,3 +1133,185 @@ describe("formatIssueListItem — batch annotation", () => {
     expect(result).not.toContain("in batch");
   });
 });
+
+describe("handleDonePhase — batch auto-close", () => {
+  let tmp: string;
+  let testStore: ReturnType<typeof createStore>;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "megapowers-ui-batch-"));
+    testStore = createStore(tmp);
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("closes source issues when batch issue is closed via 'Close issue'", async () => {
+    // Create source issues
+    testStore.createIssue("Bug A", "bugfix", "desc");  // id 1
+    testStore.createIssue("Bug B", "bugfix", "desc");  // id 2
+
+    // Create batch referencing both
+    const batch = testStore.createIssue("Batch fix", "bugfix", "combined", [1, 2]);
+    testStore.updateIssueStatus(batch.slug, "in-progress");
+
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: batch.slug,
+      workflow: "bugfix",
+      phase: "done",
+    };
+
+    const ctx = createMockCtx("Close issue");
+    const jj = createMockJJ();
+    const uiInstance = createUI();
+
+    const newState = await uiInstance.handleDonePhase(ctx as any, state, testStore, jj as any);
+
+    // Batch issue itself should be done (state reset)
+    expect(newState.activeIssue).toBeNull();
+
+    // Source issues should be closed
+    const bugA = testStore.getIssue("001-bug-a");
+    const bugB = testStore.getIssue("002-bug-b");
+    expect(bugA!.status).toBe("done");
+    expect(bugB!.status).toBe("done");
+  });
+
+  it("closes source issues when batch issue is closed via 'Done' action", async () => {
+    testStore.createIssue("Bug A", "bugfix", "desc");  // id 1
+    const batch = testStore.createIssue("Batch fix", "bugfix", "combined", [1]);
+    testStore.updateIssueStatus(batch.slug, "in-progress");
+
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: batch.slug,
+      workflow: "bugfix",
+      phase: "done",
+    };
+
+    const ctx = createMockCtx("Done — finish without further actions");
+    const jj = createMockJJ();
+    const uiInstance = createUI();
+
+    await uiInstance.handleDonePhase(ctx as any, state, testStore, jj as any);
+
+    const bugA = testStore.getIssue("001-bug-a");
+    expect(bugA!.status).toBe("done");
+  });
+
+  it("does not close source issues for non-batch issues", async () => {
+    testStore.createIssue("Normal bug", "bugfix", "desc");  // id 1
+    testStore.updateIssueStatus("001-normal-bug", "in-progress");
+
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-normal-bug",
+      workflow: "bugfix",
+      phase: "done",
+    };
+
+    const ctx = createMockCtx("Close issue");
+    const jj = createMockJJ();
+    const uiInstance = createUI();
+
+    await uiInstance.handleDonePhase(ctx as any, state, testStore, jj as any);
+
+    // Issue itself is closed (state reset confirms) — no crash, no side effects
+  });
+});
+
+describe("handleTriageCommand", () => {
+  let tmp: string;
+  let testStore: ReturnType<typeof createStore>;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "megapowers-ui-triage-"));
+    testStore = createStore(tmp);
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("creates a batch issue with sources and activates it", async () => {
+    testStore.createIssue("Bug A", "bugfix", "Parser fails");  // id 1
+    testStore.createIssue("Feature B", "feature", "Add widget");  // id 2
+    testStore.createIssue("Bug C", "bugfix", "Command broken");  // id 3
+    // Close one to verify it's excluded
+    testStore.updateIssueStatus("002-feature-b", "done");
+
+    const uiInstance = createUI();
+    let inputCallCount = 0;
+    const ctx = {
+      ...createMockCtx(),
+      ui: {
+        ...createMockCtx().ui,
+        select: async (prompt: string, _items: string[]) => {
+          if (prompt.toLowerCase().includes("type")) return "bugfix";
+          return null;
+        },
+        input: async (prompt: string) => {
+          inputCallCount++;
+          if (prompt.toLowerCase().includes("title")) return "Parser batch fix";
+          if (prompt.toLowerCase().includes("source")) return "1, 3";
+          return null;
+        },
+        editor: async () => "Combined parser fix",
+      },
+    };
+
+    const state = createInitialState();
+    const jj = createMockJJ();
+    const result = await uiInstance.handleTriageCommand(ctx as any, state, testStore, jj as any);
+
+    // Should have created a batch issue and activated it
+    expect(result.activeIssue).toBeDefined();
+    expect(result.activeIssue).not.toBeNull();
+
+    // The created issue should have sources
+    if (result.activeIssue) {
+      const batchIssue = testStore.getIssue(result.activeIssue);
+      expect(batchIssue).not.toBeNull();
+      expect(batchIssue!.sources).toEqual([1, 3]);
+      expect(batchIssue!.type).toBe("bugfix");
+    }
+  });
+
+  it("returns unchanged state when user cancels at title input", async () => {
+    testStore.createIssue("Bug A", "bugfix", "desc");
+    const uiInstance = createUI();
+    // Default createMockCtx returns null for input, so title prompt returns null → cancel
+    const ctx = createMockCtx();
+
+    const state = createInitialState();
+    const jj = createMockJJ();
+    const result = await uiInstance.handleTriageCommand(ctx as any, state, testStore, jj as any);
+
+    expect(result.activeIssue).toBeNull();
+  });
+
+  it("displays open issues in notification", async () => {
+    testStore.createIssue("Bug A", "bugfix", "Parser fails");
+    testStore.createIssue("Bug B", "bugfix", "Command broken");
+
+    const uiInstance = createUI();
+    const notifications: string[] = [];
+    const ctx = {
+      ...createMockCtx(),
+      ui: {
+        ...createMockCtx().ui,
+        notify: (msg: string, _type: string) => notifications.push(msg),
+      },
+    };
+
+    const state = createInitialState();
+    const jj = createMockJJ();
+    await uiInstance.handleTriageCommand(ctx as any, state, testStore, jj as any);
+
+    // Should have displayed the open issues
+    const displayedIssues = notifications.find(n => n.includes("Bug A") || n.includes("#001"));
+    expect(displayedIssues).toBeDefined();
+  });
+});

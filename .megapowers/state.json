@@ -1,120 +1,15 @@
 {
   "version": 1,
-  "activeIssue": "016-batch-bugfixes-issues",
-  "workflow": "feature",
-  "phase": "implement",
-  "phaseHistory": [
-    {
-      "from": "brainstorm",
-      "to": "spec",
-      "timestamp": 1771856589572
-    },
-    {
-      "from": "spec",
-      "to": "plan",
-      "timestamp": 1771856747212
-    },
-    {
-      "from": "plan",
-      "to": "review",
-      "timestamp": 1771856928715
-    },
-    {
-      "from": "review",
-      "to": "implement",
-      "timestamp": 1771857147231
-    }
-  ],
-  "reviewApproved": true,
-  "planTasks": [
-    {
-      "index": 1,
-      "description": "Add `sources` field to Issue type and frontmatter parser",
-      "completed": true,
-      "noTest": false
-    },
-    {
-      "index": 2,
-      "description": "Add `sources` parameter to `createIssue`",
-      "completed": true,
-      "noTest": false,
-      "dependsOn": [
-        1
-      ]
-    },
-    {
-      "index": 3,
-      "description": "Add `getSourceIssues` method to store",
-      "completed": true,
-      "noTest": false,
-      "dependsOn": [
-        1
-      ]
-    },
-    {
-      "index": 4,
-      "description": "Add `getBatchForIssue` method to store",
-      "completed": true,
-      "noTest": false,
-      "dependsOn": [
-        1
-      ]
-    },
-    {
-      "index": 5,
-      "description": "Create triage prompt template",
-      "completed": true,
-      "noTest": false
-    },
-    {
-      "index": 6,
-      "description": "Inject source issue content into phase prompts",
-      "completed": true,
-      "noTest": false,
-      "dependsOn": [
-        1,
-        3
-      ]
-    },
-    {
-      "index": 7,
-      "description": "Annotate issue list items with batch membership",
-      "completed": true,
-      "noTest": false,
-      "dependsOn": [
-        4
-      ]
-    },
-    {
-      "index": 8,
-      "description": "Auto-close source issues in done phase",
-      "completed": false,
-      "noTest": false,
-      "dependsOn": [
-        1,
-        3
-      ]
-    },
-    {
-      "index": 9,
-      "description": "Register `/triage` command",
-      "completed": false,
-      "noTest": false,
-      "dependsOn": [
-        2,
-        5,
-        6
-      ]
-    }
-  ],
+  "activeIssue": null,
+  "workflow": null,
+  "phase": null,
+  "phaseHistory": [],
+  "reviewApproved": false,
+  "planTasks": [],
   "jjChangeId": null,
   "acceptanceCriteria": [],
-  "currentTaskIndex": 7,
-  "tddTaskState": {
-    "taskIndex": 7,
-    "state": "test-written",
-    "skipped": false
-  },
+  "currentTaskIndex": 0,
+  "tddTaskState": null,
   "taskJJChanges": {},
   "doneMode": null
 }

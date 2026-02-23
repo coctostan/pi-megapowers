@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Phase, PlanTask, AcceptanceCriterion } from "./state-machine.js";
+import type { Issue } from "./store.js";
 
 // --- Prompt file mapping ---
 
@@ -149,7 +150,6 @@ export function formatAcceptanceCriteriaList(criteria: AcceptanceCriterion[]): s
     .join("\n");
 }
 
-import type { Issue } from "./store.js";
 
 export function buildSourceIssuesContext(sourceIssues: Issue[]): string {
   if (sourceIssues.length === 0) return "";

@@ -150,6 +150,16 @@ export function formatIssueListItem(issue: Issue, batchSlug?: string | null): st
   return `${id} ${issue.title} [${issue.type}] [${issue.status}]${batchAnnotation}`;
 }
 
+function closeSourceIssues(activeIssue: string, store: Store): void {
+  const issue = store.getIssue(activeIssue);
+  if (issue && issue.sources.length > 0) {
+    const sourceIssues = store.getSourceIssues(activeIssue);
+    for (const src of sourceIssues) {
+      store.updateIssueStatus(src.slug, "done");
+    }
+  }
+}
+
 // --- Interactive UI (uses ctx.ui) ---
 
 export interface MegapowersUI {
@@ -176,6 +186,13 @@ export interface MegapowersUI {
     state: MegapowersState,
     store: Store,
     jj: JJ
+  ): Promise<MegapowersState>;
+
+  handleTriageCommand(
+    ctx: ExtensionContext,
+    state: MegapowersState,
+    store: Store,
+    jj: JJ,
   ): Promise<MegapowersState>;
 }
 
@@ -338,6 +355,7 @@ export function createUI(): MegapowersUI {
         }
         if (choice.startsWith("Done")) {
           // Explicitly chose to finish — close the issue and reset state
+          closeSourceIssues(state.activeIssue, store);
           store.updateIssueStatus(state.activeIssue, "done");
           newState = createInitialState();
           store.saveState(newState);
@@ -387,6 +405,7 @@ export function createUI(): MegapowersUI {
         }
 
         if (choice === "Close issue") {
+          closeSourceIssues(state.activeIssue, store);
           store.updateIssueStatus(state.activeIssue, "done");
           newState = createInitialState();
           store.saveState(newState);
@@ -467,6 +486,74 @@ export function createUI(): MegapowersUI {
       store.saveState(newState);
       const guidance = PHASE_GUIDANCE[targetPhase] ?? "";
       ctx.ui.notify(`Transitioned to: ${targetPhase}. ${guidance}`, "info");
+      this.renderDashboard(ctx, newState, store);
+      return newState;
+    },
+
+    async handleTriageCommand(ctx, state, store, jj) {
+      const allIssues = store.listIssues();
+      const openIssues = allIssues.filter(i => i.status !== "done" && i.sources.length === 0);
+
+      if (openIssues.length === 0) {
+        ctx.ui.notify("No open issues to triage.", "info");
+        return state;
+      }
+
+      // Display open issues
+      const issueList = openIssues
+        .map(i => `- #${String(i.id).padStart(3, "0")} ${i.title} [${i.type}] — ${i.description.slice(0, 80)}`)
+        .join("\n");
+      ctx.ui.notify(`Open issues:\n${issueList}`, "info");
+
+      // Get batch parameters from user
+      const title = await ctx.ui.input("Batch title:");
+      if (!title) return state;
+
+      const typeChoice = await ctx.ui.select("Batch type:", ["bugfix", "feature"]);
+      if (!typeChoice) return state;
+      const type = typeChoice as "feature" | "bugfix";
+
+      const sourceInput = await ctx.ui.input("Source issue IDs (comma-separated, e.g. 1, 3, 5):");
+      if (!sourceInput) return state;
+
+      const sources = sourceInput.split(",").map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+      if (sources.length === 0) {
+        ctx.ui.notify("No valid source IDs provided.", "error");
+        return state;
+      }
+
+      const description = await ctx.ui.editor("Batch description:", "") ?? "";
+
+      // Create the batch issue
+      const issue = store.createIssue(title, type, description, sources);
+
+      // Activate it
+      const firstPhase = getFirstPhase(type);
+      const newState: MegapowersState = {
+        ...state,
+        activeIssue: issue.slug,
+        workflow: type,
+        phase: firstPhase,
+        phaseHistory: [],
+        reviewApproved: false,
+        planTasks: [],
+        jjChangeId: null,
+        acceptanceCriteria: [],
+        currentTaskIndex: 0,
+        tddTaskState: null,
+        taskJJChanges: {},
+        doneMode: null,
+      };
+
+      if (await jj.isJJRepo()) {
+        const desc = formatChangeDescription(issue.slug, firstPhase);
+        const changeId = await jj.newChange(desc, "main");
+        if (changeId) newState.jjChangeId = changeId;
+      }
+
+      store.saveState(newState);
+      store.updateIssueStatus(issue.slug, "in-progress");
+      ctx.ui.notify(`Created batch: ${issue.slug} (sources: ${sources.join(", ")})`, "info");
       this.renderDashboard(ctx, newState, store);
       return newState;
     },

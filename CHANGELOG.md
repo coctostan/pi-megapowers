@@ -3,6 +3,14 @@
 ## [Unreleased]
 
 ### Added
+- **Issue Triage & Batching**: `/triage` command to review open issues, group them, and create batch issues
+- `sources` field on `Issue` type — batch issues reference source issue IDs in frontmatter (`sources: [6, 13, 17]`)
+- `store.getSourceIssues(slug)` — returns full Issue objects for a batch's source IDs
+- `store.getBatchForIssue(issueId)` — finds the active batch containing a given issue
+- `buildSourceIssuesContext()` — formats source issues for prompt injection across all workflow phases
+- `formatIssueListItem` annotates source issues with "(in batch XXX)" in issue lists
+- Auto-close: completing a batch issue automatically marks all its source issues as done
+- `prompts/triage.md` template for LLM-assisted issue grouping
 - **Bugfix workflow**: Full reproduce → diagnose → plan → review → implement → verify → done workflow
 - `reproduce-bug.md` prompt template with `{{issue_slug}}` interpolation
 - `diagnose-bug.md` prompt template with `{{reproduce_content}}` and optional `## Fixed When` section

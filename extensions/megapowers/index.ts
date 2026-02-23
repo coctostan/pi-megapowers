@@ -313,8 +313,6 @@ export default function megapowers(pi: ExtensionAPI): void {
     };
   });
 
-  // --- TDD Guard: intercept file writes ---
-
   // --- Artifact protection: block writes to artifacts during read-only phases ---
 
   const READ_ONLY_PHASES: Phase[] = ["review", "verify", "code-review"];
@@ -514,6 +512,17 @@ export default function megapowers(pi: ExtensionAPI): void {
       if (!jj) jj = createJJ(pi);
       if (!ui) ui = createUI();
       state = await ui.handleIssueCommand(ctx, state, store, jj, args);
+      pi.appendEntry("megapowers-state", state);
+    },
+  });
+
+  pi.registerCommand("triage", {
+    description: "Triage open issues into batches",
+    handler: async (_args, ctx) => {
+      if (!store) store = createStore(ctx.cwd);
+      if (!jj) jj = createJJ(pi);
+      if (!ui) ui = createUI();
+      state = await ui.handleTriageCommand(ctx, state, store, jj);
       pi.appendEntry("megapowers-state", state);
     },
   });
