@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "activeIssue": null,
-  "workflow": null,
-  "phase": null,
+  "activeIssue": "030-state-source-of-truth-refactor",
+  "workflow": "bugfix",
+  "phase": "reproduce",
   "phaseHistory": [],
   "reviewApproved": false,
   "planTasks": [],
