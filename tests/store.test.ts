@@ -206,6 +206,156 @@ describe("issues", () => {
   });
 });
 
+describe("sources field", () => {
+  it("parses sources from issue frontmatter into number array", () => {
+    // Manually write an issue file with sources in frontmatter
+    const { writeFileSync, mkdirSync } = require("node:fs");
+    mkdirSync(join(tmp, ".megapowers", "issues"), { recursive: true });
+    writeFileSync(join(tmp, ".megapowers", "issues", "019-batch-parser-fixes.md"), `---
+id: 19
+type: bugfix
+status: open
+created: 2026-02-23T00:00:00.000Z
+sources: [6, 13, 17]
+---
+
+# Batch parser fixes
+
+Consolidation of parser-related bugs.
+`);
+    const issue = store.getIssue("019-batch-parser-fixes");
+    expect(issue).not.toBeNull();
+    expect(issue!.sources).toEqual([6, 13, 17]);
+  });
+
+  it("returns empty array for issues without sources field", () => {
+    const issue = store.createIssue("Regular issue", "feature", "No sources");
+    expect(issue.sources).toEqual([]);
+  });
+
+  it("returns empty array for issues with empty sources", () => {
+    const { writeFileSync, mkdirSync } = require("node:fs");
+    mkdirSync(join(tmp, ".megapowers", "issues"), { recursive: true });
+    writeFileSync(join(tmp, ".megapowers", "issues", "019-empty-sources.md"), `---
+id: 19
+type: bugfix
+status: open
+created: 2026-02-23T00:00:00.000Z
+sources: []
+---
+
+# Empty sources test
+`);
+    const issue = store.getIssue("019-empty-sources");
+    expect(issue!.sources).toEqual([]);
+  });
+
+  it("includes sources in listIssues output", () => {
+    const { writeFileSync, mkdirSync } = require("node:fs");
+    mkdirSync(join(tmp, ".megapowers", "issues"), { recursive: true });
+    writeFileSync(join(tmp, ".megapowers", "issues", "001-batch.md"), `---
+id: 1
+type: bugfix
+status: open
+created: 2026-02-23T00:00:00.000Z
+sources: [5, 10]
+---
+
+# Batch fix
+`);
+    const issues = store.listIssues();
+    expect(issues[0].sources).toEqual([5, 10]);
+  });
+});
+
+it("creates an issue with sources in frontmatter", () => {
+  const issue = store.createIssue("Batch fix", "bugfix", "Combined fix", [6, 13, 17]);
+  expect(issue.sources).toEqual([6, 13, 17]);
+
+  // Verify persisted to file
+  const reloaded = store.getIssue(issue.slug);
+  expect(reloaded!.sources).toEqual([6, 13, 17]);
+});
+
+it("creates an issue without sources when parameter omitted", () => {
+  const issue = store.createIssue("Normal", "feature", "desc");
+  expect(issue.sources).toEqual([]);
+
+  const reloaded = store.getIssue(issue.slug);
+  expect(reloaded!.sources).toEqual([]);
+});
+
+describe("getSourceIssues", () => {
+  it("returns Issue objects for each source ID", () => {
+    store.createIssue("Bug A", "bugfix", "desc A");  // id 1
+    store.createIssue("Bug B", "bugfix", "desc B");  // id 2
+    store.createIssue("Bug C", "bugfix", "desc C");  // id 3
+
+    // Create batch referencing 1 and 3
+    const batch = store.createIssue("Batch fix", "bugfix", "combined", [1, 3]);
+    const sources = store.getSourceIssues(batch.slug);
+
+    expect(sources).toHaveLength(2);
+    expect(sources[0].id).toBe(1);
+    expect(sources[0].title).toBe("Bug A");
+    expect(sources[1].id).toBe(3);
+    expect(sources[1].title).toBe("Bug C");
+  });
+
+  it("returns empty array for non-batch issue", () => {
+    const issue = store.createIssue("Normal", "feature", "desc");
+    expect(store.getSourceIssues(issue.slug)).toEqual([]);
+  });
+
+  it("returns empty array for unknown slug", () => {
+    expect(store.getSourceIssues("999-nonexistent")).toEqual([]);
+  });
+
+  it("skips source IDs that don't match any existing issue", () => {
+    store.createIssue("Bug A", "bugfix", "desc A");  // id 1
+    const batch = store.createIssue("Batch fix", "bugfix", "combined", [1, 99]);
+    const sources = store.getSourceIssues(batch.slug);
+    expect(sources).toHaveLength(1);
+    expect(sources[0].id).toBe(1);
+  });
+});
+
+describe("getBatchForIssue", () => {
+  it("returns batch slug when issue is a source in an open batch", () => {
+    store.createIssue("Bug A", "bugfix", "desc");  // id 1
+    const batch = store.createIssue("Batch", "bugfix", "combined", [1]);
+    const result = store.getBatchForIssue(1);
+    expect(result).toBe(batch.slug);
+  });
+
+  it("returns batch slug when issue is a source in an in-progress batch", () => {
+    store.createIssue("Bug A", "bugfix", "desc");  // id 1
+    const batch = store.createIssue("Batch", "bugfix", "combined", [1]);
+    store.updateIssueStatus(batch.slug, "in-progress");
+    expect(store.getBatchForIssue(1)).toBe(batch.slug);
+  });
+
+  it("returns null when issue is not in any batch", () => {
+    store.createIssue("Standalone", "bugfix", "desc");  // id 1
+    expect(store.getBatchForIssue(1)).toBeNull();
+  });
+
+  it("returns null when only batch containing the issue is done", () => {
+    store.createIssue("Bug A", "bugfix", "desc");  // id 1
+    const batch = store.createIssue("Batch", "bugfix", "combined", [1]);
+    store.updateIssueStatus(batch.slug, "done");
+    expect(store.getBatchForIssue(1)).toBeNull();
+  });
+
+  it("returns first matching batch when issue is in multiple batches", () => {
+    store.createIssue("Bug A", "bugfix", "desc");  // id 1
+    const batch1 = store.createIssue("Batch 1", "bugfix", "combined", [1]);
+    const batch2 = store.createIssue("Batch 2", "bugfix", "combined", [1]);
+    // First by file sort order (002 before 003)
+    expect(store.getBatchForIssue(1)).toBe(batch1.slug);
+  });
+});
+
 describe("plan files", () => {
   it("writes and reads a plan file", () => {
     store.createIssue("Test", "feature", "desc");

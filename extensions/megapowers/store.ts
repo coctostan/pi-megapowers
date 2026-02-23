@@ -14,6 +14,7 @@ export interface Issue {
   status: IssueStatus;
   description: string;
   createdAt: number;
+  sources: number[];
 }
 
 export interface Store {
@@ -21,8 +22,10 @@ export interface Store {
   saveState(state: MegapowersState): void;
 
   listIssues(): Issue[];
-  createIssue(title: string, type: "feature" | "bugfix", description: string): Issue;
+  createIssue(title: string, type: "feature" | "bugfix", description: string, sources?: number[]): Issue;
   getIssue(slug: string): Issue | null;
+  getSourceIssues(slug: string): Issue[];
+  getBatchForIssue(issueId: number): string | null;
   updateIssueStatus(slug: string, status: IssueStatus): void;
 
   ensurePlanDir(issueSlug: string): string;
@@ -65,6 +68,16 @@ function parseIssueFrontmatter(content: string): Partial<Issue> {
     if (kv) data[kv[1]] = kv[2].trim();
   }
 
+  // Parse sources: [1, 2, 3] from frontmatter
+  let sources: number[] = [];
+  const sourcesLine = frontmatter.split("\n").find(l => l.startsWith("sources:"));
+  if (sourcesLine) {
+    const bracketMatch = sourcesLine.match(/\[([^\]]*)\]/);
+    if (bracketMatch && bracketMatch[1].trim()) {
+      sources = bracketMatch[1].split(",").map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+    }
+  }
+
   return {
     id: data.id ? parseInt(data.id) : undefined,
     type: data.type as "feature" | "bugfix" | undefined,
@@ -72,16 +85,18 @@ function parseIssueFrontmatter(content: string): Partial<Issue> {
     createdAt: data.created ? new Date(data.created).getTime() : undefined,
     description: body.replace(/^#[^\n]*\n*/, "").trim(),
     title: body.match(/^#\s+(.+)/)?.[1],
+    sources,
   };
 }
 
 function formatIssueFile(issue: Issue): string {
+  const sourcesLine = issue.sources.length > 0 ? `sources: [${issue.sources.join(", ")}]\n` : "";
   return `---
 id: ${issue.id}
 type: ${issue.type}
 status: ${issue.status}
 created: ${new Date(issue.createdAt).toISOString()}
----
+${sourcesLine}---
 
 # ${issue.title}
 
@@ -155,11 +170,12 @@ export function createStore(projectRoot: string): Store {
             status: parsed.status ?? "open",
             description: parsed.description ?? "",
             createdAt: parsed.createdAt ?? 0,
+            sources: parsed.sources ?? [],
           };
         });
     },
 
-    createIssue(title: string, type: "feature" | "bugfix", description: string): Issue {
+    createIssue(title: string, type: "feature" | "bugfix", description: string, sources?: number[]): Issue {
       ensureRoot();
       const existing = readdirSync(issuesDir).filter((f) => f.endsWith(".md"));
       const maxId = existing.reduce((max, f) => {
@@ -177,6 +193,7 @@ export function createStore(projectRoot: string): Store {
         status: "open",
         description,
         createdAt: Date.now(),
+        sources: sources ?? [],
       };
 
       writeFileSync(join(issuesDir, `${slug}.md`), formatIssueFile(issue));
@@ -197,7 +214,29 @@ export function createStore(projectRoot: string): Store {
         status: parsed.status ?? "open",
         description: parsed.description ?? "",
         createdAt: parsed.createdAt ?? 0,
+        sources: parsed.sources ?? [],
       };
+    },
+
+    getSourceIssues(slug: string): Issue[] {
+      const issue = this.getIssue(slug);
+      if (!issue || issue.sources.length === 0) return [];
+
+      const allIssues = this.listIssues();
+      const sourceSet = new Set(issue.sources);
+      return allIssues.filter(i => sourceSet.has(i.id));
+    },
+
+    getBatchForIssue(issueId: number): string | null {
+      const allIssues = this.listIssues();
+      for (const issue of allIssues) {
+        if (issue.sources.length > 0 && issue.sources.includes(issueId)) {
+          if (issue.status === "open" || issue.status === "in-progress") {
+            return issue.slug;
+          }
+        }
+      }
+      return null;
     },
 
     updateIssueStatus(slug: string, status: IssueStatus): void {

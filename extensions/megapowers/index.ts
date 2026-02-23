@@ -3,7 +3,7 @@ import { createInitialState, getValidTransitions, OPEN_ENDED_PHASES, type Megapo
 import { createStore, type Store } from "./store.js";
 import { createJJ, formatChangeDescription, type JJ } from "./jj.js";
 import { createUI, type MegapowersUI } from "./ui.js";
-import { buildImplementTaskVars, formatAcceptanceCriteriaList, loadPromptFile, BRAINSTORM_PLAN_PHASES, interpolatePrompt, getPhasePromptTemplate, allTasksComplete } from "./prompts.js";
+import { buildImplementTaskVars, formatAcceptanceCriteriaList, loadPromptFile, BRAINSTORM_PLAN_PHASES, interpolatePrompt, getPhasePromptTemplate, allTasksComplete, buildSourceIssuesContext } from "./prompts.js";
 import { extractPlanTasks } from "./plan-parser.js";
 import { processAgentOutput } from "./artifact-router.js";
 import { resolveStartupState } from "./state-recovery.js";
@@ -285,8 +285,24 @@ export default function megapowers(pi: ExtensionAPI): void {
       vars.learnings = store.getLearnings();
     }
 
-    const finalPrompt = interpolatePrompt(template, vars);
+    // Batch issue: inject source issue content
+    if (store && state.activeIssue) {
+      const issue = store.getIssue(state.activeIssue);
+      if (issue && issue.sources.length > 0) {
+        const sourceIssues = store.getSourceIssues(state.activeIssue);
+        const sourceContext = buildSourceIssuesContext(sourceIssues);
+        if (sourceContext) {
+          vars.source_issues_context = sourceContext;
+        }
+      }
+    }
+
+    let finalPrompt = interpolatePrompt(template, vars);
     if (!finalPrompt) return;
+
+    if (vars.source_issues_context) {
+      finalPrompt = finalPrompt + "\n\n" + vars.source_issues_context;
+    }
 
     return {
       message: {

@@ -148,3 +148,20 @@ export function formatAcceptanceCriteriaList(criteria: AcceptanceCriterion[]): s
     .map(c => `${c.id}. ${c.text} [${c.status}]`)
     .join("\n");
 }
+
+import type { Issue } from "./store.js";
+
+export function buildSourceIssuesContext(sourceIssues: Issue[]): string {
+  if (sourceIssues.length === 0) return "";
+
+  const sections = sourceIssues.map(issue => {
+    return `### Issue #${String(issue.id).padStart(3, "0")}: ${issue.title}
+- **Slug:** ${issue.slug}
+- **Type:** ${issue.type}
+- **Status:** ${issue.status}
+
+${issue.description}`;
+  });
+
+  return `## Source Issues (Batch Context)\n\nThis is a batch issue addressing the following individual issues:\n\n${sections.join("\n\n---\n\n")}`;
+}

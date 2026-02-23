@@ -8,8 +8,10 @@ import {
   loadPromptFile,
   BRAINSTORM_PLAN_PHASES,
   allTasksComplete,
+  buildSourceIssuesContext,
 } from "../extensions/megapowers/prompts.js";
 import type { Phase } from "../extensions/megapowers/state-machine.js";
+import type { Issue } from "../extensions/megapowers/store.js";
 import type { PlanTask, AcceptanceCriterion } from "../extensions/megapowers/state-machine.js";
 
 describe("PHASE_PROMPT_MAP", () => {
@@ -378,5 +380,45 @@ describe("prompt templates — new template files exist", () => {
     const content = readFileSync(join(promptsDir, "write-changelog.md"), "utf-8");
     expect(content.length).toBeGreaterThan(50);
     expect(content).toContain("{{spec_content}}");
+  });
+});
+
+describe("triage prompt template", () => {
+  it("triage.md template file exists and loads", () => {
+    const content = loadPromptFile("triage.md");
+    expect(content.length).toBeGreaterThan(0);
+  });
+
+  it("triage template contains open issues placeholder", () => {
+    const content = loadPromptFile("triage.md");
+    expect(content).toContain("{{open_issues}}");
+  });
+
+  it("triage template interpolates open issues content", () => {
+    const template = loadPromptFile("triage.md");
+    const result = interpolatePrompt(template, {
+      open_issues: "- #006 Acceptance criteria not extracted [bugfix]\n- #013 /mega does nothing [bugfix]",
+    });
+    expect(result).toContain("#006");
+    expect(result).toContain("#013");
+    expect(result).not.toContain("{{open_issues}}");
+  });
+});
+
+describe("buildSourceIssuesContext", () => {
+  it("returns formatted context for source issues", () => {
+    const sources: Issue[] = [
+      { id: 6, slug: "006-criteria-bug", title: "Criteria not extracted", type: "bugfix", status: "open", description: "The parser fails to extract acceptance criteria.", createdAt: 0, sources: [] },
+      { id: 17, slug: "017-no-test-tasks", title: "No-test tasks fail", type: "bugfix", status: "open", description: "Tasks marked [no-test] are not detected as complete.", createdAt: 0, sources: [] },
+    ];
+    const result = buildSourceIssuesContext(sources);
+    expect(result).toContain("006-criteria-bug");
+    expect(result).toContain("Criteria not extracted");
+    expect(result).toContain("The parser fails to extract acceptance criteria.");
+    expect(result).toContain("017-no-test-tasks");
+  });
+
+  it("returns empty string for empty source list", () => {
+    expect(buildSourceIssuesContext([])).toBe("");
   });
 });
