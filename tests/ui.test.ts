@@ -110,6 +110,51 @@ describe("renderStatusText", () => {
   });
 });
 
+describe("renderDashboardLines — done phase with doneMode", () => {
+  // Task 1: doneMode must be visible in the dashboard
+  it("shows active doneMode in dashboard when set", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "014-filter-issues",
+      workflow: "bugfix",
+      phase: "done",
+      doneMode: "write-changelog",
+    };
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const joined = lines.join("\n");
+    // User must see what mode is active so they know what to do next
+    expect(joined).toContain("changelog");
+  });
+
+  it("shows instruction to send a message when doneMode is active", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "014-filter-issues",
+      workflow: "bugfix",
+      phase: "done",
+      doneMode: "generate-bugfix-summary",
+    };
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const joined = lines.join("\n").toLowerCase();
+    // User must know they need to send a message to trigger generation
+    expect(joined).toContain("send");
+  });
+});
+
+describe("renderStatusText — done phase with doneMode", () => {
+  // Task 2: doneMode must be visible in status bar
+  it("includes doneMode in status text", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "014-filter-issues",
+      phase: "done",
+      doneMode: "write-changelog",
+    };
+    const text = renderStatusText(state);
+    expect(text).toContain("changelog");
+  });
+});
+
 describe("formatPhaseProgress", () => {
   it("shows feature phases with current highlighted", () => {
     const result = formatPhaseProgress("feature", "plan", plainTheme as any);
@@ -250,6 +295,61 @@ describe("handlePhaseTransition — gate enforcement", () => {
 
     // verify → code-review should be gated (no verify.md)
     expect(selectItems.some(item => item.includes("⛔") && item.includes("code-review"))).toBe(true);
+  });
+});
+
+describe("handlePhaseTransition — post-transition guidance", () => {
+  // Task 1: phase guidance in dashboard
+  // Task 2: guidance in transition notification
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "megapowers-ui-guidance-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("provides phase-specific guidance after transition", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "brainstorm",
+    };
+
+    const ctx = createMockCtx("spec");
+    await ui.handlePhaseTransition(ctx as any, state, store, jj as any);
+
+    // After transitioning to "spec", the user should receive guidance about what to do
+    // Either via notification or dashboard — must mention sending a message or the phase's purpose
+    const allText = ctx._notifications.map(n => n.msg.toLowerCase()).join(" ");
+    expect(allText).toContain("send");
+  });
+
+  it("shows phase instruction in dashboard after transition", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "brainstorm",
+    };
+
+    const ctx = createMockCtx("spec");
+    const newState = await ui.handlePhaseTransition(ctx as any, state, store, jj as any);
+
+    // The dashboard should render with guidance for the new phase
+    const lines = renderDashboardLines(newState, [], plainTheme as any);
+    const joined = lines.join("\n").toLowerCase();
+    // Should contain some instruction about what to do in the spec phase
+    expect(joined).toContain("send");
   });
 });
 
@@ -823,6 +923,92 @@ describe("handleIssueCommand — new state fields", () => {
     const result = await ui.handleIssueCommand(ctx as any, state, store, jj as any, "new");
 
     expect(result.taskJJChanges).toEqual({});
+  });
+});
+
+describe("handleIssueCommand — list filtering", () => {
+  // Task 1: /issue list should hide done issues, show only open/in-progress
+  // TDD: these tests were written during reproduce and confirmed failing
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "megapowers-ui-list-filter-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("issue list filters out done issues", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state = createInitialState();
+
+    // Create 3 issues: mark 2 as done, leave 1 open
+    const openIssue = store.createIssue("Open feature", "feature", "still open");
+    const doneIssue1 = store.createIssue("Done feature", "feature", "completed");
+    store.updateIssueStatus(doneIssue1.slug, "done");
+    const doneIssue2 = store.createIssue("Another done", "bugfix", "also completed");
+    store.updateIssueStatus(doneIssue2.slug, "done");
+
+    // Capture what items are shown in the select menu
+    let selectItems: string[] = [];
+    const ctx = createMockCtx();
+    ctx.ui.select = async (_prompt: string, items: string[]) => {
+      selectItems = items;
+      return null; // cancel — we just want to inspect the list
+    };
+
+    await ui.handleIssueCommand(ctx as any, state, store, jj as any, "list");
+
+    // Should show only the open issue (plus the "+ Create new issue..." option)
+    const issueItems = selectItems.filter(i => i.startsWith("#"));
+    expect(issueItems.length).toBe(1);
+    expect(issueItems[0]).toContain("Open feature");
+    // Done issues should NOT appear
+    expect(selectItems.some(i => i.includes("Done feature"))).toBe(false);
+    expect(selectItems.some(i => i.includes("Another done"))).toBe(false);
+  });
+
+  it("shows 'no issues' message when all issues are done", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state = createInitialState();
+
+    // Create an issue and mark it done
+    const issue = store.createIssue("Completed work", "feature", "done");
+    store.updateIssueStatus(issue.slug, "done");
+
+    const ctx = createMockCtx();
+    await ui.handleIssueCommand(ctx as any, state, store, jj as any, "list");
+
+    // Should notify that there are no (open) issues
+    expect(ctx._notifications.some(n => n.msg.toLowerCase().includes("no issues") || n.msg.toLowerCase().includes("no open"))).toBe(true);
+  });
+
+  it("shows in-progress issues in the list", async () => {
+    const store = createStore(tmp);
+    const ui = createUI();
+    const jj = createMockJJ();
+    const state = createInitialState();
+
+    const inProgressIssue = store.createIssue("Active work", "feature", "working on it");
+    store.updateIssueStatus(inProgressIssue.slug, "in-progress");
+
+    let selectItems: string[] = [];
+    const ctx = createMockCtx();
+    ctx.ui.select = async (_prompt: string, items: string[]) => {
+      selectItems = items;
+      return null;
+    };
+
+    await ui.handleIssueCommand(ctx as any, state, store, jj as any, "list");
+
+    const issueItems = selectItems.filter(i => i.startsWith("#"));
+    expect(issueItems.length).toBe(1);
+    expect(issueItems[0]).toContain("Active work");
   });
 });
 

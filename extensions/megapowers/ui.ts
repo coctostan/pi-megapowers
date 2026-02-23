@@ -37,13 +37,32 @@ export function formatPhaseProgress(workflow: WorkflowType, currentPhase: Phase,
     .join(theme.fg("dim", " → "));
 }
 
+export const PHASE_GUIDANCE: Record<string, string> = {
+  brainstorm: "Send a message to brainstorm your idea.",
+  spec: "Send a message to write the spec.",
+  plan: "Send a message to generate the plan.",
+  review: "Send a message to review the plan.",
+  reproduce: "Send a message to reproduce the bug.",
+  diagnose: "Send a message to diagnose the root cause.",
+  verify: "Send a message to verify the implementation.",
+  "code-review": "Send a message to review the code.",
+};
+
+export const DONE_MODE_LABELS: Record<string, string> = {
+  "generate-docs": "Generate docs",
+  "generate-bugfix-summary": "Bugfix summary",
+  "write-changelog": "Write changelog",
+  "capture-learnings": "Capture learnings",
+};
+
 export function renderStatusText(state: MegapowersState): string {
   if (!state.activeIssue) return "";
   const idNum = state.activeIssue.match(/^(\d+)/)?.[1] ?? "?";
   const completed = state.planTasks.filter((t) => t.completed).length;
   const total = state.planTasks.length;
   const taskInfo = total > 0 ? ` ${completed}/${total}` : "";
-  return `📋 #${idNum} ${state.phase ?? "?"}${taskInfo}`;
+  const modeLabel = state.doneMode ? ` → ${DONE_MODE_LABELS[state.doneMode] ?? state.doneMode}` : "";
+  return `📋 #${idNum} ${state.phase ?? "?"}${taskInfo}${modeLabel}`;
 }
 
 export function renderDashboardLines(state: MegapowersState, _issues: Issue[], theme: ThemeLike): string[] {
@@ -63,6 +82,14 @@ export function renderDashboardLines(state: MegapowersState, _issues: Issue[], t
 
   if (state.phase && state.workflow) {
     lines.push(`${theme.fg("accent", "Phase:")} ${formatPhaseProgress(state.workflow, state.phase, theme)}`);
+  }
+
+  // Phase guidance — show for phases without their own detailed content
+  if (state.phase && state.phase !== "done" && state.phase !== "implement" && !state.planTasks.length) {
+    const guidance = PHASE_GUIDANCE[state.phase];
+    if (guidance) {
+      lines.push(theme.fg("dim", guidance));
+    }
   }
 
   // Task progress (implement phase or whenever tasks exist)
@@ -101,6 +128,13 @@ export function renderDashboardLines(state: MegapowersState, _issues: Issue[], t
   if (state.acceptanceCriteria.length > 0 && (state.phase === "verify" || state.phase === "code-review")) {
     const passed = state.acceptanceCriteria.filter(c => c.status === "pass").length;
     lines.push(`${theme.fg("accent", "Criteria:")} ${passed}/${state.acceptanceCriteria.length} passing`);
+  }
+
+  // Done phase: show active mode and instruction
+  if (state.phase === "done" && state.doneMode) {
+    const label = DONE_MODE_LABELS[state.doneMode] ?? state.doneMode;
+    lines.push(`${theme.fg("accent", "Action:")} ${label}`);
+    lines.push(theme.fg("dim", "Send any message to generate."));
   }
 
   if (state.jjChangeId) {
@@ -209,9 +243,9 @@ export function createUI(): MegapowersUI {
       }
 
       if (subcommand === "list") {
-        const issues = store.listIssues();
+        const issues = store.listIssues().filter(i => i.status !== "done");
         if (issues.length === 0) {
-          ctx.ui.notify("No issues. Use /issue new to create one.", "info");
+          ctx.ui.notify("No open issues. Use /issue new to create one.", "info");
           return state;
         }
 
@@ -430,7 +464,8 @@ export function createUI(): MegapowersUI {
       }
 
       store.saveState(newState);
-      ctx.ui.notify(`Transitioned to: ${targetPhase}`, "info");
+      const guidance = PHASE_GUIDANCE[targetPhase] ?? "";
+      ctx.ui.notify(`Transitioned to: ${targetPhase}. ${guidance}`, "info");
       this.renderDashboard(ctx, newState, store);
       return newState;
     },
