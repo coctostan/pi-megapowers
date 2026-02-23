@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { handleSignal } from "../extensions/megapowers/tool-signal.js";
 import { readState, writeState } from "../extensions/megapowers/state-io.js";
 import { createInitialState, type MegapowersState } from "../extensions/megapowers/state-machine.js";
+import type { JJ } from "../extensions/megapowers/jj.js";
 
 function setState(tmp: string, overrides: Partial<MegapowersState>) {
   writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", ...overrides });
@@ -222,6 +223,120 @@ describe("handleSignal", () => {
       const result = handleSignal(tmp, "phase_next");
       expect(result.error).toBeDefined();
       expect(result.error).toContain("spec.md");
+    });
+  });
+
+  // ======================================================================
+  // task_done — jj integration (AC20)
+  // ======================================================================
+
+  describe("task_done — jj integration (AC20)", () => {
+    function mockJJ(opts: { isJJ?: boolean; newChangeId?: string; diffOutput?: string } = {}): JJ {
+      const { isJJ = true, newChangeId = "mock-task-change", diffOutput = "M src/foo.ts" } = opts;
+      return {
+        isJJRepo: async () => isJJ,
+        getCurrentChangeId: async () => "current-id",
+        getChangeDescription: async () => "",
+        hasConflicts: async () => false,
+        newChange: async () => newChangeId,
+        describe: async () => {},
+        squash: async () => {},
+        bookmarkSet: async () => {},
+        log: async () => "",
+        diff: async () => diffOutput,
+        abandon: async () => {},
+        squashInto: async () => {},
+      };
+    }
+
+    it("inspects current task change and creates next task change", async () => {
+      writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n\n### Task 3: C\n");
+      setState(tmp, {
+        phase: "implement",
+        currentTaskIndex: 0,
+        completedTasks: [],
+        tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
+        taskJJChanges: { 1: "change-for-task-1" },
+      });
+
+      let diffedChangeId: string | null = null;
+      let createdDesc: string | null = null;
+      const jj: JJ = {
+        ...mockJJ(),
+        diff: async (changeId: string) => { diffedChangeId = changeId; return "M src/foo.ts"; },
+        newChange: async (desc: string) => { createdDesc = desc; return "new-task-2-change"; },
+      };
+
+      const result = handleSignal(tmp, "task_done", jj);
+      expect(result.error).toBeUndefined();
+
+      // Wait for async jj ops
+      await new Promise(r => setTimeout(r, 50));
+
+      // Should have inspected the current task's change
+      expect(diffedChangeId).toBe("change-for-task-1");
+      // Should have created a change for the next task
+      expect(createdDesc).toContain("task-2");
+      // Should have stored the new change ID
+      const state = readState(tmp);
+      expect(state.taskJJChanges[2]).toBe("new-task-2-change");
+    });
+
+    it("jj failures are non-fatal — returns success with warning", () => {
+      writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n");
+      setState(tmp, {
+        phase: "implement",
+        currentTaskIndex: 0,
+        completedTasks: [],
+        tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
+        taskJJChanges: { 1: "change-1" },
+      });
+
+      const jj: JJ = {
+        ...mockJJ(),
+        diff: async () => { throw new Error("jj broken"); },
+        newChange: async () => { throw new Error("jj broken"); },
+      };
+
+      const result = handleSignal(tmp, "task_done", jj);
+      // Should succeed (not error) even though jj failed
+      expect(result.error).toBeUndefined();
+      expect(result.message).toBeDefined();
+    });
+
+    it("skips jj ops when no jj provided", () => {
+      writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n");
+      setState(tmp, {
+        phase: "implement",
+        currentTaskIndex: 0,
+        completedTasks: [],
+        tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
+      });
+
+      const result = handleSignal(tmp, "task_done");
+      expect(result.error).toBeUndefined();
+      expect(result.message).toBeDefined();
+    });
+
+    it("skips jj when not a jj repo", async () => {
+      writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n");
+      setState(tmp, {
+        phase: "implement",
+        currentTaskIndex: 0,
+        completedTasks: [],
+        tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
+      });
+
+      let diffCalled = false;
+      const jj: JJ = {
+        ...mockJJ({ isJJ: false }),
+        diff: async () => { diffCalled = true; return ""; },
+      };
+
+      const result = handleSignal(tmp, "task_done", jj);
+      expect(result.error).toBeUndefined();
+      await new Promise(r => setTimeout(r, 50));
+      expect(diffCalled).toBe(false);
     });
   });
 

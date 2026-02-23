@@ -1,5 +1,4 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { createWriteTool, createEditTool, createBashTool } from "@mariozechner/pi-coding-agent";
 import { getValidTransitions, OPEN_ENDED_PHASES, type Phase } from "./state-machine.js";
 import { createStore, type Store } from "./store.js";
 import { createJJ, type JJ } from "./jj.js";
@@ -13,6 +12,7 @@ import { readState, writeState } from "./state-io.js";
 import { handleSignal } from "./tool-signal.js";
 import { handleSaveArtifact } from "./tool-artifact.js";
 import { evaluateWriteOverride, recordTestFileWritten, processBashResult } from "./tool-overrides.js";
+import { canWrite, isTestFile, isTestRunnerCommand } from "./write-policy.js";
 import { buildInjectedPrompt } from "./prompt-inject.js";
 import { deriveTasks } from "./derived.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
@@ -41,8 +41,15 @@ export default function megapowers(pi: ExtensionAPI): void {
   });
 
   if (satellite) {
-    // Satellite sessions use disk-backed state (written by parent session).
-    // No module-level state needed — all reads/writes go through state-io.
+    // Satellite sessions: TDD enforcement uses in-memory state (AC47/AC48).
+    // We read phase/megaEnabled/activeIssue from disk once, but TDD cycle
+    // state stays in-memory to avoid competing with the primary session for
+    // state.json writes.
+    //
+    // megapowers_signal and megapowers_save_artifact are NOT registered for
+    // satellites — only write/edit/bash overrides for TDD enforcement.
+
+    let satelliteTddState: import("./state-machine.js").TddTaskState | null = null;
 
     pi.on("tool_call", async (event, ctx) => {
       const toolName = event.toolName;
@@ -51,7 +58,17 @@ export default function megapowers(pi: ExtensionAPI): void {
       const filePath: string | undefined = (event.input as any)?.path;
       if (!filePath) return;
 
-      const decision = evaluateWriteOverride(ctx.cwd, filePath);
+      // Read coordination state from disk (phase, megaEnabled, etc.)
+      const state = readState(ctx.cwd);
+      let taskIsNoTest = false;
+      if (state.activeIssue && (state.phase === "implement" || state.phase === "code-review")) {
+        const tasks = deriveTasks(ctx.cwd, state.activeIssue);
+        const currentTask = tasks[state.currentTaskIndex];
+        taskIsNoTest = currentTask?.noTest ?? false;
+      }
+
+      // Use pure canWrite with in-memory TDD state
+      const decision = canWrite(state.phase, filePath, state.megaEnabled, taskIsNoTest, satelliteTddState);
       if (!decision.allowed) {
         return { block: true, reason: decision.reason };
       }
@@ -60,21 +77,36 @@ export default function megapowers(pi: ExtensionAPI): void {
     pi.on("tool_result", async (event, ctx) => {
       const toolName = event.toolName;
 
-      // After a successful write of a test file, record TDD state transition
+      // After a successful write of a test file, update in-memory TDD state
       if ((toolName === "write" || toolName === "edit") && !event.isError) {
         const filePath: string | undefined = (event.input as any)?.path;
-        if (filePath) {
-          const decision = evaluateWriteOverride(ctx.cwd, filePath);
-          if (decision.updateTddState) {
-            recordTestFileWritten(ctx.cwd);
+        if (filePath && isTestFile(filePath)) {
+          const state = readState(ctx.cwd);
+          const isTddPhase = state.phase === "implement" || state.phase === "code-review";
+          if (isTddPhase && state.megaEnabled) {
+            const tasks = state.activeIssue ? deriveTasks(ctx.cwd, state.activeIssue) : [];
+            const currentTask = tasks[state.currentTaskIndex];
+            const taskIndex = currentTask?.index ?? state.currentTaskIndex + 1;
+            satelliteTddState = {
+              taskIndex,
+              state: "test-written",
+              skipped: satelliteTddState?.skipped ?? false,
+            };
           }
         }
       }
 
-      // After bash, track test runner results for TDD RED detection
+      // After bash, track test runner results for TDD RED detection (in-memory)
       if (toolName === "bash") {
         const command = (event.input as any)?.command;
-        if (command) processBashResult(ctx.cwd, command, event.isError);
+        if (command && satelliteTddState?.state === "test-written") {
+          const state = readState(ctx.cwd);
+          if (state.megaEnabled && (state.phase === "implement" || state.phase === "code-review")) {
+            if (isTestRunnerCommand(command) && event.isError) {
+              satelliteTddState = { ...satelliteTddState, state: "impl-allowed" };
+            }
+          }
+        }
       }
     });
 

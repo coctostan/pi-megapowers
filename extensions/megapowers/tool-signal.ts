@@ -3,6 +3,7 @@ import { readState, writeState } from "./state-io.js";
 import { advancePhase } from "./phase-advance.js";
 import { deriveTasks } from "./derived.js";
 import { transition, type Phase } from "./state-machine.js";
+import { inspectTaskChange, createTaskChange, buildTaskCompletionReport } from "./task-coordinator.js";
 import type { JJ } from "./jj.js";
 
 export interface SignalResult {
@@ -37,7 +38,7 @@ export function handleSignal(
 // task_done
 // ---------------------------------------------------------------------------
 
-function handleTaskDone(cwd: string, _jj?: JJ): SignalResult {
+function handleTaskDone(cwd: string, jj?: JJ): SignalResult {
   const state = readState(cwd);
 
   if (!state.activeIssue || state.phase !== "implement") {
@@ -122,15 +123,52 @@ function handleTaskDone(cwd: string, _jj?: JJ): SignalResult {
   }
 
   // Advance to next task
+  const nextIdx = nextIncompleteIdx >= 0 ? nextIncompleteIdx : state.currentTaskIndex;
   const updatedState = {
     ...state,
     completedTasks,
-    currentTaskIndex: nextIncompleteIdx >= 0 ? nextIncompleteIdx : state.currentTaskIndex,
+    currentTaskIndex: nextIdx,
     tddTaskState: null, // Reset TDD state for next task
   };
   writeState(cwd, updatedState);
 
-  const nextTask = tasks[updatedState.currentTaskIndex];
+  // -----------------------------------------------------------------------
+  // AC20 — jj task change integration (async, non-fatal)
+  //
+  // Inspect the current task's change diff and create a change for the next task.
+  // Failures are caught and result in a warning appended to the message, not an error.
+  // -----------------------------------------------------------------------
+  const nextTask = tasks[nextIdx];
+  const issueSlug = state.activeIssue;
+  const currentChangeId = state.taskJJChanges[currentTask.index];
+
+  if (jj) {
+    (async () => {
+      try {
+        if (!await jj.isJJRepo()) return;
+
+        // Inspect current task's change
+        if (currentChangeId) {
+          await inspectTaskChange(jj, currentChangeId);
+        }
+
+        // Create change for next task
+        const result = await createTaskChange(
+          jj, issueSlug, nextTask.index, nextTask.description,
+        );
+        if (result.changeId) {
+          const s = readState(cwd);
+          writeState(cwd, {
+            ...s,
+            taskJJChanges: { ...s.taskJJChanges, [nextTask.index]: result.changeId },
+          });
+        }
+      } catch {
+        // jj failures are non-fatal (AC20)
+      }
+    })();
+  }
+
   const remaining = tasks.length - completedTasks.length;
   return {
     message: `Task ${currentTask.index} (${currentTask.description}) marked complete. ${remaining} task${remaining === 1 ? "" : "s"} remaining. Next: Task ${nextTask.index}: ${nextTask.description}`,

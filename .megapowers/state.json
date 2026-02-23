@@ -2,7 +2,7 @@
   "version": 1,
   "activeIssue": "030-state-source-of-truth-refactor",
   "workflow": "feature",
-  "phase": "verify",
+  "phase": "code-review",
   "phaseHistory": [
     {
       "from": "brainstorm",
@@ -43,75 +43,50 @@
       "from": "implement",
       "to": "verify",
       "timestamp": 1771883110036
+    },
+    {
+      "from": "verify",
+      "to": "implement",
+      "timestamp": 1771883723294
+    },
+    {
+      "from": "implement",
+      "to": "verify",
+      "timestamp": 1771883966929
+    },
+    {
+      "from": "verify",
+      "to": "code-review",
+      "timestamp": 1771884080034
     }
   ],
   "reviewApproved": false,
-  "currentTaskIndex": 9,
-  "completedTasks": [],
+  "currentTaskIndex": 15,
+  "completedTasks": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16
+  ],
   "tddTaskState": {
-    "taskIndex": 9,
-    "state": "test-written",
+    "taskIndex": 10,
+    "state": "impl-allowed",
     "skipped": false
   },
   "taskJJChanges": {},
   "jjChangeId": null,
   "doneMode": null,
-  "megaEnabled": true,
-  "planTasks": [
-    {
-      "index": 1,
-      "description": "**Task 1/2 swap** — Task 1's tests assert `completedTasks` and `megaEnabled` which don't exist until Task 2. Either swap them or merge type changes into Task 1.",
-      "completed": true,
-      "noTest": false
-    },
-    {
-      "index": 2,
-      "description": "**Task 3 (AC10) — `hasOpenQuestions` too loose** — Current impl treats any non-sentinel non-blank line as an open question. Spec says only list items (`- `, `1. `) containing `?` count. Needs tightening.",
-      "completed": true,
-      "noTest": false
-    },
-    {
-      "index": 3,
-      "description": "**AC19–21 — jj integration is vaporware** — Task 9 says \"jj deferred to Task 10\", Task 10 has `_jj?: JJ` unused params with zero jj calls. No task actually wires jj. Either add a dedicated jj task or move AC19–21 to out-of-scope.",
-      "completed": true,
-      "noTest": false
-    },
-    {
-      "index": 4,
-      "description": "**AC38 — `megapowers_signal`/`megapowers_save_artifact` still callable when mega off** — The tools stay registered. If prompt removal is sufficient (LLM won't know about tools it's not told about), document that. Otherwise tools need to early-return with error when `megaEnabled: false`.",
-      "completed": true,
-      "noTest": false
-    },
-    {
-      "index": 5,
-      "description": "**Task 10 (AC13) — null-safety gap** — When `tddTaskState` is `null` for a non-`` task, the `&&` short-circuits and the task passes without TDD validation. Should block when null.",
-      "completed": true,
-      "noTest": true
-    },
-    {
-      "index": 6,
-      "description": "**Task 6 — unfinished TODO** — `advancePhase()` entering implement has a comment \"Find first incomplete task\" but no code. On session resume with partial progress, `currentTaskIndex` resets to 0.",
-      "completed": true,
-      "noTest": false
-    },
-    {
-      "index": 7,
-      "description": "**Task 11 — test import mismatch** — Test imports `checkBashOverride`, impl exports `processBashResult`.",
-      "completed": true,
-      "noTest": false
-    },
-    {
-      "index": 8,
-      "description": "**Task 15 — bash exit code hand-waved** — Uses regex on result text (`/exit code [1-9]/`) instead of actual exit code from pi's tool result. Needs to spec how `createBashTool` exposes exit codes.",
-      "completed": true,
-      "noTest": false
-    },
-    {
-      "index": 9,
-      "description": "**Task 15 — incomplete** — Says \"full implementations follow the same pattern\" for `/issue`, `/done`, `/learn`, `/triage` and `create_batch`. That's ~200 lines of existing functionality that needs porting. Should include full code or split into sub-tasks.",
-      "completed": true,
-      "noTest": false
-    }
-  ],
-  "acceptanceCriteria": []
+  "megaEnabled": true
 }
