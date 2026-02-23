@@ -41,11 +41,11 @@
     }
   ],
   "reviewApproved": false,
-  "currentTaskIndex": 5,
+  "currentTaskIndex": 6,
   "completedTasks": [],
   "tddTaskState": {
-    "taskIndex": 5,
-    "state": "no-test",
+    "taskIndex": 6,
+    "state": "test-written",
     "skipped": false
   },
   "taskJJChanges": {},
@@ -86,7 +86,7 @@
     {
       "index": 6,
       "description": "**Task 6 — unfinished TODO** — `advancePhase()` entering implement has a comment \"Find first incomplete task\" but no code. On session resume with partial progress, `currentTaskIndex` resets to 0.",
-      "completed": false,
+      "completed": true,
       "noTest": false
     },
     {
