@@ -34,7 +34,7 @@ export function advancePhase(cwd: string, targetPhase?: Phase, jj?: JJ): Advance
 
   // Gate check — use store for existing checkGate compatibility
   const store = createStore(cwd);
-  const gate = checkGate(state, target, store);
+  const gate = checkGate(state, target, store, cwd);
   if (!gate.pass) {
     return { ok: false, error: gate.reason };
   }

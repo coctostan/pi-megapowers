@@ -1,10 +1,12 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { MegapowersState, Phase, WorkflowType } from "./state-machine.js";
+import type { MegapowersState, Phase, PlanTask, WorkflowType } from "./state-machine.js";
 import type { Issue, Store } from "./store.js";
 import type { JJ } from "./jj.js";
 import { createInitialState, getFirstPhase, getValidTransitions, transition } from "./state-machine.js";
 import { formatChangeDescription } from "./jj.js";
 import { checkGate } from "./gates.js";
+import { writeState } from "./state-io.js";
+import { deriveTasks } from "./derived.js";
 
 // --- Theme type (subset used by pure renderers) ---
 
@@ -55,17 +57,18 @@ export const DONE_MODE_LABELS: Record<string, string> = {
   "capture-learnings": "Capture learnings",
 };
 
-export function renderStatusText(state: MegapowersState): string {
+export function renderStatusText(state: MegapowersState, tasks?: PlanTask[]): string {
   if (!state.activeIssue) return "";
   const idNum = state.activeIssue.match(/^(\d+)/)?.[1] ?? "?";
-  const completed = (state.planTasks ?? []).filter((t) => t.completed).length;
-  const total = (state.planTasks ?? []).length;
+  const total = tasks?.length ?? 0;
+  const completedSet = new Set(state.completedTasks);
+  const completed = tasks?.filter(t => completedSet.has(t.index)).length ?? 0;
   const taskInfo = total > 0 ? ` ${completed}/${total}` : "";
   const modeLabel = state.doneMode ? ` → ${DONE_MODE_LABELS[state.doneMode] ?? state.doneMode}` : "";
   return `📋 #${idNum} ${state.phase ?? "?"}${taskInfo}${modeLabel}`;
 }
 
-export function renderDashboardLines(state: MegapowersState, _issues: Issue[], theme: ThemeLike): string[] {
+export function renderDashboardLines(state: MegapowersState, _issues: Issue[], theme: ThemeLike, tasks?: PlanTask[]): string[] {
   const lines: string[] = [];
 
   if (!state.activeIssue) {
@@ -84,8 +87,11 @@ export function renderDashboardLines(state: MegapowersState, _issues: Issue[], t
     lines.push(`${theme.fg("accent", "Phase:")} ${formatPhaseProgress(state.workflow, state.phase, theme)}`);
   }
 
+  const taskList = tasks ?? [];
+  const completedSet = new Set(state.completedTasks);
+
   // Phase guidance — show for phases without their own detailed content
-  if (state.phase && state.phase !== "done" && state.phase !== "implement" && !(state.planTasks ?? []).length) {
+  if (state.phase && state.phase !== "done" && state.phase !== "implement" && taskList.length === 0) {
     const guidance = PHASE_GUIDANCE[state.phase];
     if (guidance) {
       lines.push(theme.fg("dim", guidance));
@@ -93,19 +99,19 @@ export function renderDashboardLines(state: MegapowersState, _issues: Issue[], t
   }
 
   // Task progress (implement phase or whenever tasks exist)
-  if ((state.planTasks ?? []).length > 0) {
-    const completed = (state.planTasks ?? []).filter((t) => t.completed).length;
-    lines.push(`${theme.fg("accent", "Tasks:")} ${completed}/${(state.planTasks ?? []).length} complete`);
+  if (taskList.length > 0) {
+    const completed = taskList.filter(t => completedSet.has(t.index)).length;
+    lines.push(`${theme.fg("accent", "Tasks:")} ${completed}/${taskList.length} complete`);
 
     // Show current task in implement phase
-    if (state.phase === "implement" && state.currentTaskIndex < (state.planTasks ?? []).length) {
-      const current = (state.planTasks ?? [])[state.currentTaskIndex];
+    if (state.phase === "implement" && state.currentTaskIndex < taskList.length) {
+      const current = taskList[state.currentTaskIndex];
       lines.push(`${theme.fg("accent", "Current:")} Task ${current.index}: ${current.description}`);
     }
 
     // TDD guard state indicator (implement phase only)
     if (state.phase === "implement") {
-      const currentTask = (state.planTasks ?? [])[state.currentTaskIndex];
+      const currentTask = taskList[state.currentTaskIndex];
       let tddIndicator: string;
 
       if (currentTask?.noTest || state.tddTaskState?.skipped) {
@@ -122,12 +128,6 @@ export function renderDashboardLines(state: MegapowersState, _issues: Issue[], t
 
       lines.push(`${theme.fg("accent", "TDD:")} ${tddIndicator}`);
     }
-  }
-
-  // Acceptance criteria status (verify and code-review phases)
-  if ((state.acceptanceCriteria ?? []).length > 0 && (state.phase === "verify" || state.phase === "code-review")) {
-    const passed = (state.acceptanceCriteria ?? []).filter(c => c.status === "pass").length;
-    lines.push(`${theme.fg("accent", "Criteria:")} ${passed}/${(state.acceptanceCriteria ?? []).length} passing`);
   }
 
   // Done phase: show active mode and instruction
@@ -176,7 +176,7 @@ export function formatTriageIssueList(issues: Issue[]): string {
 
 export interface MegapowersUI {
   renderDashboard(ctx: ExtensionContext, state: MegapowersState, store: Store): void;
-  updateStatus(ctx: ExtensionContext, state: MegapowersState): void;
+  updateStatus(ctx: ExtensionContext, state: MegapowersState, tasks?: PlanTask[]): void;
 
   handleIssueCommand(
     ctx: ExtensionContext,
@@ -212,13 +212,14 @@ export function createUI(): MegapowersUI {
   return {
     renderDashboard(ctx, state, store) {
       const issues = store.listIssues();
-      const lines = renderDashboardLines(state, issues, ctx.ui.theme);
+      const tasks = state.activeIssue ? deriveTasks(ctx.cwd, state.activeIssue) : [];
+      const lines = renderDashboardLines(state, issues, ctx.ui.theme, tasks);
       ctx.ui.setWidget("megapowers", lines);
-      this.updateStatus(ctx, state);
+      this.updateStatus(ctx, state, tasks);
     },
 
-    updateStatus(ctx, state) {
-      const text = renderStatusText(state);
+    updateStatus(ctx, state, tasks?) {
+      const text = renderStatusText(state, tasks);
       if (text) {
         ctx.ui.setStatus("megapowers", ctx.ui.theme.fg("accent", text));
       } else {
@@ -250,12 +251,12 @@ export function createUI(): MegapowersUI {
           phase: firstPhase,
           phaseHistory: [],
           reviewApproved: false,
-          planTasks: [],
           jjChangeId: null,
-          acceptanceCriteria: [],
           currentTaskIndex: 0,
+          completedTasks: [],
           tddTaskState: null,
           taskJJChanges: {},
+          doneMode: null,
         };
 
         // Create jj change if in a jj repo
@@ -265,7 +266,7 @@ export function createUI(): MegapowersUI {
           if (changeId) newState.jjChangeId = changeId;
         }
 
-        store.saveState(newState);
+        writeState(ctx.cwd, newState);
         store.updateIssueStatus(issue.slug, "in-progress");
         ctx.ui.notify(`Created and activated: ${issue.slug}`, "info");
         this.renderDashboard(ctx, newState, store);
@@ -304,12 +305,12 @@ export function createUI(): MegapowersUI {
           phase: firstPhase,
           phaseHistory: [],
           reviewApproved: false,
-          planTasks: [],
           jjChangeId: null,
-          acceptanceCriteria: [],
           currentTaskIndex: 0,
+          completedTasks: [],
           tddTaskState: null,
           taskJJChanges: {},
+          doneMode: null,
         };
 
         if (await jj.isJJRepo()) {
@@ -318,7 +319,7 @@ export function createUI(): MegapowersUI {
           if (changeId) newState.jjChangeId = changeId;
         }
 
-        store.saveState(newState);
+        writeState(ctx.cwd, newState);
         store.updateIssueStatus(selected.slug, "in-progress");
         ctx.ui.notify(`Activated: ${selected.slug}`, "info");
         this.renderDashboard(ctx, newState, store);
@@ -370,7 +371,7 @@ export function createUI(): MegapowersUI {
           closeSourceIssues(state.activeIssue, store);
           store.updateIssueStatus(state.activeIssue, "done");
           newState = createInitialState();
-          store.saveState(newState);
+          writeState(ctx.cwd, newState);
           ctx.ui.notify("Issue closed.", "info");
           continueMenu = false;
           break;
@@ -420,7 +421,7 @@ export function createUI(): MegapowersUI {
           closeSourceIssues(state.activeIssue, store);
           store.updateIssueStatus(state.activeIssue, "done");
           newState = createInitialState();
-          store.saveState(newState);
+          writeState(ctx.cwd, newState);
           ctx.ui.notify("Issue closed.", "info");
           continueMenu = false;
           break;
@@ -455,7 +456,7 @@ export function createUI(): MegapowersUI {
       // Check gates for each valid transition and annotate
       const options: { phase: Phase; label: string; gated: boolean; reason?: string }[] = [];
       for (const p of validNext) {
-        const gate = checkGate(state, p, store);
+        const gate = checkGate(state, p, store, ctx.cwd);
         let label = p as string;
         if (
           (state.phase === "review" && p === "plan") ||
@@ -495,7 +496,7 @@ export function createUI(): MegapowersUI {
         if (changeId) newState = { ...newState, jjChangeId: changeId };
       }
 
-      store.saveState(newState);
+      writeState(ctx.cwd, newState);
       const guidance = PHASE_GUIDANCE[targetPhase] ?? "";
       ctx.ui.notify(`Transitioned to: ${targetPhase}. ${guidance}`, "info");
       this.renderDashboard(ctx, newState, store);
@@ -548,10 +549,9 @@ export function createUI(): MegapowersUI {
         phase: firstPhase,
         phaseHistory: [],
         reviewApproved: false,
-        planTasks: [],
         jjChangeId: null,
-        acceptanceCriteria: [],
         currentTaskIndex: 0,
+        completedTasks: [],
         tddTaskState: null,
         taskJJChanges: {},
         doneMode: null,
@@ -563,7 +563,7 @@ export function createUI(): MegapowersUI {
         if (changeId) newState.jjChangeId = changeId;
       }
 
-      store.saveState(newState);
+      writeState(ctx.cwd, newState);
       store.updateIssueStatus(issue.slug, "in-progress");
       ctx.ui.notify(`Created batch: ${issue.slug} (sources: ${sources.join(", ")})`, "info");
       this.renderDashboard(ctx, newState, store);
