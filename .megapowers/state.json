@@ -1,75 +1,14 @@
 {
   "version": 1,
-  "activeIssue": "026-triage-llm-driven-batching",
-  "workflow": "feature",
-  "phase": "done",
-  "phaseHistory": [
-    {
-      "from": "brainstorm",
-      "to": "spec",
-      "timestamp": 1771862016307
-    },
-    {
-      "from": "spec",
-      "to": "plan",
-      "timestamp": 1771862994652
-    },
-    {
-      "from": "plan",
-      "to": "review",
-      "timestamp": 1771863913100
-    },
-    {
-      "from": "review",
-      "to": "implement",
-      "timestamp": 1771864910671
-    },
-    {
-      "from": "implement",
-      "to": "verify",
-      "timestamp": 1771866511343
-    },
-    {
-      "from": "verify",
-      "to": "code-review",
-      "timestamp": 1771866581367
-    },
-    {
-      "from": "code-review",
-      "to": "done",
-      "timestamp": 1771866748869
-    }
-  ],
-  "reviewApproved": true,
-  "planTasks": [
-    {
-      "index": 1,
-      "description": "Register `create_batch` tool with extracted handler",
-      "completed": true,
-      "noTest": false
-    },
-    {
-      "index": 2,
-      "description": "Refactor `/triage` command",
-      "completed": true,
-      "noTest": false,
-      "dependsOn": [
-        1
-      ]
-    },
-    {
-      "index": 3,
-      "description": "Update triage prompt template",
-      "completed": true,
-      "noTest": false,
-      "dependsOn": [
-        1
-      ]
-    }
-  ],
+  "activeIssue": null,
+  "workflow": null,
+  "phase": null,
+  "phaseHistory": [],
+  "reviewApproved": false,
+  "planTasks": [],
   "jjChangeId": null,
   "acceptanceCriteria": [],
-  "currentTaskIndex": 2,
+  "currentTaskIndex": 0,
   "tddTaskState": null,
   "taskJJChanges": {},
   "doneMode": null
