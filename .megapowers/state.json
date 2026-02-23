@@ -2,7 +2,7 @@
   "version": 1,
   "activeIssue": "030-state-source-of-truth-refactor",
   "workflow": "feature",
-  "phase": "review",
+  "phase": "plan",
   "phaseHistory": [
     {
       "from": "brainstorm",
@@ -18,6 +18,11 @@
       "from": "plan",
       "to": "review",
       "timestamp": 1771873696357
+    },
+    {
+      "from": "review",
+      "to": "plan",
+      "timestamp": 1771874195257
     }
   ],
   "reviewApproved": false,
