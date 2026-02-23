@@ -55,14 +55,15 @@ export function buildTaskCompletionReport(
 export interface TaskChangeContext {
   phase: Phase | null;
   currentTaskIndex: number;
-  planTasks: PlanTask[];
+  /** Derived tasks from plan.md (not from state — use deriveTasks()) */
+  tasks: PlanTask[];
   taskJJChanges: Record<number, string>;
 }
 
 export function shouldCreateTaskChange(ctx: TaskChangeContext): boolean {
   if (ctx.phase !== "implement") return false;
-  if (ctx.planTasks.length === 0) return false;
-  const currentTask = ctx.planTasks[ctx.currentTaskIndex];
+  if (ctx.tasks.length === 0) return false;
+  const currentTask = ctx.tasks[ctx.currentTaskIndex];
   if (!currentTask) return false;
   if (ctx.taskJJChanges[currentTask.index]) return false;
   return true;

@@ -4,7 +4,11 @@ import {
   parseTaskDiffFiles,
   buildTaskCompletionReport,
   shouldCreateTaskChange,
+  squashTaskChanges,
+  createTaskChange,
+  inspectTaskChange,
 } from "../extensions/megapowers/task-coordinator.js";
+import type { JJ } from "../extensions/megapowers/jj.js";
 
 describe("buildTaskChangeDescription", () => {
   it("formats description with issue slug and task number", () => {
@@ -81,7 +85,7 @@ describe("shouldCreateTaskChange", () => {
     expect(shouldCreateTaskChange({
       phase: "implement",
       currentTaskIndex: 0,
-      planTasks: [{ index: 1, description: "Do thing", completed: false, noTest: false }],
+      tasks: [{ index: 1, description: "Do thing", completed: false, noTest: false }],
       taskJJChanges: {},
     })).toBe(true);
   });
@@ -90,7 +94,7 @@ describe("shouldCreateTaskChange", () => {
     expect(shouldCreateTaskChange({
       phase: "implement",
       currentTaskIndex: 0,
-      planTasks: [{ index: 1, description: "Do thing", completed: false, noTest: false }],
+      tasks: [{ index: 1, description: "Do thing", completed: false, noTest: false }],
       taskJJChanges: { 1: "existing-change" },
     })).toBe(false);
   });
@@ -99,7 +103,7 @@ describe("shouldCreateTaskChange", () => {
     expect(shouldCreateTaskChange({
       phase: "plan",
       currentTaskIndex: 0,
-      planTasks: [{ index: 1, description: "Do thing", completed: false, noTest: false }],
+      tasks: [{ index: 1, description: "Do thing", completed: false, noTest: false }],
       taskJJChanges: {},
     })).toBe(false);
   });
@@ -108,7 +112,7 @@ describe("shouldCreateTaskChange", () => {
     expect(shouldCreateTaskChange({
       phase: "implement",
       currentTaskIndex: 0,
-      planTasks: [],
+      tasks: [],
       taskJJChanges: {},
     })).toBe(false);
   });
@@ -117,8 +121,124 @@ describe("shouldCreateTaskChange", () => {
     expect(shouldCreateTaskChange({
       phase: "implement",
       currentTaskIndex: 5,
-      planTasks: [{ index: 1, description: "Do thing", completed: false, noTest: false }],
+      tasks: [{ index: 1, description: "Do thing", completed: false, noTest: false }],
       taskJJChanges: {},
     })).toBe(false);
+  });
+});
+
+describe("squashTaskChanges (AC21)", () => {
+  function mockJJ(overrides: Partial<JJ> = {}): JJ {
+    return {
+      isJJRepo: async () => true,
+      getCurrentChangeId: async () => "current-id",
+      getChangeDescription: async () => "",
+      hasConflicts: async () => false,
+      newChange: async () => "new-id",
+      describe: async () => {},
+      squash: async () => {},
+      bookmarkSet: async () => {},
+      log: async () => "",
+      diff: async () => "",
+      abandon: async () => {},
+      squashInto: async () => {},
+      ...overrides,
+    };
+  }
+
+  it("calls jj.squashInto with the phase change ID", async () => {
+    let squashedInto: string | null = null;
+    const jj = mockJJ({
+      squashInto: async (id: string) => { squashedInto = id; },
+    });
+    await squashTaskChanges(jj, "phase-change-abc");
+    expect(squashedInto).toBe("phase-change-abc");
+  });
+
+  it("propagates errors from jj.squashInto", async () => {
+    const jj = mockJJ({
+      squashInto: async () => { throw new Error("squash failed"); },
+    });
+    expect(squashTaskChanges(jj, "phase-change-abc")).rejects.toThrow("squash failed");
+  });
+});
+
+describe("createTaskChange (AC19/AC20)", () => {
+  function mockJJ(overrides: Partial<JJ> = {}): JJ {
+    return {
+      isJJRepo: async () => true,
+      getCurrentChangeId: async () => "current-id",
+      getChangeDescription: async () => "",
+      hasConflicts: async () => false,
+      newChange: async () => "new-id",
+      describe: async () => {},
+      squash: async () => {},
+      bookmarkSet: async () => {},
+      log: async () => "",
+      diff: async () => "",
+      abandon: async () => {},
+      squashInto: async () => {},
+      ...overrides,
+    };
+  }
+
+  it("creates a new jj change with formatted description", async () => {
+    let createdDesc: string | null = null;
+    let createdParent: string | undefined;
+    const jj = mockJJ({
+      newChange: async (desc: string, parent?: string) => {
+        createdDesc = desc;
+        createdParent = parent;
+        return "task-change-id";
+      },
+    });
+    const result = await createTaskChange(jj, "001-auth", 3, "Add retry logic", "parent-change");
+    expect(result.changeId).toBe("task-change-id");
+    expect(createdDesc).toBe("mega(001-auth): task-3 — Add retry logic");
+    expect(createdParent).toBe("parent-change");
+  });
+
+  it("returns null changeId when jj.newChange returns null", async () => {
+    const jj = mockJJ({
+      newChange: async () => null,
+    });
+    const result = await createTaskChange(jj, "001-auth", 1, "Setup");
+    expect(result.changeId).toBeNull();
+  });
+});
+
+describe("inspectTaskChange (AC20)", () => {
+  function mockJJ(overrides: Partial<JJ> = {}): JJ {
+    return {
+      isJJRepo: async () => true,
+      getCurrentChangeId: async () => "current-id",
+      getChangeDescription: async () => "",
+      hasConflicts: async () => false,
+      newChange: async () => "new-id",
+      describe: async () => {},
+      squash: async () => {},
+      bookmarkSet: async () => {},
+      log: async () => "",
+      diff: async () => "",
+      abandon: async () => {},
+      squashInto: async () => {},
+      ...overrides,
+    };
+  }
+
+  it("returns files and hasDiffs from jj diff output", async () => {
+    const jj = mockJJ({
+      diff: async () => "M src/auth.ts\nA tests/auth.test.ts",
+    });
+    const inspection = await inspectTaskChange(jj, "change-abc");
+    expect(inspection.hasDiffs).toBe(true);
+    expect(inspection.files).toEqual(["src/auth.ts", "tests/auth.test.ts"]);
+  });
+
+  it("returns hasDiffs=false for empty diff", async () => {
+    const jj = mockJJ({ diff: async () => "" });
+    const inspection = await inspectTaskChange(jj, "change-abc");
+    expect(inspection.hasDiffs).toBe(false);
+    expect(inspection.files).toEqual([]);
   });
 });

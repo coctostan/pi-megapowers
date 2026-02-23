@@ -41,10 +41,10 @@
     }
   ],
   "reviewApproved": false,
-  "currentTaskIndex": 2,
+  "currentTaskIndex": 3,
   "completedTasks": [],
   "tddTaskState": {
-    "taskIndex": 2,
+    "taskIndex": 3,
     "state": "test-written",
     "skipped": false
   },
@@ -68,7 +68,7 @@
     {
       "index": 3,
       "description": "**AC19–21 — jj integration is vaporware** — Task 9 says \"jj deferred to Task 10\", Task 10 has `_jj?: JJ` unused params with zero jj calls. No task actually wires jj. Either add a dedicated jj task or move AC19–21 to out-of-scope.",
-      "completed": false,
+      "completed": true,
       "noTest": false
     },
     {

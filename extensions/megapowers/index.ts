@@ -239,7 +239,8 @@ export default function megapowers(pi: ExtensionAPI): void {
 
     // Create per-task jj change if needed
     if (state.phase === "implement" && (state.planTasks ?? []).length > 0 && await jj.isJJRepo()) {
-      if (shouldCreateTaskChange(state)) {
+      const derivedTasks = (state.planTasks ?? []); // TODO: replace with deriveTasks(cwd, state.activeIssue!) after refactor
+      if (shouldCreateTaskChange({ ...state, tasks: derivedTasks })) {
         const task = (state.planTasks ?? [])[state.currentTaskIndex];
         const result = await createTaskChange(
           jj,
