@@ -23,10 +23,75 @@
       "from": "review",
       "to": "plan",
       "timestamp": 1771874195257
+    },
+    {
+      "from": "plan",
+      "to": "review",
+      "timestamp": 1771875551886
+    },
+    {
+      "from": "review",
+      "to": "plan",
+      "timestamp": 1771876221511
     }
   ],
   "reviewApproved": false,
-  "planTasks": [],
+  "planTasks": [
+    {
+      "index": 1,
+      "description": "**Task 1/2 swap** — Task 1's tests assert `completedTasks` and `megaEnabled` which don't exist until Task 2. Either swap them or merge type changes into Task 1.",
+      "completed": false,
+      "noTest": false
+    },
+    {
+      "index": 2,
+      "description": "**Task 3 (AC10) — `hasOpenQuestions` too loose** — Current impl treats any non-sentinel non-blank line as an open question. Spec says only list items (`- `, `1. `) containing `?` count. Needs tightening.",
+      "completed": false,
+      "noTest": false
+    },
+    {
+      "index": 3,
+      "description": "**AC19–21 — jj integration is vaporware** — Task 9 says \"jj deferred to Task 10\", Task 10 has `_jj?: JJ` unused params with zero jj calls. No task actually wires jj. Either add a dedicated jj task or move AC19–21 to out-of-scope.",
+      "completed": false,
+      "noTest": false
+    },
+    {
+      "index": 4,
+      "description": "**AC38 — `megapowers_signal`/`megapowers_save_artifact` still callable when mega off** — The tools stay registered. If prompt removal is sufficient (LLM won't know about tools it's not told about), document that. Otherwise tools need to early-return with error when `megaEnabled: false`.",
+      "completed": false,
+      "noTest": false
+    },
+    {
+      "index": 5,
+      "description": "**Task 10 (AC13) — null-safety gap** — When `tddTaskState` is `null` for a non-`` task, the `&&` short-circuits and the task passes without TDD validation. Should block when null.",
+      "completed": false,
+      "noTest": true
+    },
+    {
+      "index": 6,
+      "description": "**Task 6 — unfinished TODO** — `advancePhase()` entering implement has a comment \"Find first incomplete task\" but no code. On session resume with partial progress, `currentTaskIndex` resets to 0.",
+      "completed": false,
+      "noTest": false
+    },
+    {
+      "index": 7,
+      "description": "**Task 11 — test import mismatch** — Test imports `checkBashOverride`, impl exports `processBashResult`.",
+      "completed": false,
+      "noTest": false
+    },
+    {
+      "index": 8,
+      "description": "**Task 15 — bash exit code hand-waved** — Uses regex on result text (`/exit code [1-9]/`) instead of actual exit code from pi's tool result. Needs to spec how `createBashTool` exposes exit codes.",
+      "completed": false,
+      "noTest": false
+    },
+    {
+      "index": 9,
+      "description": "**Task 15 — incomplete** — Says \"full implementations follow the same pattern\" for `/issue`, `/done`, `/learn`, `/triage` and `create_batch`. That's ~200 lines of existing functionality that needs porting. Should include full code or split into sub-tasks.",
+      "completed": false,
+      "noTest": false
+    }
+  ],
   "jjChangeId": null,
   "acceptanceCriteria": [],
   "currentTaskIndex": 0,

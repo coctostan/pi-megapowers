@@ -2,125 +2,304 @@
 
 ## Strategy
 
-This refactor replaces 4 modules, creates 6 new modules, and rewrites index.ts. To keep the codebase compiling at each task boundary, the plan follows three phases:
+Build alongside existing code (new modules), then switch over (rewire index.ts), then clean up (delete old modules). Three phases:
 
-**Phase A (Tasks 1–10):** Build new modules alongside old ones. Add new fields (`completedTasks`, `megaEnabled`) to `MegapowersState` without removing old fields. New code uses new fields; old code continues using old fields.
+1. **Tasks 1–12**: Build new modules — `state-io.ts`, `write-policy.ts`, `spec-parser.ts` fix, `phase-advance.ts`, `tool-signal.ts`, `tool-artifact.ts`, `tool-overrides.ts`, prompt templates
+2. **Tasks 13–15**: Rewire `index.ts` — register new tools/overrides, port all commands, remove in-memory state
+3. **Tasks 16–18**: Clean up — migrate remaining call sites, delete old modules, delete old tests
 
-**Phase B (Tasks 11–15):** Switch over. Rewrite index.ts to use new modules exclusively. Refactor ui.ts and store.ts. Old modules are no longer imported.
+## Descoped Acceptance Criteria
 
-**Phase C (Tasks 16–18):** Clean up. Remove old fields from state type. Delete deprecated modules and their tests. Final verification.
+AC19–21 (jj integration in tool handlers) are descoped to a follow-up issue. The new tool handlers (`handleTaskDone`, `handlePhaseNext`) accept an optional `JJ` parameter but do not call it in this refactor. jj operations remain in their current locations (`ui.ts`, `index.ts`) until the follow-up wires them into the tool handlers.
+
+## AC Coverage
+
+| AC | Task(s) | Notes |
+|----|---------|-------|
+| 1–4 | 1 | readState/writeState |
+| 5 | 13 | index.ts rewrite |
+| 6–7 | 1 | Thin state schema, no planTasks/acceptanceCriteria |
+| 8 | 5, 6 | Parse plan.md on demand in gates and phase-advance |
+| 9 | 5 | Parse spec/diagnosis on demand in gates |
+| 10 | 2 | hasOpenQuestions sentinel + question-mark logic |
+| 11 | 7 | megapowers_signal registration |
+| 12 | 7 | task_done happy path |
+| 13 | 7 | task_done TDD validation (null-safe) |
+| 14 | 7 | task_done [no-test] bypass |
+| 15 | 7 | task_done final task auto-advance |
+| 16 | 7 | review_approve |
+| 17 | 6, 7 | phase_next via advancePhase |
+| 18 | 6, 5 | Gate error messages |
+| 19–21 | — | Descoped (jj follow-up) |
+| 22–24 | 8 | megapowers_save_artifact |
+| 25–26 | 9 | write/edit overrides |
+| 27 | 3 | Write policy blocking phases |
+| 28 | 3, 9 | TDD-guarded phases |
+| 29 | 9 | Test file detection → tddTaskState update |
+| 30 | 9 | No custom renderCall/renderResult |
+| 31 | 3 | Allowlist bypass |
+| 32–34 | 10 | bash override |
+| 35–37 | 3 | canWrite pure function |
+| 38 | 7, 8 | Custom tools early-return when megaEnabled=false |
+| 39–40 | 13 | /mega on, /mega off, session_start reset |
+| 41–42 | 11 | Prompt injection |
+| 43 | 13 | No appendEntry calls |
+| 44 | 17 | Delete artifact-router.ts |
+| 45 | 17 | Delete tdd-guard.ts |
+| 46 | 17 | Delete state-recovery.ts |
+| 47 | 17 | Delete satellite-tdd.ts |
+| 48 | 12 | Satellite mode |
+| 49 | 14, 15 | Slash command fallbacks |
+| 50 | 14 | /tdd skip |
+| 51 | 5 | Derived acceptance criteria |
+| 52 | 7 | Tool-based task completion |
+| 53 | 2 | hasOpenQuestions fix |
+| 54 | 7 | Tool-based review approval |
+| 55 | 8 | Tool-based artifact persistence |
 
 ---
 
-### Task 1: state-io.ts — readState and writeState [no-test]
+### Task 1: State I/O with thin schema
+
+**Covers:** AC1, AC2, AC3, AC4, AC6, AC7
 
 **Files:**
 - Create: `extensions/megapowers/state-io.ts`
+- Modify: `extensions/megapowers/state-machine.ts`
 - Test: `tests/state-io.test.ts`
 
 **Test:**
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { readState, writeState } from "../extensions/megapowers/state-io.js";
+import { createInitialState } from "../extensions/megapowers/state-machine.js";
 
-let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "mega-state-io-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+describe("state-io", () => {
+  let tmp: string;
 
-describe("readState", () => {
-  it("returns initial state when state.json is missing", () => {
-    const state = readState(tmp);
-    expect(state.activeIssue).toBeNull();
-    expect(state.phase).toBeNull();
-    expect(state.completedTasks).toEqual([]);
-    expect(state.megaEnabled).toBe(true);
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "state-io-test-"));
   });
 
-  it("returns initial state when state.json contains invalid JSON", () => {
-    mkdirSync(join(tmp, ".megapowers"), { recursive: true });
-    writeFileSync(join(tmp, ".megapowers", "state.json"), "not json{{{");
-    const state = readState(tmp);
-    expect(state.activeIssue).toBeNull();
-    expect(state.phase).toBeNull();
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
   });
 
-  it("reads valid state from disk", () => {
-    mkdirSync(join(tmp, ".megapowers"), { recursive: true });
-    writeFileSync(join(tmp, ".megapowers", "state.json"), JSON.stringify({
-      version: 1,
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "implement",
-      completedTasks: [1, 2],
-      megaEnabled: false,
-    }));
-    const state = readState(tmp);
-    expect(state.activeIssue).toBe("001-test");
-    expect(state.phase).toBe("implement");
-    expect(state.completedTasks).toEqual([1, 2]);
-    expect(state.megaEnabled).toBe(false);
+  describe("readState", () => {
+    it("returns default initial state when state.json is missing", () => {
+      const state = readState(tmp);
+      expect(state).toEqual(createInitialState());
+    });
+
+    it("returns default initial state when state.json contains invalid JSON", () => {
+      const dir = join(tmp, ".megapowers");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "state.json"), "not json {{{");
+      const state = readState(tmp);
+      expect(state).toEqual(createInitialState());
+    });
+
+    it("reads valid state.json", () => {
+      const dir = join(tmp, ".megapowers");
+      mkdirSync(dir, { recursive: true });
+      const saved = {
+        ...createInitialState(),
+        activeIssue: "001-test",
+        phase: "spec",
+        completedTasks: [0, 1],
+        megaEnabled: false,
+      };
+      writeFileSync(join(dir, "state.json"), JSON.stringify(saved));
+      const state = readState(tmp);
+      expect(state.activeIssue).toBe("001-test");
+      expect(state.phase).toBe("spec");
+      expect(state.completedTasks).toEqual([0, 1]);
+      expect(state.megaEnabled).toBe(false);
+    });
+
+    it("merges over defaults for old formats missing new fields", () => {
+      const dir = join(tmp, ".megapowers");
+      mkdirSync(dir, { recursive: true });
+      // Old format: has planTasks but no completedTasks/megaEnabled
+      writeFileSync(join(dir, "state.json"), JSON.stringify({
+        version: 1,
+        activeIssue: "001-test",
+        phase: "implement",
+      }));
+      const state = readState(tmp);
+      expect(state.completedTasks).toEqual([]);
+      expect(state.megaEnabled).toBe(true);
+      expect(state.activeIssue).toBe("001-test");
+    });
   });
 
-  it("merges over defaults for missing fields", () => {
-    mkdirSync(join(tmp, ".megapowers"), { recursive: true });
-    writeFileSync(join(tmp, ".megapowers", "state.json"), JSON.stringify({
-      activeIssue: "001-test",
-      phase: "spec",
-    }));
-    const state = readState(tmp);
-    expect(state.activeIssue).toBe("001-test");
-    expect(state.completedTasks).toEqual([]);
-    expect(state.megaEnabled).toBe(true);
-    expect(state.reviewApproved).toBe(false);
-  });
-});
+  describe("writeState", () => {
+    it("creates .megapowers directory if missing", () => {
+      const state = { ...createInitialState(), activeIssue: "001-test" };
+      writeState(tmp, state);
+      expect(existsSync(join(tmp, ".megapowers", "state.json"))).toBe(true);
+    });
 
-describe("writeState", () => {
-  it("writes state that can be read back", () => {
-    const original = readState(tmp);
-    const modified = { ...original, activeIssue: "002-foo", phase: "plan" as const, completedTasks: [1, 3] };
-    writeState(tmp, modified);
-    const loaded = readState(tmp);
-    expect(loaded.activeIssue).toBe("002-foo");
-    expect(loaded.phase).toBe("plan");
-    expect(loaded.completedTasks).toEqual([1, 3]);
+    it("writes atomically via temp-file-then-rename", () => {
+      const state = { ...createInitialState(), activeIssue: "001-test" };
+      writeState(tmp, state);
+      // Verify no temp files left behind
+      const dir = join(tmp, ".megapowers");
+      const files = require("node:fs").readdirSync(dir);
+      expect(files).toEqual(["state.json"]);
+    });
   });
 
-  it("creates .megapowers directory if missing", () => {
-    writeState(tmp, readState(tmp));
-    expect(existsSync(join(tmp, ".megapowers", "state.json"))).toBe(true);
+  describe("round-trip", () => {
+    it("writeState followed by readState returns identical state", () => {
+      const state = {
+        ...createInitialState(),
+        activeIssue: "005-round-trip",
+        workflow: "feature" as const,
+        phase: "implement" as const,
+        phaseHistory: [{ from: "plan" as const, to: "implement" as const, timestamp: 12345 }],
+        currentTaskIndex: 2,
+        completedTasks: [0, 1],
+        reviewApproved: true,
+        tddTaskState: { taskIndex: 2, state: "test-written" as const, skipped: false },
+        taskJJChanges: { 0: "abc", 1: "def" },
+        jjChangeId: "xyz",
+        doneMode: null,
+        megaEnabled: true,
+      };
+      writeState(tmp, state);
+      const loaded = readState(tmp);
+      expect(loaded).toEqual(state);
+    });
   });
 
-  it("uses atomic write (temp file + rename)", () => {
-    writeState(tmp, { ...readState(tmp), activeIssue: "003-bar" });
-    // Verify no temp files left behind
-    const files = require("fs").readdirSync(join(tmp, ".megapowers"));
-    const tempFiles = files.filter((f: string) => f.startsWith(".state.json."));
-    expect(tempFiles).toHaveLength(0);
-    // Verify content is correct
-    const content = readFileSync(join(tmp, ".megapowers", "state.json"), "utf-8");
-    expect(JSON.parse(content).activeIssue).toBe("003-bar");
+  describe("thin schema", () => {
+    it("initial state has completedTasks array, not planTasks", () => {
+      const state = createInitialState();
+      expect(state.completedTasks).toEqual([]);
+      expect(state.megaEnabled).toBe(true);
+      expect((state as any).planTasks).toBeUndefined();
+      expect((state as any).acceptanceCriteria).toBeUndefined();
+    });
   });
 });
 ```
 
 **Implementation:**
 
+First, update `state-machine.ts` — remove `planTasks` and `acceptanceCriteria` from `MegapowersState`, add `completedTasks` and `megaEnabled`:
+
+```typescript
+// In extensions/megapowers/state-machine.ts
+
+// Remove the import of TddTaskState from tdd-guard (will be local)
+// Keep PlanTask and AcceptanceCriterion types for use by parsers, but remove them from state
+
+export interface TddTaskState {
+  taskIndex: number;
+  state: "no-test" | "test-written" | "impl-allowed";
+  skipped: boolean;
+  skipReason?: string;
+}
+
+export interface MegapowersState {
+  version: 1;
+  activeIssue: string | null;
+  workflow: WorkflowType | null;
+  phase: Phase | null;
+  phaseHistory: PhaseTransition[];
+  reviewApproved: boolean;
+  currentTaskIndex: number;
+  completedTasks: number[];
+  tddTaskState: TddTaskState | null;
+  taskJJChanges: Record<number, string>;
+  jjChangeId: string | null;
+  doneMode: "generate-docs" | "capture-learnings" | "write-changelog" | "generate-bugfix-summary" | null;
+  megaEnabled: boolean;
+}
+```
+
+Update `createInitialState()`:
+
+```typescript
+export function createInitialState(): MegapowersState {
+  return {
+    version: 1,
+    activeIssue: null,
+    workflow: null,
+    phase: null,
+    phaseHistory: [],
+    reviewApproved: false,
+    currentTaskIndex: 0,
+    completedTasks: [],
+    tddTaskState: null,
+    taskJJChanges: {},
+    jjChangeId: null,
+    doneMode: null,
+    megaEnabled: true,
+  };
+}
+```
+
+Update `transition()` — replace `planTasks` references with `completedTasks`:
+
+```typescript
+export function transition(state: MegapowersState, to: Phase, tasks?: PlanTask[]): MegapowersState {
+  if (!state.activeIssue) {
+    throw new Error("Cannot transition without an active issue");
+  }
+  if (!state.phase || !state.workflow) {
+    throw new Error("Cannot transition without an active phase and workflow");
+  }
+  if (!canTransition(state.workflow, state.phase, to)) {
+    throw new Error(`Invalid transition: ${state.phase} → ${to} in ${state.workflow} mode`);
+  }
+
+  const next: MegapowersState = {
+    ...state,
+    phase: to,
+    phaseHistory: [
+      ...state.phaseHistory,
+      { from: state.phase, to, timestamp: Date.now() },
+    ],
+  };
+
+  if (to === "plan") {
+    next.reviewApproved = false;
+  }
+
+  if (to === "implement" && tasks) {
+    // Find first incomplete task
+    const completedSet = new Set(state.completedTasks);
+    const firstIncomplete = tasks.findIndex(t => !completedSet.has(t.index));
+    next.currentTaskIndex = firstIncomplete >= 0 ? firstIncomplete : 0;
+    next.taskJJChanges = {};
+  }
+
+  next.doneMode = null;
+
+  return next;
+}
+```
+
+Then create `state-io.ts`:
+
 ```typescript
 // extensions/megapowers/state-io.ts
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { createInitialState, type MegapowersState } from "./state-machine.js";
 
+const STATE_DIR = ".megapowers";
 const STATE_FILE = "state.json";
-const MEGA_DIR = ".megapowers";
 
 export function readState(cwd: string): MegapowersState {
-  const filePath = join(cwd, MEGA_DIR, STATE_FILE);
+  const filePath = join(cwd, STATE_DIR, STATE_FILE);
   if (!existsSync(filePath)) return createInitialState();
   try {
     const raw = JSON.parse(readFileSync(filePath, "utf-8"));
@@ -131,12 +310,10 @@ export function readState(cwd: string): MegapowersState {
 }
 
 export function writeState(cwd: string, state: MegapowersState): void {
-  const dir = join(cwd, MEGA_DIR);
+  const dir = join(cwd, STATE_DIR);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-
   const filePath = join(dir, STATE_FILE);
-  const tmpPath = join(dir, `.state.json.${process.pid}.${Date.now()}.tmp`);
-
+  const tmpPath = join(dir, `.state-${randomUUID()}.tmp`);
   writeFileSync(tmpPath, JSON.stringify(state, null, 2) + "\n");
   renameSync(tmpPath, filePath);
 }
@@ -146,98 +323,61 @@ export function writeState(cwd: string, state: MegapowersState): void {
 
 ---
 
-### Task 2: MegapowersState type — add completedTasks and megaEnabled [depends: 1]
+### Task 2: Fix hasOpenQuestions for sentinels and question-mark detection [depends: 1]
 
-**Files:**
-- Modify: `extensions/megapowers/state-machine.ts`
-- Test: `tests/state-machine.test.ts`
-
-**Test:** Add to existing `tests/state-machine.test.ts`:
-
-```typescript
-describe("createInitialState — new fields", () => {
-  it("includes completedTasks as empty array", () => {
-    const state = createInitialState();
-    expect(state.completedTasks).toEqual([]);
-  });
-
-  it("includes megaEnabled as true", () => {
-    const state = createInitialState();
-    expect(state.megaEnabled).toBe(true);
-  });
-});
-```
-
-**Implementation:**
-
-Add two fields to `MegapowersState` interface in `state-machine.ts`:
-
-```typescript
-export interface MegapowersState {
-  // ... existing fields ...
-  /** Indices of completed tasks (new: replaces planTasks[].completed) */
-  completedTasks: number[];
-  /** Whether megapowers enforcement is active (session-scoped) */
-  megaEnabled: boolean;
-}
-```
-
-Update `createInitialState()`:
-
-```typescript
-export function createInitialState(): MegapowersState {
-  return {
-    // ... existing fields ...
-    completedTasks: [],
-    megaEnabled: true,
-  };
-}
-```
-
-**Verify:** `bun test tests/state-machine.test.ts`
-
----
-
-### Task 3: spec-parser — hasOpenQuestions sentinel fix
+**Covers:** AC10, AC53
 
 **Files:**
 - Modify: `extensions/megapowers/spec-parser.ts`
-- Test: `tests/spec-parser.test.ts`
+- Test: `tests/spec-parser.test.ts` (add cases)
 
-**Test:** Add to existing `tests/spec-parser.test.ts`:
+**Test:**
+
+Add these test cases to the existing `tests/spec-parser.test.ts`:
 
 ```typescript
-describe("hasOpenQuestions — sentinel handling", () => {
+// Add to tests/spec-parser.test.ts
+
+describe("hasOpenQuestions — sentinel detection", () => {
   const sentinels = [
-    "None", "None.", "N/A", "n/a", "No open questions",
-    "No open questions.", "(none)", "(None)", "- None", "- N/A",
-    "1. None", "- (none)",
+    "None", "None.", "N/A", "n/a", "No open questions", "No open questions.",
+    "(none)", "(None)", "- None", "- N/A", "1. None", "* None",
   ];
 
   for (const sentinel of sentinels) {
-    it(`returns false for sentinel "${sentinel}"`, () => {
+    it(`returns false for "${sentinel}"`, () => {
       const spec = `## Acceptance Criteria\n1. Works\n\n## Open Questions\n${sentinel}\n`;
       expect(hasOpenQuestions(spec)).toBe(false);
     });
   }
 
-  it("returns true for actual question with ?", () => {
-    const spec = `## Open Questions\n- What about edge case X?\n`;
-    expect(hasOpenQuestions(spec)).toBe(true);
-  });
-
-  it("returns true for numbered question", () => {
-    const spec = `## Open Questions\n1. How should auth work?\n`;
-    expect(hasOpenQuestions(spec)).toBe(true);
-  });
-
   it("returns false for empty section", () => {
-    const spec = `## Open Questions\n\n## Out of Scope\n`;
+    const spec = `## Acceptance Criteria\n1. Works\n\n## Open Questions\n\n## Out of Scope\n`;
     expect(hasOpenQuestions(spec)).toBe(false);
   });
 
-  it("returns true for real questions mixed with sentinels", () => {
-    const spec = `## Open Questions\n- None for auth\n- What about rate limiting?\n`;
+  it("returns false for non-list commentary without question marks", () => {
+    const spec = `## Open Questions\nNo outstanding questions at this time.\n`;
+    expect(hasOpenQuestions(spec)).toBe(false);
+  });
+
+  it("returns true for list items with question marks", () => {
+    const spec = `## Open Questions\n- What about edge case X?\n- Should we support Y?\n`;
+    expect(hasOpenQuestions(spec)).toBe(true);
+  });
+
+  it("returns true for numbered items with question marks", () => {
+    const spec = `## Open Questions\n1. How should we handle auth?\n2. What's the migration path?\n`;
+    expect(hasOpenQuestions(spec)).toBe(true);
+  });
+
+  it("returns false for list items without question marks", () => {
+    const spec = `## Open Questions\n- None at this time\n- All resolved\n`;
+    expect(hasOpenQuestions(spec)).toBe(false);
+  });
+
+  it("returns true when mix of sentinel and real question", () => {
+    const spec = `## Open Questions\n- None\n- But what about caching?\n`;
     expect(hasOpenQuestions(spec)).toBe(true);
   });
 });
@@ -245,10 +385,10 @@ describe("hasOpenQuestions — sentinel handling", () => {
 
 **Implementation:**
 
-Replace the `hasOpenQuestions` function in `spec-parser.ts`:
+Replace `hasOpenQuestions` in `extensions/megapowers/spec-parser.ts`:
 
 ```typescript
-const SENTINEL_PATTERN = /^[-\d.)\s]*\(?\s*(none|n\/a|no open questions)\.?\s*\)?$/i;
+const SENTINEL_PATTERN = /^[-*]?\s*(?:\d+[.)]\s*)?(?:none\.?|n\/a|no open questions\.?|\(none\))$/i;
 
 export function hasOpenQuestions(specContent: string): boolean {
   const lines = specContent.split("\n");
@@ -266,9 +406,16 @@ export function hasOpenQuestions(specContent: string): boolean {
 
     const trimmed = line.trim();
     if (trimmed.length === 0) continue;
+
+    // Skip sentinel values
     if (SENTINEL_PATTERN.test(trimmed)) continue;
-    // Real content — it's an open question
-    return true;
+
+    // Only list items (- , * , 1. , 1) ) containing ? count as open questions
+    const isListItem = /^[-*]\s+/.test(trimmed) || /^\d+[.)]\s+/.test(trimmed);
+    if (isListItem && trimmed.includes("?")) {
+      return true;
+    }
+    // Non-list lines are treated as commentary, not questions
   }
 
   return false;
@@ -279,7 +426,9 @@ export function hasOpenQuestions(specContent: string): boolean {
 
 ---
 
-### Task 4: write-policy.ts — canWrite pure function
+### Task 3: Write policy pure function
+
+**Covers:** AC27, AC28, AC31, AC35, AC36, AC37
 
 **Files:**
 - Create: `extensions/megapowers/write-policy.ts`
@@ -289,108 +438,110 @@ export function hasOpenQuestions(specContent: string): boolean {
 
 ```typescript
 import { describe, it, expect } from "bun:test";
-import { canWrite, isTestFile, isAllowlisted, isTestRunnerCommand } from "../extensions/megapowers/write-policy.js";
-import type { TddTaskState } from "../extensions/megapowers/write-policy.js";
+import { canWrite } from "../extensions/megapowers/write-policy.js";
+import type { Phase } from "../extensions/megapowers/state-machine.js";
 
-function makeTddState(overrides: Partial<TddTaskState> = {}): TddTaskState {
-  return { taskIndex: 1, state: "no-test", skipped: false, ...overrides };
-}
+describe("canWrite", () => {
+  const blockingPhases: Phase[] = ["brainstorm", "spec", "plan", "review", "verify", "done"];
+  const tddPhases: Phase[] = ["implement", "code-review"];
 
-describe("canWrite — megaEnabled=false passthrough", () => {
-  it("allows any file in any phase when mega is off", () => {
-    const result = canWrite("implement", "src/main.ts", false, false, makeTddState());
-    expect(result.allowed).toBe(true);
-  });
-});
-
-describe("canWrite — .megapowers/ always allowed", () => {
-  for (const phase of ["brainstorm", "spec", "plan", "review", "implement", "verify", "code-review", "done"] as const) {
-    it(`allows .megapowers/ writes in ${phase}`, () => {
-      const result = canWrite(phase, ".megapowers/state.json", true, false, null);
+  describe("megaEnabled=false bypasses all checks", () => {
+    it("allows any file in any phase", () => {
+      const result = canWrite("implement", "src/app.ts", false, false, null);
       expect(result.allowed).toBe(true);
     });
-  }
-});
+  });
 
-describe("canWrite — blocking phases", () => {
-  const blockingPhases = ["brainstorm", "spec", "plan", "review", "verify", "done"] as const;
+  describe(".megapowers/ paths always allowed", () => {
+    for (const phase of [...blockingPhases, ...tddPhases]) {
+      it(`allows .megapowers/ in ${phase}`, () => {
+        const result = canWrite(phase, ".megapowers/plans/001/spec.md", true, false, null);
+        expect(result.allowed).toBe(true);
+      });
+    }
+  });
 
-  for (const phase of blockingPhases) {
-    it(`blocks source code in ${phase}`, () => {
-      const result = canWrite(phase, "src/main.ts", true, false, null);
-      expect(result.allowed).toBe(false);
-      expect(result.reason).toBeDefined();
+  describe("blocking phases reject source code writes", () => {
+    for (const phase of blockingPhases) {
+      it(`blocks src/app.ts in ${phase}`, () => {
+        const result = canWrite(phase, "src/app.ts", true, false, null);
+        expect(result.allowed).toBe(false);
+        expect(result.reason).toBeDefined();
+      });
+    }
+  });
+
+  describe("TDD-guarded phases", () => {
+    for (const phase of tddPhases) {
+      it(`allows test files freely in ${phase}`, () => {
+        const result = canWrite(phase, "tests/foo.test.ts", true, false, null);
+        expect(result.allowed).toBe(true);
+      });
+
+      it(`blocks production files when tddState is null in ${phase}`, () => {
+        const result = canWrite(phase, "src/app.ts", true, false, null);
+        expect(result.allowed).toBe(false);
+      });
+
+      it(`blocks production files in no-test state in ${phase}`, () => {
+        const tdd = { taskIndex: 0, state: "no-test" as const, skipped: false };
+        const result = canWrite(phase, "src/app.ts", true, false, tdd);
+        expect(result.allowed).toBe(false);
+      });
+
+      it(`blocks production files in test-written state in ${phase}`, () => {
+        const tdd = { taskIndex: 0, state: "test-written" as const, skipped: false };
+        const result = canWrite(phase, "src/app.ts", true, false, tdd);
+        expect(result.allowed).toBe(false);
+      });
+
+      it(`allows production files in impl-allowed state in ${phase}`, () => {
+        const tdd = { taskIndex: 0, state: "impl-allowed" as const, skipped: false };
+        const result = canWrite(phase, "src/app.ts", true, false, tdd);
+        expect(result.allowed).toBe(true);
+      });
+
+      it(`allows production files when tdd is skipped in ${phase}`, () => {
+        const tdd = { taskIndex: 0, state: "no-test" as const, skipped: true };
+        const result = canWrite(phase, "src/app.ts", true, false, tdd);
+        expect(result.allowed).toBe(true);
+      });
+
+      it(`allows production files for [no-test] tasks in ${phase}`, () => {
+        const result = canWrite(phase, "src/app.ts", true, true, null);
+        expect(result.allowed).toBe(true);
+      });
+    }
+  });
+
+  describe("allowlisted file types bypass TDD", () => {
+    const allowlisted = [
+      "tsconfig.json",
+      "config.yml",
+      "config.yaml",
+      "settings.toml",
+      ".env",
+      ".env.local",
+      "types.d.ts",
+      "README.md",
+      "vitest.config.ts",
+      "eslint.config.js",
+    ];
+
+    for (const file of allowlisted) {
+      it(`allows ${file} in implement without TDD`, () => {
+        const result = canWrite("implement", file, true, false, null);
+        expect(result.allowed).toBe(true);
+      });
+    }
+  });
+
+  describe("null phase allows all writes", () => {
+    it("allows source code when phase is null", () => {
+      const result = canWrite(null, "src/app.ts", true, false, null);
+      expect(result.allowed).toBe(true);
     });
-  }
-});
-
-describe("canWrite — implement phase TDD gating", () => {
-  it("allows test files freely", () => {
-    const result = canWrite("implement", "tests/main.test.ts", true, false, makeTddState());
-    expect(result.allowed).toBe(true);
   });
-
-  it("blocks production files when no test written", () => {
-    const result = canWrite("implement", "src/main.ts", true, false, makeTddState({ state: "no-test" }));
-    expect(result.allowed).toBe(false);
-  });
-
-  it("blocks production files when test written but not run", () => {
-    const result = canWrite("implement", "src/main.ts", true, false, makeTddState({ state: "test-written" }));
-    expect(result.allowed).toBe(false);
-  });
-
-  it("allows production files when tests ran red (impl-allowed)", () => {
-    const result = canWrite("implement", "src/main.ts", true, false, makeTddState({ state: "impl-allowed" }));
-    expect(result.allowed).toBe(true);
-  });
-
-  it("allows production files for [no-test] tasks", () => {
-    const result = canWrite("implement", "src/main.ts", true, true, makeTddState());
-    expect(result.allowed).toBe(true);
-  });
-
-  it("allows production files when TDD skipped", () => {
-    const result = canWrite("implement", "src/main.ts", true, false, makeTddState({ skipped: true }));
-    expect(result.allowed).toBe(true);
-  });
-
-  it("allows allowlisted files (json, yaml, md, etc.) without TDD", () => {
-    const result = canWrite("implement", "tsconfig.json", true, false, makeTddState({ state: "no-test" }));
-    expect(result.allowed).toBe(true);
-  });
-});
-
-describe("canWrite — code-review phase has same TDD gating", () => {
-  it("blocks production files when no test written", () => {
-    const result = canWrite("code-review", "src/main.ts", true, false, makeTddState({ state: "no-test" }));
-    expect(result.allowed).toBe(false);
-  });
-
-  it("allows when impl-allowed", () => {
-    const result = canWrite("code-review", "src/main.ts", true, false, makeTddState({ state: "impl-allowed" }));
-    expect(result.allowed).toBe(true);
-  });
-});
-
-describe("isTestFile", () => {
-  it("matches *.test.ts", () => expect(isTestFile("src/auth.test.ts")).toBe(true));
-  it("matches tests/ dir", () => expect(isTestFile("tests/auth.ts")).toBe(true));
-  it("rejects regular src", () => expect(isTestFile("src/auth.ts")).toBe(false));
-});
-
-describe("isAllowlisted", () => {
-  it("allows .json", () => expect(isAllowlisted("tsconfig.json")).toBe(true));
-  it("allows .md", () => expect(isAllowlisted("README.md")).toBe(true));
-  it("allows .config.ts", () => expect(isAllowlisted("vite.config.ts")).toBe(true));
-  it("rejects .ts", () => expect(isAllowlisted("src/main.ts")).toBe(false));
-});
-
-describe("isTestRunnerCommand", () => {
-  it("detects bun test", () => expect(isTestRunnerCommand("bun test")).toBe(true));
-  it("detects bun test with args", () => expect(isTestRunnerCommand("bun test tests/foo.test.ts")).toBe(true));
-  it("rejects compound commands", () => expect(isTestRunnerCommand("echo foo && bun test")).toBe(false));
-  it("rejects non-test commands", () => expect(isTestRunnerCommand("ls -la")).toBe(false));
 });
 ```
 
@@ -398,17 +549,11 @@ describe("isTestRunnerCommand", () => {
 
 ```typescript
 // extensions/megapowers/write-policy.ts
-import type { Phase } from "./state-machine.js";
+import type { Phase, TddTaskState } from "./state-machine.js";
 
-// --- TDD types (moved from tdd-guard.ts) ---
-
-export type TddState = "no-test" | "test-written" | "impl-allowed";
-
-export interface TddTaskState {
-  taskIndex: number;
-  state: TddState;
-  skipped: boolean;
-  skipReason?: string;
+export interface WriteDecision {
+  allowed: boolean;
+  reason?: string;
 }
 
 // --- File classification (moved from tdd-guard.ts) ---
@@ -417,43 +562,50 @@ const TEST_FILE_PATTERNS = [/\.test\.[^/]+$/, /\.spec\.[^/]+$/];
 const TEST_DIR_PATTERNS = [/(^|\/)tests?\//, /(^|\/)__tests__\//];
 
 export function isTestFile(filePath: string): boolean {
-  return TEST_FILE_PATTERNS.some(p => p.test(filePath)) ||
-         TEST_DIR_PATTERNS.some(p => p.test(filePath));
+  for (const p of TEST_FILE_PATTERNS) if (p.test(filePath)) return true;
+  for (const p of TEST_DIR_PATTERNS) if (p.test(filePath)) return true;
+  return false;
 }
 
-const ALLOWLIST_EXTENSIONS = [
+const ALLOWLIST_PATTERNS = [
   /\.json$/, /\.ya?ml$/, /\.toml$/, /\.env(\..*)?$/,
   /\.d\.ts$/, /\.md$/, /\.config\.[^/]+$/,
 ];
 
 export function isAllowlisted(filePath: string): boolean {
-  return ALLOWLIST_EXTENSIONS.some(p => p.test(filePath));
+  for (const p of ALLOWLIST_PATTERNS) if (p.test(filePath)) return true;
+  return false;
 }
 
+// --- Test runner detection (moved from tdd-guard.ts) ---
+
 const TEST_RUNNER_PATTERNS = [
-  /^\s*bun\s+test(\s|$)/, /^\s*npm\s+test(\s|$)/,
-  /^\s*npx\s+(jest|vitest|mocha)(\s|$)/, /^\s*pytest(\s|$)/,
-  /^\s*python\s+-m\s+pytest(\s|$)/, /^\s*cargo\s+test(\s|$)/,
-  /^\s*go\s+test(\s|$)/, /^\s*deno\s+test(\s|$)/,
+  /^\s*bun\s+test(\s|$)/,
+  /^\s*npm\s+test(\s|$)/,
+  /^\s*npx\s+(jest|vitest|mocha)(\s|$)/,
+  /^\s*pytest(\s|$)/,
+  /^\s*python\s+-m\s+pytest(\s|$)/,
+  /^\s*cargo\s+test(\s|$)/,
+  /^\s*go\s+test(\s|$)/,
+  /^\s*deno\s+test(\s|$)/,
   /^\s*npm\s+run\s+test(\s|$)/,
 ];
 
 export function isTestRunnerCommand(command: string): boolean {
   if (/[;&|\n]/.test(command)) return false;
-  return TEST_RUNNER_PATTERNS.some(p => p.test(command));
+  for (const p of TEST_RUNNER_PATTERNS) if (p.test(command)) return true;
+  return false;
 }
 
-// --- Write policy ---
+// --- Blocking phases ---
 
-export interface WriteResult {
-  allowed: boolean;
-  reason?: string;
-}
-
-const TDD_PHASES: ReadonlySet<Phase> = new Set(["implement", "code-review"]);
-const BLOCKING_PHASES: ReadonlySet<Phase> = new Set([
+const BLOCKING_PHASES: ReadonlySet<string> = new Set([
   "brainstorm", "spec", "plan", "review", "verify", "done",
 ]);
+
+const TDD_PHASES: ReadonlySet<string> = new Set(["implement", "code-review"]);
+
+// --- Core policy ---
 
 export function canWrite(
   phase: Phase | null,
@@ -461,46 +613,51 @@ export function canWrite(
   megaEnabled: boolean,
   taskIsNoTest: boolean,
   tddState: TddTaskState | null,
-): WriteResult {
+): WriteDecision {
+  // Mega disabled — everything passes
   if (!megaEnabled) return { allowed: true };
+
+  // No active phase — allow
   if (!phase) return { allowed: true };
 
-  // .megapowers/ always writable
+  // .megapowers/ paths always allowed
   if (filePath.startsWith(".megapowers/") || filePath.includes("/.megapowers/")) {
     return { allowed: true };
   }
 
-  // Blocking phases: no source code
+  // Blocking phases — no source code writes
   if (BLOCKING_PHASES.has(phase)) {
-    return { allowed: false, reason: `Source code writes blocked in ${phase} phase. Only .megapowers/ paths are writable.` };
+    return {
+      allowed: false,
+      reason: `Source code writes are blocked during the ${phase} phase. Only .megapowers/ paths are writable.`,
+    };
   }
 
-  // TDD phases: guarded writes
+  // TDD-guarded phases
   if (TDD_PHASES.has(phase)) {
+    // Allowlisted file types bypass TDD
     if (isAllowlisted(filePath)) return { allowed: true };
-    if (taskIsNoTest) return { allowed: true };
-    if (tddState?.skipped) return { allowed: true };
+
+    // Test files always allowed
     if (isTestFile(filePath)) return { allowed: true };
 
+    // [no-test] tasks bypass TDD
+    if (taskIsNoTest) return { allowed: true };
+
+    // TDD skipped at runtime
+    if (tddState?.skipped) return { allowed: true };
+
     // Production file — check TDD state
-    if (!tddState || tddState.state === "no-test") {
-      return { allowed: false, reason: "TDD violation: write a failing test first before writing production code." };
-    }
-    if (tddState.state === "test-written") {
-      return { allowed: false, reason: "TDD violation: run your tests and confirm they fail (red) before writing production code." };
-    }
-    // impl-allowed
-    return { allowed: true };
+    if (tddState?.state === "impl-allowed") return { allowed: true };
+
+    return {
+      allowed: false,
+      reason: "TDD violation: write a test file and run tests (they must fail) before writing production code.",
+    };
   }
 
+  // Unknown phase — allow
   return { allowed: true };
-}
-
-// --- Test result handling ---
-
-export function handleTestResult(exitCode: number, currentState: TddState): TddState {
-  if (currentState !== "test-written") return currentState;
-  return exitCode !== 0 ? "impl-allowed" : "test-written";
 }
 ```
 
@@ -508,154 +665,399 @@ export function handleTestResult(exitCode: number, currentState: TddState): TddS
 
 ---
 
-### Task 5: gates.ts — refactor to disk-derived task list [depends: 2, 3]
+### Task 4: Derived data helpers [depends: 1]
+
+**Covers:** AC8, AC9, AC51
 
 **Files:**
-- Modify: `extensions/megapowers/gates.ts`
-- Modify: `tests/gates.test.ts`
+- Create: `extensions/megapowers/derived.ts`
+- Test: `tests/derived.test.ts`
 
-**Test:** Rewrite `tests/gates.test.ts`. Key changes:
-- `implement→verify` gate now reads plan.md and checks `state.completedTasks` instead of `state.planTasks[].completed`
-- `spec→plan` gate now properly handles sentinels in open questions
-- Gate error messages are actionable
+**Test:**
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { deriveTasks, deriveAcceptanceCriteria } from "../extensions/megapowers/derived.js";
+
+describe("derived", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "derived-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  function writePlan(issue: string, content: string) {
+    const dir = join(tmp, ".megapowers", "plans", issue);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "plan.md"), content);
+  }
+
+  function writeSpec(issue: string, content: string) {
+    const dir = join(tmp, ".megapowers", "plans", issue);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "spec.md"), content);
+  }
+
+  function writeDiagnosis(issue: string, content: string) {
+    const dir = join(tmp, ".megapowers", "plans", issue);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "diagnosis.md"), content);
+  }
+
+  describe("deriveTasks", () => {
+    it("parses tasks from plan.md", () => {
+      writePlan("001-test", "# Plan\n\n### Task 1: Setup\n\n### Task 2: Build [no-test]\n\n### Task 3: Integrate [depends: 1, 2]\n");
+      const tasks = deriveTasks(tmp, "001-test");
+      expect(tasks).toHaveLength(3);
+      expect(tasks[0].index).toBe(1);
+      expect(tasks[1].noTest).toBe(true);
+      expect(tasks[2].dependsOn).toEqual([1, 2]);
+    });
+
+    it("returns empty array when plan.md missing", () => {
+      const tasks = deriveTasks(tmp, "001-missing");
+      expect(tasks).toEqual([]);
+    });
+
+    it("returns empty array when plan.md has no tasks", () => {
+      writePlan("001-empty", "# Plan\n\nNo tasks here.\n");
+      const tasks = deriveTasks(tmp, "001-empty");
+      expect(tasks).toEqual([]);
+    });
+  });
+
+  describe("deriveAcceptanceCriteria", () => {
+    it("parses from spec.md for feature workflow", () => {
+      writeSpec("001-test", "# Spec\n\n## Acceptance Criteria\n1. User can log in\n2. User sees dashboard\n");
+      const criteria = deriveAcceptanceCriteria(tmp, "001-test", "feature");
+      expect(criteria).toHaveLength(2);
+      expect(criteria[0].text).toBe("User can log in");
+    });
+
+    it("parses from diagnosis.md for bugfix workflow", () => {
+      writeDiagnosis("001-test", "# Diagnosis\n\n## Fixed When\n1. Error no longer occurs\n2. Tests pass\n");
+      const criteria = deriveAcceptanceCriteria(tmp, "001-test", "bugfix");
+      expect(criteria).toHaveLength(2);
+      expect(criteria[0].text).toBe("Error no longer occurs");
+    });
+
+    it("returns empty array when artifact missing", () => {
+      const criteria = deriveAcceptanceCriteria(tmp, "001-missing", "feature");
+      expect(criteria).toEqual([]);
+    });
+  });
+});
+```
+
+**Implementation:**
+
+```typescript
+// extensions/megapowers/derived.ts
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { extractPlanTasks } from "./plan-parser.js";
+import { extractAcceptanceCriteria, extractFixedWhenCriteria } from "./spec-parser.js";
+import type { PlanTask, AcceptanceCriterion, WorkflowType } from "./state-machine.js";
+
+export function deriveTasks(cwd: string, issueSlug: string): PlanTask[] {
+  const planPath = join(cwd, ".megapowers", "plans", issueSlug, "plan.md");
+  if (!existsSync(planPath)) return [];
+  const content = readFileSync(planPath, "utf-8");
+  return extractPlanTasks(content);
+}
+
+export function deriveAcceptanceCriteria(
+  cwd: string,
+  issueSlug: string,
+  workflow: WorkflowType,
+): AcceptanceCriterion[] {
+  const filename = workflow === "bugfix" ? "diagnosis.md" : "spec.md";
+  const filePath = join(cwd, ".megapowers", "plans", issueSlug, filename);
+  if (!existsSync(filePath)) return [];
+  const content = readFileSync(filePath, "utf-8");
+  return workflow === "bugfix"
+    ? extractFixedWhenCriteria(content)
+    : extractAcceptanceCriteria(content);
+}
+```
+
+**Verify:** `bun test tests/derived.test.ts`
+
+---
+
+### Task 5: Refactor gates to use disk-based derived data [depends: 1, 2, 4]
+
+**Covers:** AC8, AC9, AC10, AC18, AC51
+
+**Files:**
+- Modify: `extensions/megapowers/gates.ts`
+- Test: `tests/gates.test.ts` (rewrite for new signature)
+
+**Test:**
+
+```typescript
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { checkGate } from "../extensions/megapowers/gates.js";
-import { createStore } from "../extensions/megapowers/store.js";
-import { createInitialState, type MegapowersState } from "../extensions/megapowers/state-machine.js";
-
-let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "mega-gate-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+import { createInitialState, type MegapowersState, type Phase } from "../extensions/megapowers/state-machine.js";
 
 function makeState(overrides: Partial<MegapowersState> = {}): MegapowersState {
   return { ...createInitialState(), activeIssue: "001-test", workflow: "feature", ...overrides };
 }
 
-describe("implement → verify (disk-derived)", () => {
-  it("fails when plan.md does not exist", () => {
-    const store = createStore(tmp);
-    const result = checkGate(makeState({ phase: "implement", completedTasks: [1] }), "verify", store);
-    expect(result.pass).toBe(false);
-    expect(result.reason).toContain("plan.md");
+describe("gates (disk-based)", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "gates-test-"));
   });
 
-  it("fails when plan.md has no tasks", () => {
-    const store = createStore(tmp);
-    store.ensurePlanDir("001-test");
-    store.writePlanFile("001-test", "plan.md", "# Plan\nNo tasks here.");
-    const result = checkGate(makeState({ phase: "implement", completedTasks: [] }), "verify", store);
-    expect(result.pass).toBe(false);
-    expect(result.reason).toContain("No tasks");
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
   });
 
-  it("fails when not all tasks completed", () => {
-    const store = createStore(tmp);
-    store.ensurePlanDir("001-test");
-    store.writePlanFile("001-test", "plan.md", "### Task 1: A\nDo A\n### Task 2: B\nDo B\n### Task 3: C\nDo C");
-    const result = checkGate(makeState({ phase: "implement", completedTasks: [1] }), "verify", store);
-    expect(result.pass).toBe(false);
-    expect(result.reason).toContain("2");
-    expect(result.reason).toContain("3");
-  });
+  function writeArtifact(issue: string, filename: string, content: string) {
+    const dir = join(tmp, ".megapowers", "plans", issue);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, filename), content);
+  }
 
-  it("passes when all tasks completed", () => {
-    const store = createStore(tmp);
-    store.ensurePlanDir("001-test");
-    store.writePlanFile("001-test", "plan.md", "### Task 1: A\nDo A\n### Task 2: B\nDo B");
-    const result = checkGate(makeState({ phase: "implement", completedTasks: [1, 2] }), "verify", store);
+  it("spec→plan: passes when spec exists with no open questions", () => {
+    writeArtifact("001-test", "spec.md", "# Spec\n\n## Open Questions\nNone\n");
+    const result = checkGate(makeState({ phase: "spec" }), "plan", tmp);
     expect(result.pass).toBe(true);
   });
 
-  it("returns actionable error with task count", () => {
-    const store = createStore(tmp);
-    store.ensurePlanDir("001-test");
-    store.writePlanFile("001-test", "plan.md", "### Task 1: A\nDetails\n### Task 2: B\nDetails\n### Task 3: C\nDetails");
-    const result = checkGate(makeState({ phase: "implement", completedTasks: [1] }), "verify", store);
+  it("spec→plan: fails when spec is missing", () => {
+    const result = checkGate(makeState({ phase: "spec" }), "plan", tmp);
     expect(result.pass).toBe(false);
-    expect(result.reason).toMatch(/2.*of.*3.*incomplete/i);
-  });
-});
-
-describe("spec → plan (sentinel fix)", () => {
-  it("passes when open questions says 'None'", () => {
-    const store = createStore(tmp);
-    store.ensurePlanDir("001-test");
-    store.writePlanFile("001-test", "spec.md", "## Goal\nBuild it.\n\n## Open Questions\nNone\n");
-    const result = checkGate(makeState({ phase: "spec" }), "plan", store);
-    expect(result.pass).toBe(true);
+    expect(result.reason).toContain("spec.md");
   });
 
-  it("fails when spec has real open questions", () => {
-    const store = createStore(tmp);
-    store.ensurePlanDir("001-test");
-    store.writePlanFile("001-test", "spec.md", "## Goal\nBuild it.\n\n## Open Questions\n- What about X?\n");
-    const result = checkGate(makeState({ phase: "spec" }), "plan", store);
+  it("spec→plan: fails with open questions", () => {
+    writeArtifact("001-test", "spec.md", "# Spec\n\n## Open Questions\n- What about auth?\n");
+    const result = checkGate(makeState({ phase: "spec" }), "plan", tmp);
     expect(result.pass).toBe(false);
     expect(result.reason).toContain("open questions");
   });
 
-  it("returns actionable error when spec.md missing", () => {
-    const store = createStore(tmp);
-    const result = checkGate(makeState({ phase: "spec" }), "plan", store);
+  it("plan→implement: passes when plan.md exists", () => {
+    writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: Do thing\n");
+    const result = checkGate(makeState({ phase: "plan" }), "implement", tmp);
+    expect(result.pass).toBe(true);
+  });
+
+  it("plan→implement: fails when plan.md missing", () => {
+    const result = checkGate(makeState({ phase: "plan" }), "implement", tmp);
     expect(result.pass).toBe(false);
-    expect(result.reason).toContain("spec.md");
-    expect(result.reason).toContain("save_artifact");
+  });
+
+  it("review→implement: passes when reviewApproved is true", () => {
+    const result = checkGate(makeState({ phase: "review", reviewApproved: true }), "implement", tmp);
+    expect(result.pass).toBe(true);
+  });
+
+  it("review→implement: fails when reviewApproved is false", () => {
+    const result = checkGate(makeState({ phase: "review" }), "implement", tmp);
+    expect(result.pass).toBe(false);
+    expect(result.reason).toContain("review");
+  });
+
+  it("implement→verify: passes when all tasks completed", () => {
+    writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n");
+    const result = checkGate(
+      makeState({ phase: "implement", completedTasks: [1, 2] }),
+      "verify",
+      tmp,
+    );
+    expect(result.pass).toBe(true);
+  });
+
+  it("implement→verify: fails with incomplete tasks", () => {
+    writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n");
+    const result = checkGate(
+      makeState({ phase: "implement", completedTasks: [1] }),
+      "verify",
+      tmp,
+    );
+    expect(result.pass).toBe(false);
+    expect(result.reason).toContain("1 of 2");
+  });
+
+  it("backward transitions always pass", () => {
+    const result = checkGate(makeState({ phase: "review" }), "plan", tmp);
+    expect(result.pass).toBe(true);
+  });
+
+  it("reproduce→diagnose: passes when reproduce.md exists", () => {
+    writeArtifact("001-test", "reproduce.md", "# Steps\n");
+    const result = checkGate(
+      makeState({ phase: "reproduce", workflow: "bugfix" }),
+      "diagnose",
+      tmp,
+    );
+    expect(result.pass).toBe(true);
+  });
+
+  it("verify→code-review: passes when verify.md exists", () => {
+    writeArtifact("001-test", "verify.md", "# Verification\n");
+    const result = checkGate(makeState({ phase: "verify" }), "code-review", tmp);
+    expect(result.pass).toBe(true);
+  });
+
+  it("code-review→done: passes when code-review.md exists", () => {
+    writeArtifact("001-test", "code-review.md", "# Review\n");
+    const result = checkGate(makeState({ phase: "code-review" }), "done", tmp);
+    expect(result.pass).toBe(true);
   });
 });
-
-// Keep all other existing gate tests (backward transitions, review→implement, etc.)
-// Only the implement→verify and spec→plan tests change.
 ```
 
 **Implementation:**
 
-Update `gates.ts` `implement→verify` case to parse plan.md and use `completedTasks`:
+Rewrite `extensions/megapowers/gates.ts` to accept `cwd: string` instead of `store: Store`:
 
 ```typescript
-case "implement→verify": {
-  const planContent = store.readPlanFile(state.activeIssue, "plan.md");
-  if (!planContent) {
-    return { pass: false, reason: "plan.md not found. Use megapowers_save_artifact to save the plan first." };
+// extensions/megapowers/gates.ts
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import type { MegapowersState, Phase } from "./state-machine.js";
+import { hasOpenQuestions } from "./spec-parser.js";
+import { deriveTasks } from "./derived.js";
+
+export interface GateResult {
+  pass: boolean;
+  reason?: string;
+}
+
+const BACKWARD_TARGETS = new Set<string>([
+  "review→plan",
+  "verify→implement",
+  "code-review→implement",
+]);
+
+function isBackward(from: Phase, to: Phase): boolean {
+  return BACKWARD_TARGETS.has(`${from}→${to}`);
+}
+
+function artifactExists(cwd: string, issueSlug: string, filename: string): boolean {
+  return existsSync(join(cwd, ".megapowers", "plans", issueSlug, filename));
+}
+
+function readArtifact(cwd: string, issueSlug: string, filename: string): string | null {
+  const p = join(cwd, ".megapowers", "plans", issueSlug, filename);
+  if (!existsSync(p)) return null;
+  return readFileSync(p, "utf-8");
+}
+
+export function checkGate(state: MegapowersState, target: Phase, cwd: string): GateResult {
+  const from = state.phase;
+  if (!from || !state.activeIssue) {
+    return { pass: false, reason: "No active phase or issue" };
   }
-  const tasks = extractPlanTasks(planContent);
-  if (tasks.length === 0) {
-    return { pass: false, reason: "No tasks found in plan.md. Check the plan format." };
+
+  if (isBackward(from, target)) {
+    return { pass: true };
   }
-  const completedSet = new Set(state.completedTasks);
-  const incomplete = tasks.filter(t => !completedSet.has(t.index));
-  if (incomplete.length > 0) {
-    return {
-      pass: false,
-      reason: `${incomplete.length} of ${tasks.length} tasks still incomplete. Complete remaining tasks before advancing to verify.`,
-    };
+
+  const issue = state.activeIssue;
+
+  switch (`${from}→${target}`) {
+    case "brainstorm→spec":
+      return { pass: true };
+
+    case "spec→plan": {
+      if (!artifactExists(cwd, issue, "spec.md")) {
+        return { pass: false, reason: "Cannot advance to plan: spec.md not found. Use megapowers_save_artifact to save the spec first." };
+      }
+      const spec = readArtifact(cwd, issue, "spec.md");
+      if (spec && hasOpenQuestions(spec)) {
+        return { pass: false, reason: "Cannot advance to plan: spec.md has unresolved open questions. Resolve them first." };
+      }
+      return { pass: true };
+    }
+
+    case "plan→review":
+    case "plan→implement": {
+      if (!artifactExists(cwd, issue, "plan.md")) {
+        return { pass: false, reason: "Cannot advance: plan.md not found. Use megapowers_save_artifact to save the plan first." };
+      }
+      return { pass: true };
+    }
+
+    case "review→implement": {
+      if (!state.reviewApproved) {
+        return { pass: false, reason: "Cannot advance: plan review not approved yet. Call megapowers_signal with action 'review_approve' first." };
+      }
+      return { pass: true };
+    }
+
+    case "implement→verify": {
+      const tasks = deriveTasks(cwd, issue);
+      if (tasks.length === 0) {
+        return { pass: false, reason: "Cannot advance: no tasks found in plan.md. Check the plan format." };
+      }
+      const completedSet = new Set(state.completedTasks);
+      const incomplete = tasks.filter(t => !completedSet.has(t.index));
+      if (incomplete.length > 0) {
+        return {
+          pass: false,
+          reason: `Cannot advance: ${incomplete.length} of ${tasks.length} tasks still incomplete. Complete them first.`,
+        };
+      }
+      return { pass: true };
+    }
+
+    case "verify→code-review": {
+      if (!artifactExists(cwd, issue, "verify.md")) {
+        return { pass: false, reason: "Cannot advance: verify.md not found. Run verification first." };
+      }
+      return { pass: true };
+    }
+
+    case "code-review→done": {
+      if (!artifactExists(cwd, issue, "code-review.md")) {
+        return { pass: false, reason: "Cannot advance: code-review.md not found. Run code review first." };
+      }
+      return { pass: true };
+    }
+
+    case "reproduce→diagnose": {
+      if (!artifactExists(cwd, issue, "reproduce.md")) {
+        return { pass: false, reason: "Cannot advance: reproduce.md not found. Document the bug reproduction first." };
+      }
+      return { pass: true };
+    }
+
+    case "diagnose→plan": {
+      if (!artifactExists(cwd, issue, "diagnosis.md")) {
+        return { pass: false, reason: "Cannot advance: diagnosis.md not found. Complete the diagnosis first." };
+      }
+      return { pass: true };
+    }
+
+    default:
+      return { pass: true };
   }
-  return { pass: true };
 }
 ```
-
-Update `spec→plan` error message to mention `megapowers_save_artifact`:
-
-```typescript
-case "spec→plan": {
-  if (!store.planFileExists(state.activeIssue, "spec.md")) {
-    return { pass: false, reason: "spec.md not found. Use megapowers_save_artifact to save the spec first." };
-  }
-  // ... (hasOpenQuestions check unchanged — sentinel fix is in Task 3)
-}
-```
-
-Add import of `extractPlanTasks` at top of `gates.ts`.
 
 **Verify:** `bun test tests/gates.test.ts`
 
 ---
 
-### Task 6: phase-advance.ts — shared advancePhase function [depends: 1, 2, 5]
+### Task 6: Phase advance shared function [depends: 1, 4, 5]
+
+**Covers:** AC17, AC18
 
 **Files:**
 - Create: `extensions/megapowers/phase-advance.ts`
@@ -665,75 +1067,104 @@ Add import of `extractPlanTasks` at top of `gates.ts`.
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { advancePhase } from "../extensions/megapowers/phase-advance.js";
-import { writeState, readState } from "../extensions/megapowers/state-io.js";
-import { createStore } from "../extensions/megapowers/store.js";
-import { createInitialState } from "../extensions/megapowers/state-machine.js";
-
-let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "mega-advance-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+import { readState, writeState } from "../extensions/megapowers/state-io.js";
+import { createInitialState, type MegapowersState } from "../extensions/megapowers/state-machine.js";
 
 describe("advancePhase", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "phase-advance-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  function writeArtifact(issue: string, filename: string, content: string) {
+    const dir = join(tmp, ".megapowers", "plans", issue);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, filename), content);
+  }
+
+  function setState(overrides: Partial<MegapowersState>) {
+    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", ...overrides });
+  }
+
   it("advances brainstorm→spec", () => {
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "brainstorm" });
+    setState({ phase: "brainstorm" });
     const result = advancePhase(tmp);
-    expect(result.success).toBe(true);
+    expect(result.ok).toBe(true);
     expect(result.newPhase).toBe("spec");
     const state = readState(tmp);
     expect(state.phase).toBe("spec");
   });
 
-  it("blocks spec→plan when spec.md missing", () => {
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "spec" });
+  it("advances spec→plan when spec exists and no open questions", () => {
+    setState({ phase: "spec" });
+    writeArtifact("001-test", "spec.md", "# Spec\n\n## Open Questions\nNone\n");
     const result = advancePhase(tmp);
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("spec.md");
-  });
-
-  it("advances spec→plan when spec.md exists with no open questions", () => {
-    const store = createStore(tmp);
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "spec" });
-    store.ensurePlanDir("001-test");
-    store.writePlanFile("001-test", "spec.md", "## Goal\nBuild it.\n\n## Acceptance Criteria\n1. Works\n");
-    const result = advancePhase(tmp);
-    expect(result.success).toBe(true);
+    expect(result.ok).toBe(true);
     expect(result.newPhase).toBe("plan");
   });
 
-  it("advances review→implement when review approved", () => {
-    const store = createStore(tmp);
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "review", reviewApproved: true });
+  it("rejects spec→plan when gate fails", () => {
+    setState({ phase: "spec" });
     const result = advancePhase(tmp);
-    expect(result.success).toBe(true);
-    expect(result.newPhase).toBe("implement");
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("spec.md");
   });
 
-  it("resets reviewApproved when transitioning to plan", () => {
-    const store = createStore(tmp);
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "review", reviewApproved: true });
+  it("advances to implement and sets currentTaskIndex to first incomplete", () => {
+    setState({ phase: "review", reviewApproved: true });
+    writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n\n### Task 3: C\n");
+    const result = advancePhase(tmp);
+    expect(result.ok).toBe(true);
+    expect(result.newPhase).toBe("implement");
+    const state = readState(tmp);
+    expect(state.currentTaskIndex).toBe(0); // index into tasks array (Task 1 is at 0)
+  });
+
+  it("sets currentTaskIndex to first incomplete when some tasks done", () => {
+    setState({ phase: "review", reviewApproved: true, completedTasks: [1] });
+    writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n\n### Task 3: C\n");
+    const result = advancePhase(tmp);
+    expect(result.ok).toBe(true);
+    const state = readState(tmp);
+    // Task 1 (index 1) is completed, so first incomplete is tasks[1] which is Task 2 (index 2)
+    expect(state.currentTaskIndex).toBe(1); // array index 1 = Task 2
+  });
+
+  it("resets reviewApproved when advancing to plan", () => {
+    setState({ phase: "review", reviewApproved: true });
     const result = advancePhase(tmp, "plan");
-    expect(result.success).toBe(true);
+    expect(result.ok).toBe(true);
     const state = readState(tmp);
     expect(state.reviewApproved).toBe(false);
   });
 
-  it("returns error when no active issue", () => {
-    writeState(tmp, createInitialState());
-    const result = advancePhase(tmp);
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("No active");
+  it("advances to specific target when provided", () => {
+    setState({ phase: "plan" });
+    writeArtifact("001-test", "plan.md", "# Plan\n");
+    const result = advancePhase(tmp, "review");
+    expect(result.ok).toBe(true);
+    expect(result.newPhase).toBe("review");
   });
 
-  it("persists phase to state.json", () => {
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "brainstorm" });
-    advancePhase(tmp);
-    const state = readState(tmp);
-    expect(state.phase).toBe("spec");
-    expect(state.phaseHistory.length).toBe(1);
+  it("rejects when no active issue", () => {
+    writeState(tmp, createInitialState());
+    const result = advancePhase(tmp);
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects invalid transition", () => {
+    setState({ phase: "brainstorm" });
+    const result = advancePhase(tmp, "implement");
+    expect(result.ok).toBe(false);
   });
 });
 ```
@@ -743,64 +1174,48 @@ describe("advancePhase", () => {
 ```typescript
 // extensions/megapowers/phase-advance.ts
 import { readState, writeState } from "./state-io.js";
-import { getValidTransitions, canTransition, type Phase } from "./state-machine.js";
+import { getValidTransitions, transition, type Phase } from "./state-machine.js";
 import { checkGate } from "./gates.js";
-import { createStore } from "./store.js";
+import { deriveTasks } from "./derived.js";
 
 export interface AdvanceResult {
-  success: boolean;
+  ok: boolean;
   newPhase?: Phase;
   error?: string;
 }
 
 export function advancePhase(cwd: string, targetPhase?: Phase): AdvanceResult {
   const state = readState(cwd);
-  if (!state.activeIssue || !state.workflow || !state.phase) {
-    return { success: false, error: "No active issue or phase." };
+
+  if (!state.activeIssue || !state.phase || !state.workflow) {
+    return { ok: false, error: "No active issue or phase." };
   }
 
-  const store = createStore(cwd);
   const validNext = getValidTransitions(state.workflow, state.phase);
   if (validNext.length === 0) {
-    return { success: false, error: `No valid transitions from ${state.phase}.` };
+    return { ok: false, error: `No valid transitions from ${state.phase}.` };
   }
 
-  // If target specified, validate it; otherwise pick first valid
+  // Determine target
   const target = targetPhase ?? validNext[0];
-  if (!canTransition(state.workflow, state.phase, target)) {
-    return { success: false, error: `Invalid transition: ${state.phase} → ${target}.` };
+  if (!validNext.includes(target)) {
+    return { ok: false, error: `Cannot transition from ${state.phase} to ${target} in ${state.workflow} workflow.` };
   }
 
   // Check gate
-  const gate = checkGate(state, target, store);
+  const gate = checkGate(state, target, cwd);
   if (!gate.pass) {
-    return { success: false, error: gate.reason ?? `Gate blocked: ${state.phase} → ${target}.` };
+    return { ok: false, error: gate.reason };
   }
 
-  // Mutate
-  const newState = {
-    ...state,
-    phase: target,
-    phaseHistory: [
-      ...state.phaseHistory,
-      { from: state.phase, to: target, timestamp: Date.now() },
-    ],
-    doneMode: null,
-  };
+  // Derive tasks for implement entry
+  const tasks = target === "implement" ? deriveTasks(cwd, state.activeIssue) : undefined;
 
-  // Reset review approval when entering plan
-  if (target === "plan") newState.reviewApproved = false;
-
-  // Reset TDD state when entering implement
-  if (target === "implement") {
-    newState.tddTaskState = null;
-    newState.currentTaskIndex = 0;
-    // Find first incomplete task
-    // (task list derived from plan.md; completedTasks tells us what's done)
-  }
-
+  // Transition
+  const newState = transition(state, target, tasks);
   writeState(cwd, newState);
-  return { success: true, newPhase: target };
+
+  return { ok: true, newPhase: target };
 }
 ```
 
@@ -808,108 +1223,9 @@ export function advancePhase(cwd: string, targetPhase?: Phase): AdvanceResult {
 
 ---
 
-### Task 7: tool-artifact.ts — megapowers_save_artifact handler [depends: 1, 2]
+### Task 7: megapowers_signal tool handler [depends: 1, 3, 4, 6]
 
-**Files:**
-- Create: `extensions/megapowers/tool-artifact.ts`
-- Test: `tests/tool-artifact.test.ts`
-
-**Test:**
-
-```typescript
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { handleSaveArtifact } from "../extensions/megapowers/tool-artifact.js";
-import { writeState, readState } from "../extensions/megapowers/state-io.js";
-import { createInitialState } from "../extensions/megapowers/state-machine.js";
-
-let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "mega-artifact-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
-
-describe("handleSaveArtifact", () => {
-  it("writes content to .megapowers/plans/{issue}/{phase}.md", () => {
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "spec" });
-    const result = handleSaveArtifact(tmp, { phase: "spec", content: "# Spec\n\n## Goal\nBuild it." });
-    expect(result.success).toBe(true);
-    const content = readFileSync(join(tmp, ".megapowers", "plans", "001-test", "spec.md"), "utf-8");
-    expect(content).toContain("Build it.");
-  });
-
-  it("does not modify state.json", () => {
-    const initial = { ...createInitialState(), activeIssue: "001-test", workflow: "feature" as const, phase: "spec" as const };
-    writeState(tmp, initial);
-    handleSaveArtifact(tmp, { phase: "spec", content: "# Spec" });
-    const state = readState(tmp);
-    expect(state.phase).toBe("spec"); // unchanged
-  });
-
-  it("returns error when no active issue", () => {
-    writeState(tmp, createInitialState());
-    const result = handleSaveArtifact(tmp, { phase: "spec", content: "# Spec" });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("No active issue");
-  });
-
-  it("creates plans directory if missing", () => {
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "plan" });
-    handleSaveArtifact(tmp, { phase: "plan", content: "### Task 1: Do it" });
-    expect(existsSync(join(tmp, ".megapowers", "plans", "001-test", "plan.md"))).toBe(true);
-  });
-
-  it("overwrites existing artifact", () => {
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "spec" });
-    handleSaveArtifact(tmp, { phase: "spec", content: "v1" });
-    handleSaveArtifact(tmp, { phase: "spec", content: "v2" });
-    const content = readFileSync(join(tmp, ".megapowers", "plans", "001-test", "spec.md"), "utf-8");
-    expect(content).toBe("v2");
-  });
-});
-```
-
-**Implementation:**
-
-```typescript
-// extensions/megapowers/tool-artifact.ts
-import { readState } from "./state-io.js";
-import { createStore } from "./store.js";
-
-export interface SaveArtifactParams {
-  phase: string;
-  content: string;
-}
-
-export interface SaveArtifactResult {
-  success: boolean;
-  error?: string;
-  path?: string;
-}
-
-export function handleSaveArtifact(cwd: string, params: SaveArtifactParams): SaveArtifactResult {
-  const state = readState(cwd);
-  if (!state.activeIssue) {
-    return { success: false, error: "No active issue. Use /issue to select or create one." };
-  }
-
-  const store = createStore(cwd);
-  const filename = `${params.phase}.md`;
-  store.ensurePlanDir(state.activeIssue);
-  store.writePlanFile(state.activeIssue, filename, params.content);
-
-  return {
-    success: true,
-    path: `.megapowers/plans/${state.activeIssue}/${filename}`,
-  };
-}
-```
-
-**Verify:** `bun test tests/tool-artifact.test.ts`
-
----
-
-### Task 8: tool-signal.ts — review_approve action [depends: 1, 2]
+**Covers:** AC11, AC12, AC13, AC14, AC15, AC16, AC17, AC38, AC52, AC54
 
 **Files:**
 - Create: `extensions/megapowers/tool-signal.ts`
@@ -919,37 +1235,181 @@ export function handleSaveArtifact(cwd: string, params: SaveArtifactParams): Sav
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { handleSignal } from "../extensions/megapowers/tool-signal.js";
-import { writeState, readState } from "../extensions/megapowers/state-io.js";
-import { createInitialState } from "../extensions/megapowers/state-machine.js";
+import { readState, writeState } from "../extensions/megapowers/state-io.js";
+import { createInitialState, type MegapowersState } from "../extensions/megapowers/state-machine.js";
 
-let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "mega-signal-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+function setState(tmp: string, overrides: Partial<MegapowersState>) {
+  writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", ...overrides });
+}
 
-describe("review_approve", () => {
-  it("sets reviewApproved to true in state.json", () => {
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "review" });
-    const result = handleSignal(tmp, "review_approve");
-    expect(result.success).toBe(true);
-    const state = readState(tmp);
-    expect(state.reviewApproved).toBe(true);
+function writeArtifact(tmp: string, issue: string, filename: string, content: string) {
+  const dir = join(tmp, ".megapowers", "plans", issue);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, filename), content);
+}
+
+describe("handleSignal", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "tool-signal-test-"));
   });
 
-  it("returns confirmation message", () => {
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "review" });
-    const result = handleSignal(tmp, "review_approve");
-    expect(result.message).toContain("approved");
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
   });
 
-  it("fails when not in review phase", () => {
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "spec" });
-    const result = handleSignal(tmp, "review_approve");
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("review");
+  describe("when megaEnabled is false", () => {
+    it("returns error for any action", () => {
+      setState(tmp, { phase: "implement", megaEnabled: false });
+      const result = handleSignal(tmp, "task_done");
+      expect(result.error).toContain("disabled");
+    });
+  });
+
+  describe("task_done", () => {
+    it("marks current task complete and advances index", () => {
+      writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n\n### Task 3: C\n");
+      setState(tmp, {
+        phase: "implement",
+        currentTaskIndex: 0,
+        completedTasks: [],
+        tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
+      });
+      const result = handleSignal(tmp, "task_done");
+      expect(result.error).toBeUndefined();
+      expect(result.message).toContain("Task 2");
+
+      const state = readState(tmp);
+      expect(state.completedTasks).toContain(1); // Task 1's index
+      expect(state.currentTaskIndex).toBe(1); // moved to tasks[1] = Task 2
+    });
+
+    it("skips TDD check for [no-test] task", () => {
+      writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: Setup [no-test]\n\n### Task 2: Build\n");
+      setState(tmp, {
+        phase: "implement",
+        currentTaskIndex: 0,
+        completedTasks: [],
+        tddTaskState: null,
+      });
+      const result = handleSignal(tmp, "task_done");
+      expect(result.error).toBeUndefined();
+      const state = readState(tmp);
+      expect(state.completedTasks).toContain(1);
+    });
+
+    it("blocks non-[no-test] task when tddState is null", () => {
+      writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: Build\n");
+      setState(tmp, {
+        phase: "implement",
+        currentTaskIndex: 0,
+        completedTasks: [],
+        tddTaskState: null,
+      });
+      const result = handleSignal(tmp, "task_done");
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain("TDD");
+    });
+
+    it("blocks when tddState is test-written (not impl-allowed)", () => {
+      writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: Build\n");
+      setState(tmp, {
+        phase: "implement",
+        currentTaskIndex: 0,
+        completedTasks: [],
+        tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
+      });
+      const result = handleSignal(tmp, "task_done");
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain("test");
+    });
+
+    it("allows when tddState is skipped", () => {
+      writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: Build\n\n### Task 2: More\n");
+      setState(tmp, {
+        phase: "implement",
+        currentTaskIndex: 0,
+        completedTasks: [],
+        tddTaskState: { taskIndex: 1, state: "no-test", skipped: true },
+      });
+      const result = handleSignal(tmp, "task_done");
+      expect(result.error).toBeUndefined();
+    });
+
+    it("auto-advances to verify on final task", () => {
+      writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: Only task\n");
+      setState(tmp, {
+        phase: "implement",
+        currentTaskIndex: 0,
+        completedTasks: [],
+        tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
+      });
+      const result = handleSignal(tmp, "task_done");
+      expect(result.error).toBeUndefined();
+      expect(result.message).toContain("verify");
+
+      const state = readState(tmp);
+      expect(state.phase).toBe("verify");
+      expect(state.completedTasks).toContain(1);
+    });
+
+    it("skips already-completed tasks when advancing index", () => {
+      writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n\n### Task 3: C\n");
+      setState(tmp, {
+        phase: "implement",
+        currentTaskIndex: 0,
+        completedTasks: [2], // Task 2 already done
+        tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
+      });
+      const result = handleSignal(tmp, "task_done");
+      expect(result.error).toBeUndefined();
+
+      const state = readState(tmp);
+      expect(state.completedTasks).toEqual(expect.arrayContaining([1, 2]));
+      expect(state.currentTaskIndex).toBe(2); // Skipped task 2 (already done), landed on task 3
+    });
+  });
+
+  describe("review_approve", () => {
+    it("sets reviewApproved in state", () => {
+      setState(tmp, { phase: "review" });
+      const result = handleSignal(tmp, "review_approve");
+      expect(result.error).toBeUndefined();
+      const state = readState(tmp);
+      expect(state.reviewApproved).toBe(true);
+    });
+  });
+
+  describe("phase_next", () => {
+    it("advances phase when gate passes", () => {
+      setState(tmp, { phase: "brainstorm" });
+      const result = handleSignal(tmp, "phase_next");
+      expect(result.error).toBeUndefined();
+      expect(result.message).toContain("spec");
+      const state = readState(tmp);
+      expect(state.phase).toBe("spec");
+    });
+
+    it("returns error when gate fails", () => {
+      setState(tmp, { phase: "spec" });
+      // No spec.md exists
+      const result = handleSignal(tmp, "phase_next");
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain("spec.md");
+    });
+  });
+
+  describe("invalid action", () => {
+    it("returns error for unknown action", () => {
+      setState(tmp, { phase: "brainstorm" });
+      const result = handleSignal(tmp, "unknown" as any);
+      expect(result.error).toBeDefined();
+    });
   });
 });
 ```
@@ -960,294 +1420,59 @@ describe("review_approve", () => {
 // extensions/megapowers/tool-signal.ts
 import { readState, writeState } from "./state-io.js";
 import { advancePhase } from "./phase-advance.js";
-import { extractPlanTasks } from "./plan-parser.js";
-import { createStore } from "./store.js";
-import type { JJ } from "./jj.js";
+import { deriveTasks } from "./derived.js";
+import { transition, type Phase } from "./state-machine.js";
 
 export interface SignalResult {
-  success: boolean;
   message?: string;
   error?: string;
 }
 
-export function handleSignal(cwd: string, action: string, jj?: JJ): SignalResult {
+export function handleSignal(
+  cwd: string,
+  action: "task_done" | "review_approve" | "phase_next",
+): SignalResult {
+  const state = readState(cwd);
+
+  if (!state.megaEnabled) {
+    return { error: "Megapowers is disabled. Use /mega on to re-enable." };
+  }
+
   switch (action) {
+    case "task_done":
+      return handleTaskDone(cwd);
     case "review_approve":
       return handleReviewApprove(cwd);
     case "phase_next":
-      return handlePhaseNext(cwd, jj);
-    case "task_done":
-      return handleTaskDone(cwd, jj);
+      return handlePhaseNext(cwd);
     default:
-      return { success: false, error: `Unknown action: ${action}. Valid: task_done, review_approve, phase_next.` };
+      return { error: `Unknown signal action: ${action}` };
   }
 }
 
-function handleReviewApprove(cwd: string): SignalResult {
+function handleTaskDone(cwd: string): SignalResult {
   const state = readState(cwd);
-  if (state.phase !== "review") {
-    return { success: false, error: `Cannot approve review: current phase is ${state.phase}, not review.` };
-  }
-  writeState(cwd, { ...state, reviewApproved: true });
-  return { success: true, message: "Plan approved. Use megapowers_signal({ action: 'phase_next' }) to advance to implement." };
-}
 
-// Stubs for phase_next and task_done — implemented in Tasks 9 and 10
-function handlePhaseNext(_cwd: string, _jj?: JJ): SignalResult {
-  return { success: false, error: "Not yet implemented." };
-}
-
-function handleTaskDone(_cwd: string, _jj?: JJ): SignalResult {
-  return { success: false, error: "Not yet implemented." };
-}
-```
-
-**Verify:** `bun test tests/tool-signal.test.ts`
-
----
-
-### Task 9: tool-signal.ts — phase_next action [depends: 6, 8]
-
-**Files:**
-- Modify: `extensions/megapowers/tool-signal.ts`
-- Modify: `tests/tool-signal.test.ts`
-
-**Test:** Add to `tests/tool-signal.test.ts`:
-
-```typescript
-describe("phase_next", () => {
-  it("advances to next phase and writes state", () => {
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "brainstorm" });
-    const result = handleSignal(tmp, "phase_next");
-    expect(result.success).toBe(true);
-    expect(result.message).toContain("spec");
-    expect(readState(tmp).phase).toBe("spec");
-  });
-
-  it("returns actionable error when gate blocks", () => {
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "spec" });
-    const result = handleSignal(tmp, "phase_next");
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("spec.md");
-  });
-
-  it("returns error when no active issue", () => {
-    writeState(tmp, createInitialState());
-    const result = handleSignal(tmp, "phase_next");
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("No active");
-  });
-
-  it("advances full feature chain: brainstorm→spec→plan→review→implement", () => {
-    const store = createStore(tmp);
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "brainstorm" });
-
-    // brainstorm → spec (no gate)
-    expect(handleSignal(tmp, "phase_next").success).toBe(true);
-    expect(readState(tmp).phase).toBe("spec");
-
-    // Save spec, then spec → plan
-    store.ensurePlanDir("001-test");
-    store.writePlanFile("001-test", "spec.md", "## Goal\nBuild it.\n\n## Acceptance Criteria\n1. Works\n");
-    expect(handleSignal(tmp, "phase_next").success).toBe(true);
-    expect(readState(tmp).phase).toBe("plan");
-
-    // Save plan, then plan → review (first valid transition)
-    store.writePlanFile("001-test", "plan.md", "### Task 1: Do\nDetails");
-    expect(handleSignal(tmp, "phase_next").success).toBe(true);
-    expect(readState(tmp).phase).toBe("review");
-
-    // Approve review, then review → implement
-    handleSignal(tmp, "review_approve");
-    expect(handleSignal(tmp, "phase_next").success).toBe(true);
-    expect(readState(tmp).phase).toBe("implement");
-  });
-});
-```
-
-**Implementation:**
-
-Replace `handlePhaseNext` stub in `tool-signal.ts`:
-
-```typescript
-function handlePhaseNext(cwd: string, _jj?: JJ): SignalResult {
-  const result = advancePhase(cwd);
-  if (!result.success) {
-    return { success: false, error: result.error };
-  }
-  return { success: true, message: `Advanced to ${result.newPhase} phase.` };
-}
-```
-
-Note: jj integration (AC 19, 21) is deferred to Task 10 to keep this task focused on core flow.
-
-**Verify:** `bun test tests/tool-signal.test.ts`
-
----
-
-### Task 10: tool-signal.ts — task_done action [depends: 1, 2, 4, 9]
-
-**Files:**
-- Modify: `extensions/megapowers/tool-signal.ts`
-- Modify: `tests/tool-signal.test.ts`
-
-**Test:** Add to `tests/tool-signal.test.ts`:
-
-```typescript
-import { createStore } from "../extensions/megapowers/store.js";
-
-// Helper to set up implement phase with plan.md
-function setupImplement(tasks: string, completedTasks: number[] = []) {
-  const store = createStore(tmp);
-  store.ensurePlanDir("001-test");
-  store.writePlanFile("001-test", "plan.md", tasks);
-  writeState(tmp, {
-    ...createInitialState(),
-    activeIssue: "001-test",
-    workflow: "feature",
-    phase: "implement",
-    completedTasks,
-    currentTaskIndex: 0,
-    tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
-  });
-}
-
-describe("task_done", () => {
-  it("adds currentTaskIndex to completedTasks and advances index", () => {
-    setupImplement("### Task 1: A\nDetails\n### Task 2: B\nDetails");
-    const result = handleSignal(tmp, "task_done");
-    expect(result.success).toBe(true);
-    const state = readState(tmp);
-    expect(state.completedTasks).toContain(1);
-    expect(state.currentTaskIndex).toBe(1); // advanced to next task's array position
-  });
-
-  it("returns next task description in message", () => {
-    setupImplement("### Task 1: First thing\nDetails\n### Task 2: Second thing\nDetails");
-    const result = handleSignal(tmp, "task_done");
-    expect(result.message).toContain("Second thing");
-  });
-
-  it("succeeds for [no-test] task without TDD state", () => {
-    const store = createStore(tmp);
-    store.ensurePlanDir("001-test");
-    store.writePlanFile("001-test", "plan.md", "### Task 1: Config [no-test]\nUpdate config\n### Task 2: Code\nWrite code");
-    writeState(tmp, {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "implement",
-      currentTaskIndex: 0,
-      tddTaskState: null,
-    });
-    const result = handleSignal(tmp, "task_done");
-    expect(result.success).toBe(true);
-  });
-
-  it("fails for non-[no-test] task when TDD not satisfied", () => {
-    const store = createStore(tmp);
-    store.ensurePlanDir("001-test");
-    store.writePlanFile("001-test", "plan.md", "### Task 1: Feature\nImplement feature");
-    writeState(tmp, {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "implement",
-      currentTaskIndex: 0,
-      tddTaskState: { taskIndex: 1, state: "no-test", skipped: false },
-    });
-    const result = handleSignal(tmp, "task_done");
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("TDD");
-  });
-
-  it("auto-advances to verify when last task completed", () => {
-    const store = createStore(tmp);
-    store.ensurePlanDir("001-test");
-    store.writePlanFile("001-test", "plan.md", "### Task 1: Only task\nDetails");
-    writeState(tmp, {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "implement",
-      currentTaskIndex: 0,
-      tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
-    });
-    const result = handleSignal(tmp, "task_done");
-    expect(result.success).toBe(true);
-    expect(result.message).toContain("verify");
-    const state = readState(tmp);
-    expect(state.phase).toBe("verify");
-    expect(state.completedTasks).toContain(1);
-  });
-
-  it("skips already-completed tasks when finding next index", () => {
-    const store = createStore(tmp);
-    store.ensurePlanDir("001-test");
-    store.writePlanFile("001-test", "plan.md", "### Task 1: A\n\n### Task 2: B\n\n### Task 3: C\n");
-    writeState(tmp, {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "implement",
-      completedTasks: [2], // Task 2 already done (e.g. from a prior session)
-      currentTaskIndex: 0,
-      tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
-    });
-    const result = handleSignal(tmp, "task_done");
-    expect(result.success).toBe(true);
-    const state = readState(tmp);
-    expect(state.completedTasks).toEqual(expect.arrayContaining([1, 2]));
-    // Next incomplete is task 3, which is at array index 2
-    expect(state.currentTaskIndex).toBe(2);
-  });
-
-  it("fails when not in implement phase", () => {
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "spec" });
-    const result = handleSignal(tmp, "task_done");
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("implement");
-  });
-});
-```
-
-**Implementation:**
-
-Replace `handleTaskDone` stub in `tool-signal.ts`:
-
-```typescript
-function handleTaskDone(cwd: string, _jj?: JJ): SignalResult {
-  const state = readState(cwd);
-  if (state.phase !== "implement") {
-    return { success: false, error: `Cannot mark task done: current phase is ${state.phase}, not implement.` };
-  }
-  if (!state.activeIssue) {
-    return { success: false, error: "No active issue." };
+  if (!state.activeIssue || state.phase !== "implement") {
+    return { error: "task_done can only be called during the implement phase." };
   }
 
-  // Parse tasks from plan.md
-  const store = createStore(cwd);
-  const planContent = store.readPlanFile(state.activeIssue, "plan.md");
-  if (!planContent) {
-    return { success: false, error: "plan.md not found. Cannot determine task list." };
-  }
-  const tasks = extractPlanTasks(planContent);
+  const tasks = deriveTasks(cwd, state.activeIssue);
   if (tasks.length === 0) {
-    return { success: false, error: "No tasks found in plan.md." };
+    return { error: "No tasks found in plan.md. Check the plan format." };
   }
 
   const currentTask = tasks[state.currentTaskIndex];
   if (!currentTask) {
-    return { success: false, error: `No task at index ${state.currentTaskIndex}.` };
+    return { error: `No task at index ${state.currentTaskIndex}. Tasks: ${tasks.length}` };
   }
 
-  // TDD validation (skip for [no-test] tasks and skipped TDD)
+  // TDD validation for non-[no-test] tasks
   if (!currentTask.noTest) {
     const tdd = state.tddTaskState;
-    if (tdd && !tdd.skipped && tdd.state !== "impl-allowed") {
+    if (!tdd || (!tdd.skipped && tdd.state !== "impl-allowed")) {
       return {
-        success: false,
-        error: `TDD requirements not met for Task ${currentTask.index}. Current TDD state: ${tdd?.state ?? "none"}. Write a failing test and run it before marking complete.`,
+        error: "TDD requirements not met. Write a test file, run tests (they must fail), then implement. Or use /tdd skip to bypass.",
       };
     }
   }
@@ -1257,40 +1482,80 @@ function handleTaskDone(cwd: string, _jj?: JJ): SignalResult {
   const completedSet = new Set(completedTasks);
 
   // Find next incomplete task
-  const nextIncompleteIdx = tasks.findIndex((t, i) => i > state.currentTaskIndex && !completedSet.has(t.index));
-  // If no task after current, wrap around to find any incomplete
-  const fallbackIdx = nextIncompleteIdx >= 0 ? nextIncompleteIdx :
-    tasks.findIndex(t => !completedSet.has(t.index));
-
-  const allDone = completedSet.size >= tasks.length || fallbackIdx < 0;
-
-  const newState = {
-    ...state,
-    completedTasks,
-    currentTaskIndex: allDone ? state.currentTaskIndex : (nextIncompleteIdx >= 0 ? nextIncompleteIdx : fallbackIdx),
-    tddTaskState: null, // Reset for next task
-  };
-
-  // Auto-advance to verify if all done
-  if (allDone) {
-    newState.phase = "verify" as any;
-    newState.phaseHistory = [
-      ...state.phaseHistory,
-      { from: "implement" as any, to: "verify" as any, timestamp: Date.now() },
-    ];
-    writeState(cwd, newState);
-    return {
-      success: true,
-      message: `Task ${currentTask.index} complete. All ${tasks.length} tasks done! Automatically advanced to verify phase.`,
-    };
+  let nextIndex = state.currentTaskIndex;
+  for (let i = 0; i < tasks.length; i++) {
+    const candidate = (state.currentTaskIndex + 1 + i) % tasks.length;
+    if (candidate <= state.currentTaskIndex && i > 0) {
+      // Wrapped around — check from beginning
+    }
+    if (!completedSet.has(tasks[candidate]?.index)) {
+      nextIndex = candidate;
+      break;
+    }
   }
 
-  writeState(cwd, newState);
-  const nextTask = tasks[newState.currentTaskIndex];
-  return {
-    success: true,
-    message: `Task ${currentTask.index} complete (${completedTasks.length}/${tasks.length}). Next: Task ${nextTask.index}: ${nextTask.description}`,
+  // Check if all tasks are now done
+  const allDone = tasks.every(t => completedSet.has(t.index));
+
+  if (allDone) {
+    // Auto-advance to verify
+    const newState = transition(
+      { ...state, completedTasks, currentTaskIndex: nextIndex, tddTaskState: null },
+      "verify" as Phase,
+    );
+    writeState(cwd, newState);
+    return { message: `Task ${currentTask.index} (${currentTask.description}) marked complete. All ${tasks.length} tasks done! Phase advanced to verify. Begin verification.` };
+  }
+
+  // Advance to next task
+  // Find the actual next incomplete from after current
+  let nextIncompleteIdx = -1;
+  for (let i = state.currentTaskIndex + 1; i < tasks.length; i++) {
+    if (!completedSet.has(tasks[i].index)) {
+      nextIncompleteIdx = i;
+      break;
+    }
+  }
+  // Wrap around if needed
+  if (nextIncompleteIdx === -1) {
+    for (let i = 0; i <= state.currentTaskIndex; i++) {
+      if (!completedSet.has(tasks[i].index)) {
+        nextIncompleteIdx = i;
+        break;
+      }
+    }
+  }
+
+  const updatedState = {
+    ...state,
+    completedTasks,
+    currentTaskIndex: nextIncompleteIdx >= 0 ? nextIncompleteIdx : state.currentTaskIndex,
+    tddTaskState: null, // Reset TDD state for next task
   };
+  writeState(cwd, updatedState);
+
+  const nextTask = tasks[updatedState.currentTaskIndex];
+  const remaining = tasks.length - completedTasks.length;
+  return {
+    message: `Task ${currentTask.index} (${currentTask.description}) marked complete. ${remaining} tasks remaining. Next: Task ${nextTask.index}: ${nextTask.description}`,
+  };
+}
+
+function handleReviewApprove(cwd: string): SignalResult {
+  const state = readState(cwd);
+  if (!state.activeIssue) {
+    return { error: "No active issue." };
+  }
+  writeState(cwd, { ...state, reviewApproved: true });
+  return { message: "Plan review approved. Call megapowers_signal with action 'phase_next' to advance." };
+}
+
+function handlePhaseNext(cwd: string): SignalResult {
+  const result = advancePhase(cwd);
+  if (!result.ok) {
+    return { error: result.error };
+  }
+  return { message: `Phase advanced to ${result.newPhase}. Proceed with ${result.newPhase} phase work.` };
 }
 ```
 
@@ -1298,7 +1563,115 @@ function handleTaskDone(cwd: string, _jj?: JJ): SignalResult {
 
 ---
 
-### Task 11: tool-overrides.ts — write and edit overrides [depends: 1, 2, 4]
+### Task 8: megapowers_save_artifact tool handler [depends: 1]
+
+**Covers:** AC22, AC23, AC24, AC38, AC55
+
+**Files:**
+- Create: `extensions/megapowers/tool-artifact.ts`
+- Test: `tests/tool-artifact.test.ts`
+
+**Test:**
+
+```typescript
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { handleSaveArtifact } from "../extensions/megapowers/tool-artifact.js";
+import { writeState } from "../extensions/megapowers/state-io.js";
+import { createInitialState } from "../extensions/megapowers/state-machine.js";
+
+describe("handleSaveArtifact", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "tool-artifact-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("writes artifact to correct path", () => {
+    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", megaEnabled: true });
+    const result = handleSaveArtifact(tmp, "spec", "# My Spec\n\nContent here.");
+    expect(result.error).toBeUndefined();
+
+    const path = join(tmp, ".megapowers", "plans", "001-test", "spec.md");
+    expect(existsSync(path)).toBe(true);
+    expect(readFileSync(path, "utf-8")).toBe("# My Spec\n\nContent here.");
+  });
+
+  it("does not modify state.json", () => {
+    const initialState = { ...createInitialState(), activeIssue: "001-test", phase: "spec" as const, megaEnabled: true };
+    writeState(tmp, initialState);
+    handleSaveArtifact(tmp, "spec", "content");
+    const stateAfter = JSON.parse(readFileSync(join(tmp, ".megapowers", "state.json"), "utf-8"));
+    expect(stateAfter.phase).toBe("spec");
+  });
+
+  it("returns error when no active issue", () => {
+    writeState(tmp, createInitialState());
+    const result = handleSaveArtifact(tmp, "spec", "content");
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain("No active issue");
+  });
+
+  it("returns error when megaEnabled is false", () => {
+    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", megaEnabled: false });
+    const result = handleSaveArtifact(tmp, "spec", "content");
+    expect(result.error).toContain("disabled");
+  });
+
+  it("creates plan directory if missing", () => {
+    writeState(tmp, { ...createInitialState(), activeIssue: "002-new", megaEnabled: true });
+    const result = handleSaveArtifact(tmp, "brainstorm", "ideas");
+    expect(result.error).toBeUndefined();
+    expect(existsSync(join(tmp, ".megapowers", "plans", "002-new", "brainstorm.md"))).toBe(true);
+  });
+});
+```
+
+**Implementation:**
+
+```typescript
+// extensions/megapowers/tool-artifact.ts
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { readState } from "./state-io.js";
+
+export interface ArtifactResult {
+  message?: string;
+  error?: string;
+}
+
+export function handleSaveArtifact(cwd: string, phase: string, content: string): ArtifactResult {
+  const state = readState(cwd);
+
+  if (!state.megaEnabled) {
+    return { error: "Megapowers is disabled. Use /mega on to re-enable." };
+  }
+
+  if (!state.activeIssue) {
+    return { error: "No active issue. Use /issue to select or create one first." };
+  }
+
+  const dir = join(cwd, ".megapowers", "plans", state.activeIssue);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, `${phase}.md`), content);
+
+  return { message: `Artifact saved: .megapowers/plans/${state.activeIssue}/${phase}.md` };
+}
+```
+
+**Verify:** `bun test tests/tool-artifact.test.ts`
+
+---
+
+### Task 9: Write and edit tool overrides [depends: 1, 3]
+
+**Covers:** AC25, AC26, AC29, AC30
 
 **Files:**
 - Create: `extensions/megapowers/tool-overrides.ts`
@@ -1308,89 +1681,82 @@ function handleTaskDone(cwd: string, _jj?: JJ): SignalResult {
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { checkWriteOverride, checkBashOverride } from "../extensions/megapowers/tool-overrides.js";
-import { writeState, readState } from "../extensions/megapowers/state-io.js";
-import { createInitialState } from "../extensions/megapowers/state-machine.js";
+import { evaluateWriteOverride } from "../extensions/megapowers/tool-overrides.js";
+import { writeState } from "../extensions/megapowers/state-io.js";
+import { createInitialState, type MegapowersState } from "../extensions/megapowers/state-machine.js";
 
-let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "mega-overrides-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+function setState(tmp: string, overrides: Partial<MegapowersState>) {
+  writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", ...overrides });
+}
 
-describe("checkWriteOverride", () => {
-  it("blocks source code in spec phase", () => {
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "spec", megaEnabled: true });
-    const result = checkWriteOverride(tmp, "src/main.ts");
+describe("evaluateWriteOverride", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "write-override-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("allows writes when megaEnabled is false (passthrough)", () => {
+    setState(tmp, { phase: "spec", megaEnabled: false });
+    const result = evaluateWriteOverride(tmp, "src/app.ts");
+    expect(result.allowed).toBe(true);
+  });
+
+  it("blocks source code writes in spec phase", () => {
+    setState(tmp, { phase: "spec", megaEnabled: true });
+    const result = evaluateWriteOverride(tmp, "src/app.ts");
     expect(result.allowed).toBe(false);
-    expect(result.reason).toContain("blocked");
   });
 
-  it("allows .megapowers/ paths in any phase", () => {
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "spec", megaEnabled: true });
-    const result = checkWriteOverride(tmp, ".megapowers/plans/001-test/spec.md");
+  it("allows .megapowers/ writes in spec phase", () => {
+    setState(tmp, { phase: "spec", megaEnabled: true });
+    const result = evaluateWriteOverride(tmp, ".megapowers/plans/001/spec.md");
     expect(result.allowed).toBe(true);
   });
 
-  it("allows writes when megaEnabled is false", () => {
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "spec", megaEnabled: false });
-    const result = checkWriteOverride(tmp, "src/main.ts");
+  it("allows test files freely in implement phase", () => {
+    setState(tmp, { phase: "implement", megaEnabled: true });
+    const result = evaluateWriteOverride(tmp, "tests/foo.test.ts");
     expect(result.allowed).toBe(true);
+    expect(result.updateTddState).toBe(true);
   });
 
-  it("allows writes when no active issue", () => {
-    writeState(tmp, createInitialState());
-    const result = checkWriteOverride(tmp, "src/main.ts");
-    expect(result.allowed).toBe(true);
-  });
-
-  it("tracks test file write in tddTaskState", () => {
-    writeState(tmp, {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "implement",
-      megaEnabled: true,
-      currentTaskIndex: 0,
-      tddTaskState: { taskIndex: 1, state: "no-test", skipped: false },
-    });
-    const result = checkWriteOverride(tmp, "tests/main.test.ts");
-    expect(result.allowed).toBe(true);
-    // Check that state was updated
-    const state = readState(tmp);
-    expect(state.tddTaskState?.state).toBe("test-written");
-  });
-
-  it("blocks production files when TDD not satisfied", () => {
-    writeState(tmp, {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "implement",
-      megaEnabled: true,
-      currentTaskIndex: 0,
-      tddTaskState: { taskIndex: 1, state: "no-test", skipped: false },
-    });
-    const result = checkWriteOverride(tmp, "src/main.ts");
+  it("blocks production files when TDD not met in implement", () => {
+    setState(tmp, { phase: "implement", megaEnabled: true, tddTaskState: null });
+    writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: Build\n");
+    const result = evaluateWriteOverride(tmp, "src/app.ts");
     expect(result.allowed).toBe(false);
-    expect(result.reason).toContain("TDD");
   });
 
-  it("allows production files when impl-allowed", () => {
-    writeState(tmp, {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
+  it("allows production files when TDD is impl-allowed", () => {
+    setState(tmp, {
       phase: "implement",
       megaEnabled: true,
-      currentTaskIndex: 0,
       tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
     });
-    const result = checkWriteOverride(tmp, "src/main.ts");
+    const result = evaluateWriteOverride(tmp, "src/app.ts");
+    expect(result.allowed).toBe(true);
+  });
+
+  it("allows when phase is null (no workflow active)", () => {
+    writeState(tmp, createInitialState());
+    const result = evaluateWriteOverride(tmp, "src/app.ts");
     expect(result.allowed).toBe(true);
   });
 });
+
+function writeArtifact(tmp: string, issue: string, filename: string, content: string) {
+  const dir = join(tmp, ".megapowers", "plans", issue);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, filename), content);
+}
 ```
 
 **Implementation:**
@@ -1398,80 +1764,65 @@ describe("checkWriteOverride", () => {
 ```typescript
 // extensions/megapowers/tool-overrides.ts
 import { readState, writeState } from "./state-io.js";
-import { canWrite, isTestFile, isTestRunnerCommand, handleTestResult, type TddTaskState } from "./write-policy.js";
-import { extractPlanTasks } from "./plan-parser.js";
-import { createStore } from "./store.js";
+import { canWrite, isTestFile } from "./write-policy.js";
+import { deriveTasks } from "./derived.js";
 
-export interface WriteCheckResult {
+export interface WriteOverrideResult {
   allowed: boolean;
   reason?: string;
+  /** Whether tddTaskState should be updated (test file written) */
+  updateTddState?: boolean;
 }
 
-/**
- * Check whether a write/edit to filePath is allowed given current state on disk.
- * If allowed and the file is a test file, updates tddTaskState in state.json.
- */
-export function checkWriteOverride(cwd: string, filePath: string): WriteCheckResult {
+export function evaluateWriteOverride(cwd: string, filePath: string): WriteOverrideResult {
   const state = readState(cwd);
 
-  // No active issue or phase → passthrough
-  if (!state.activeIssue || !state.phase) {
-    return { allowed: true };
-  }
-
-  // Determine if current task is [no-test]
+  // Determine task noTest from plan
   let taskIsNoTest = false;
-  if (state.phase === "implement" || state.phase === "code-review") {
-    const store = createStore(cwd);
-    const planContent = store.readPlanFile(state.activeIssue, "plan.md");
-    if (planContent) {
-      const tasks = extractPlanTasks(planContent);
-      const currentTask = tasks[state.currentTaskIndex];
-      taskIsNoTest = currentTask?.noTest ?? false;
-    }
+  if (state.activeIssue && (state.phase === "implement" || state.phase === "code-review")) {
+    const tasks = deriveTasks(cwd, state.activeIssue);
+    const currentTask = tasks[state.currentTaskIndex];
+    taskIsNoTest = currentTask?.noTest ?? false;
   }
 
-  // Initialize TDD state for current task if needed
-  let tddState = state.tddTaskState;
-  if ((state.phase === "implement" || state.phase === "code-review") && !taskIsNoTest) {
-    if (!tddState || tddState.taskIndex !== (state.currentTaskIndex + 1)) {
-      // Will be initialized properly; for now use current
-    }
+  const decision = canWrite(state.phase, filePath, state.megaEnabled, taskIsNoTest, state.tddTaskState);
+
+  if (!decision.allowed) {
+    return { allowed: false, reason: decision.reason };
   }
 
-  const result = canWrite(state.phase, filePath, state.megaEnabled, taskIsNoTest, tddState);
-
-  if (!result.allowed) {
-    return { allowed: false, reason: result.reason };
-  }
-
-  // Track test file writes → update TDD state
-  if ((state.phase === "implement" || state.phase === "code-review") && isTestFile(filePath)) {
-    if (tddState && tddState.state === "no-test") {
-      const updated = { ...state, tddTaskState: { ...tddState, state: "test-written" as const } };
-      writeState(cwd, updated);
-    }
+  // Track test file writes for TDD state
+  const isTddPhase = state.phase === "implement" || state.phase === "code-review";
+  if (isTddPhase && state.megaEnabled && isTestFile(filePath)) {
+    return { allowed: true, updateTddState: true };
   }
 
   return { allowed: true };
 }
 
 /**
- * Post-process a bash command result. If it's a test runner command during implement/code-review,
- * record the result in tddTaskState.
+ * After a successful test file write, update TDD state on disk.
  */
-export function processBashResult(cwd: string, command: string, exitCode: number): void {
+export function recordTestFileWritten(cwd: string): void {
   const state = readState(cwd);
-  if (state.phase !== "implement" && state.phase !== "code-review") return;
-  if (!state.megaEnabled) return;
-  if (!isTestRunnerCommand(command)) return;
-
-  const tddState = state.tddTaskState;
-  if (!tddState || tddState.state !== "test-written") return;
-
-  const newTddState = handleTestResult(exitCode, tddState.state);
-  if (newTddState !== tddState.state) {
-    writeState(cwd, { ...state, tddTaskState: { ...tddState, state: newTddState } });
+  if (!state.tddTaskState || state.tddTaskState.state !== "no-test") {
+    // Initialize or advance
+    const tasks = state.activeIssue ? deriveTasks(cwd, state.activeIssue) : [];
+    const currentTask = tasks[state.currentTaskIndex];
+    const taskIndex = currentTask?.index ?? state.currentTaskIndex;
+    writeState(cwd, {
+      ...state,
+      tddTaskState: {
+        taskIndex,
+        state: "test-written",
+        skipped: state.tddTaskState?.skipped ?? false,
+      },
+    });
+  } else {
+    writeState(cwd, {
+      ...state,
+      tddTaskState: { ...state.tddTaskState, state: "test-written" },
+    });
   }
 }
 ```
@@ -1480,137 +1831,192 @@ export function processBashResult(cwd: string, command: string, exitCode: number
 
 ---
 
-### Task 12: tool-overrides.ts — bash override [depends: 11]
+### Task 10: Bash tool override [depends: 1, 3]
+
+**Covers:** AC32, AC33, AC34
 
 **Files:**
-- Modify: `tests/tool-overrides.test.ts`
+- Modify: `extensions/megapowers/tool-overrides.ts` (add bash processing)
+- Test: `tests/tool-overrides.test.ts` (add bash cases)
 
-**Test:** Add to `tests/tool-overrides.test.ts`:
+**Test:**
+
+Add to `tests/tool-overrides.test.ts`:
 
 ```typescript
+import { processBashResult } from "../extensions/megapowers/tool-overrides.js";
+
 describe("processBashResult", () => {
-  it("records test failure (impl-allowed) when exit code non-zero", () => {
-    writeState(tmp, {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "bash-override-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("records test failure (impl-allowed) when test command fails in implement", () => {
+    setState(tmp, {
       phase: "implement",
       megaEnabled: true,
       tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
     });
-    processBashResult(tmp, "bun test", 1);
+    processBashResult(tmp, "bun test", true); // isError=true means non-zero exit
     const state = readState(tmp);
     expect(state.tddTaskState?.state).toBe("impl-allowed");
   });
 
-  it("does not change state when tests pass (still test-written)", () => {
-    writeState(tmp, {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
+  it("does not change state when test passes (stays test-written)", () => {
+    setState(tmp, {
       phase: "implement",
       megaEnabled: true,
       tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
     });
-    processBashResult(tmp, "bun test", 0);
+    processBashResult(tmp, "bun test", false); // isError=false means exit 0
     const state = readState(tmp);
     expect(state.tddTaskState?.state).toBe("test-written");
   });
 
   it("ignores non-test commands", () => {
-    writeState(tmp, {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
+    setState(tmp, {
       phase: "implement",
       megaEnabled: true,
       tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
     });
-    processBashResult(tmp, "ls -la", 0);
+    processBashResult(tmp, "ls -la", true);
     const state = readState(tmp);
     expect(state.tddTaskState?.state).toBe("test-written"); // unchanged
   });
 
-  it("ignores when not in implement/code-review phase", () => {
-    writeState(tmp, {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
+  it("ignores when not in implement phase", () => {
+    setState(tmp, {
       phase: "spec",
       megaEnabled: true,
-      tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
+      tddTaskState: null,
     });
-    processBashResult(tmp, "bun test", 1);
+    processBashResult(tmp, "bun test", true);
     const state = readState(tmp);
-    expect(state.tddTaskState?.state).toBe("test-written"); // unchanged — not in implement
+    expect(state.tddTaskState).toBeNull(); // unchanged
   });
 
   it("ignores when megaEnabled is false", () => {
-    writeState(tmp, {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
+    setState(tmp, {
       phase: "implement",
       megaEnabled: false,
       tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
     });
-    processBashResult(tmp, "bun test", 1);
+    processBashResult(tmp, "bun test", true);
     const state = readState(tmp);
-    expect(state.tddTaskState?.state).toBe("test-written"); // unchanged — mega off
-  });
-
-  it("does not block any commands (no return value)", () => {
-    // bash override always executes the command; it only post-processes
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "implement", megaEnabled: true });
-    // processBashResult returns void — no blocking
-    expect(() => processBashResult(tmp, "rm -rf /", 0)).not.toThrow();
+    expect(state.tddTaskState?.state).toBe("test-written"); // unchanged
   });
 });
 ```
 
-**Implementation:** Already implemented in Task 11's `processBashResult`. This task adds the test coverage.
+**Implementation:**
+
+Add to `extensions/megapowers/tool-overrides.ts`:
+
+```typescript
+import { isTestRunnerCommand } from "./write-policy.js";
+
+/**
+ * Process bash command result for TDD tracking.
+ * Called after the bash command has already executed.
+ */
+export function processBashResult(cwd: string, command: string, isError: boolean): void {
+  const state = readState(cwd);
+
+  if (!state.megaEnabled) return;
+  if (state.phase !== "implement" && state.phase !== "code-review") return;
+  if (!state.tddTaskState || state.tddTaskState.state !== "test-written") return;
+  if (!isTestRunnerCommand(command)) return;
+
+  // Non-zero exit = tests failed = RED = impl-allowed
+  if (isError) {
+    writeState(cwd, {
+      ...state,
+      tddTaskState: { ...state.tddTaskState, state: "impl-allowed" },
+    });
+  }
+  // Zero exit = tests passed = GREEN = stay at test-written (need tests to fail first)
+}
+```
 
 **Verify:** `bun test tests/tool-overrides.test.ts`
 
 ---
 
-### Task 13: prompts — megapowers protocol + phase tool instructions [depends: 2]
+### Task 11: Prompt injection [depends: 1, 4]
+
+**Covers:** AC41, AC42
 
 **Files:**
 - Create: `prompts/megapowers-protocol.md`
-- Modify: `prompts/write-spec.md`, `prompts/write-plan.md`, `prompts/review-plan.md`, `prompts/implement-task.md`, `prompts/brainstorm.md`, `prompts/verify.md`, `prompts/code-review.md`, `prompts/reproduce-bug.md`, `prompts/diagnose-bug.md`
-- Modify: `extensions/megapowers/prompts.ts`
-- Test: `tests/prompts.test.ts`
+- Create: `extensions/megapowers/prompt-inject.ts`
+- Test: `tests/prompt-inject.test.ts`
 
-**Test:** Add to `tests/prompts.test.ts`:
+**Test:**
 
 ```typescript
-describe("megapowers protocol injection", () => {
-  it("loadPromptFile loads megapowers-protocol.md", () => {
-    const protocol = loadPromptFile("megapowers-protocol.md");
-    expect(protocol).toContain("megapowers_signal");
-    expect(protocol).toContain("megapowers_save_artifact");
-    expect(protocol).toContain("error");
-  });
-});
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { buildInjectedPrompt } from "../extensions/megapowers/prompt-inject.js";
+import { writeState } from "../extensions/megapowers/state-io.js";
+import { createInitialState, type MegapowersState } from "../extensions/megapowers/state-machine.js";
 
-describe("phase prompts include tool instructions", () => {
-  const phasesWithSaveArtifact = ["write-spec.md", "write-plan.md", "brainstorm.md", "reproduce-bug.md", "diagnose-bug.md"];
-  for (const file of phasesWithSaveArtifact) {
-    it(`${file} mentions megapowers_save_artifact`, () => {
-      const template = loadPromptFile(file);
-      expect(template).toContain("megapowers_save_artifact");
-    });
-  }
+function setState(tmp: string, overrides: Partial<MegapowersState>) {
+  writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", ...overrides });
+}
 
-  it("review-plan.md mentions megapowers_signal review_approve", () => {
-    const template = loadPromptFile("review-plan.md");
-    expect(template).toContain("review_approve");
+describe("buildInjectedPrompt", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "prompt-inject-test-"));
   });
 
-  it("implement-task.md mentions megapowers_signal task_done", () => {
-    const template = loadPromptFile("implement-task.md");
-    expect(template).toContain("task_done");
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("returns null when megaEnabled is false", () => {
+    setState(tmp, { phase: "spec", megaEnabled: false });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).toBeNull();
+  });
+
+  it("returns null when no active issue", () => {
+    writeState(tmp, createInitialState());
+    const result = buildInjectedPrompt(tmp);
+    expect(result).toBeNull();
+  });
+
+  it("includes megapowers protocol section", () => {
+    setState(tmp, { phase: "spec", megaEnabled: true });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).not.toBeNull();
+    expect(result).toContain("megapowers_signal");
+    expect(result).toContain("megapowers_save_artifact");
+  });
+
+  it("includes phase-specific instructions for spec phase", () => {
+    setState(tmp, { phase: "spec", megaEnabled: true });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).toContain("spec");
+  });
+
+  it("includes task info for implement phase", () => {
+    setState(tmp, { phase: "implement", megaEnabled: true, currentTaskIndex: 0 });
+    const dir = join(tmp, ".megapowers", "plans", "001-test");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "plan.md"), "# Plan\n\n### Task 1: Build it\n\n### Task 2: Test it\n");
+    const result = buildInjectedPrompt(tmp);
+    expect(result).toContain("Task 1");
+    expect(result).toContain("task_done");
   });
 });
 ```
@@ -1624,14 +2030,15 @@ Create `prompts/megapowers-protocol.md`:
 
 You have access to these megapowers tools:
 
-### megapowers_signal({ action })
-State transitions. Actions:
-- `task_done` — mark current task complete (implement phase)
-- `review_approve` — approve the plan (review phase)
-- `phase_next` — advance to next phase
+### `megapowers_signal`
+Call this to signal state transitions:
+- `{ action: "task_done" }` — Mark the current implementation task as complete
+- `{ action: "review_approve" }` — Approve the plan during review phase
+- `{ action: "phase_next" }` — Advance to the next workflow phase
 
-### megapowers_save_artifact({ phase, content })
-Save phase output. Example: `megapowers_save_artifact({ phase: "spec", content: "..." })`
+### `megapowers_save_artifact`
+Call this to save phase output:
+- `{ phase: "<phase>", content: "<full content>" }` — Save artifact for the current phase
 
 ### Error Handling
 When a megapowers tool returns an error:
@@ -1641,136 +2048,280 @@ When a megapowers tool returns an error:
 Do NOT work around errors by editing state files directly.
 ```
 
-Add tool instructions to each phase prompt (append to existing content):
-
-- `write-spec.md`: Add "When the spec is complete, call `megapowers_save_artifact({ phase: 'spec', content: '<full spec>' })`"
-- `write-plan.md`: Add "When the plan is complete, call `megapowers_save_artifact({ phase: 'plan', content: '<full plan>' })`"
-- `review-plan.md`: Add "If the plan is approved, call `megapowers_signal({ action: 'review_approve' })`. Then call `megapowers_signal({ action: 'phase_next' })` to advance."
-- `implement-task.md`: Add "When the task is complete, call `megapowers_signal({ action: 'task_done' })`"
-- `brainstorm.md`: Add "When brainstorming is complete, call `megapowers_save_artifact({ phase: 'brainstorm', content: '<brainstorm notes>' })`"
-- And similar for other phases.
-
-Update `prompts.ts` to load and prepend the protocol section:
+Create `extensions/megapowers/prompt-inject.ts`:
 
 ```typescript
-export function getMegapowersProtocol(): string {
-  return loadPromptFile("megapowers-protocol.md");
-}
-```
+// extensions/megapowers/prompt-inject.ts
+import { readState } from "./state-io.js";
+import { deriveTasks, deriveAcceptanceCriteria } from "./derived.js";
+import { loadPromptFile, interpolatePrompt, getPhasePromptTemplate, BRAINSTORM_PLAN_PHASES, buildImplementTaskVars, formatAcceptanceCriteriaList, buildSourceIssuesContext } from "./prompts.js";
+import type { PlanTask } from "./state-machine.js";
+import type { Store } from "./store.js";
 
-**Verify:** `bun test tests/prompts.test.ts`
+export function buildInjectedPrompt(cwd: string, store?: Store): string | null {
+  const state = readState(cwd);
 
----
+  if (!state.megaEnabled) return null;
+  if (!state.activeIssue || !state.phase) return null;
 
-### Task 14: ui.ts — disk-based dashboard with completedTasks [depends: 2]
+  const parts: string[] = [];
 
-**Files:**
-- Modify: `extensions/megapowers/ui.ts`
-- Modify: `tests/ui.test.ts`
+  // Base protocol
+  const protocol = loadPromptFile("megapowers-protocol.md");
+  if (protocol) parts.push(protocol);
 
-**Test:** Add to `tests/ui.test.ts`:
+  // Build template variables
+  const vars: Record<string, string> = {
+    issue_slug: state.activeIssue,
+    phase: state.phase,
+  };
 
-```typescript
-describe("renderDashboardLines — completedTasks format", () => {
-  it("shows task progress from completedTasks array", () => {
-    const state = makeState({
-      phase: "implement",
-      completedTasks: [1, 2],
-      currentTaskIndex: 2,
-      // planTasks still exists during transition — UI should prefer completedTasks
-    });
-    const lines = renderDashboardLines(state, [], mockTheme);
-    const tasksLine = lines.find(l => l.includes("Tasks:"));
-    // During transition, UI may use planTasks if available, or show completedTasks count
-    expect(tasksLine).toBeDefined();
-  });
-});
-
-describe("renderStatusText — completedTasks format", () => {
-  it("shows completed count from completedTasks when planTasks empty", () => {
-    const state = makeState({
-      phase: "implement",
-      completedTasks: [1, 2],
-      planTasks: [], // new style: planTasks empty, completedTasks has data
-    });
-    const text = renderStatusText(state);
-    expect(text).toContain("implement");
-  });
-});
-```
-
-**Implementation:**
-
-Update `renderDashboardLines` and `renderStatusText` in `ui.ts` to support both old (`planTasks`) and new (`completedTasks`) formats during the transition period. When `planTasks` is empty but `completedTasks` has items, use `completedTasks.length` for the count. The total task count comes from the plan file (but for the dashboard, we can show just the completed count if we don't have the total readily available).
-
-Add a helper:
-
-```typescript
-function getTaskProgress(state: MegapowersState): { completed: number; total: number } | null {
-  // Old format: planTasks has items
-  if (state.planTasks.length > 0) {
-    return {
-      completed: state.planTasks.filter(t => t.completed).length,
-      total: state.planTasks.length,
+  // Load artifacts for context
+  if (store) {
+    const artifactMap: Record<string, string> = {
+      "brainstorm.md": "brainstorm_content",
+      "spec.md": "spec_content",
+      "plan.md": "plan_content",
+      "diagnosis.md": "diagnosis_content",
+      "verify.md": "verify_content",
+      "code-review.md": "code_review_content",
     };
+    for (const [file, varName] of Object.entries(artifactMap)) {
+      const content = store.readPlanFile(state.activeIssue, file);
+      if (content) vars[varName] = content;
+    }
+
+    // Bugfix aliasing
+    if (state.workflow === "bugfix") {
+      const reproduce = store.readPlanFile(state.activeIssue, "reproduce.md");
+      const diagnosis = store.readPlanFile(state.activeIssue, "diagnosis.md");
+      if (reproduce) { vars.brainstorm_content = reproduce; vars.reproduce_content = reproduce; }
+      if (diagnosis) { vars.spec_content = diagnosis; vars.diagnosis_content = diagnosis; }
+    }
   }
-  // New format: completedTasks has items (total unknown without plan.md)
-  if (state.completedTasks.length > 0) {
-    return { completed: state.completedTasks.length, total: 0 }; // total populated by caller if needed
+
+  // Acceptance criteria
+  const criteria = deriveAcceptanceCriteria(cwd, state.activeIssue, state.workflow ?? "feature");
+  if (criteria.length > 0) {
+    vars.acceptance_criteria_list = formatAcceptanceCriteriaList(criteria);
   }
-  return null;
+
+  // Implement phase: task context
+  if (state.phase === "implement") {
+    const tasks = deriveTasks(cwd, state.activeIssue);
+    if (tasks.length > 0) {
+      // Build task vars using completedTasks
+      const completedSet = new Set(state.completedTasks);
+      const tasksWithCompletion = tasks.map(t => ({ ...t, completed: completedSet.has(t.index) }));
+      Object.assign(vars, buildImplementTaskVars(tasksWithCompletion, state.currentTaskIndex));
+    }
+  }
+
+  // Learnings + Roadmap
+  if (BRAINSTORM_PLAN_PHASES.includes(state.phase) && store) {
+    vars.learnings = store.getLearnings();
+    vars.roadmap = store.readRoadmap();
+  }
+
+  // Phase prompt template
+  let template = "";
+  if (state.phase === "done" && state.doneMode) {
+    const doneModeTemplateMap: Record<string, string> = {
+      "generate-docs": "generate-docs.md",
+      "capture-learnings": "capture-learnings.md",
+      "write-changelog": "write-changelog.md",
+      "generate-bugfix-summary": "generate-bugfix-summary.md",
+    };
+    const filename = doneModeTemplateMap[state.doneMode];
+    if (filename) template = loadPromptFile(filename);
+    if (store) {
+      vars.learnings = store.getLearnings();
+      vars.files_changed = "";
+    }
+  } else if (state.phase !== "done") {
+    template = getPhasePromptTemplate(state.phase);
+  }
+
+  if (template) {
+    const phasePrompt = interpolatePrompt(template, vars);
+    if (phasePrompt) parts.push(phasePrompt);
+  }
+
+  // Source issues context
+  if (store) {
+    const issue = store.getIssue(state.activeIssue);
+    if (issue && issue.sources.length > 0) {
+      const sourceIssues = store.getSourceIssues(state.activeIssue);
+      const sourceContext = buildSourceIssuesContext(sourceIssues);
+      if (sourceContext) parts.push(sourceContext);
+    }
+  }
+
+  return parts.length > 0 ? parts.join("\n\n") : null;
 }
 ```
 
-**Verify:** `bun test tests/ui.test.ts`
+**Verify:** `bun test tests/prompt-inject.test.ts`
 
 ---
 
-### Task 15: index.ts — full rewrite [depends: 1, 2, 4, 7, 8, 9, 10, 11, 12, 13, 14]
+### Task 12: Satellite mode with in-memory TDD [depends: 3, 9, 10]
+
+**Covers:** AC47, AC48
 
 **Files:**
-- Rewrite: `extensions/megapowers/index.ts`
+- Modify: `extensions/megapowers/tool-overrides.ts` (add satellite helpers)
+- Test: `tests/tool-overrides.test.ts` (add satellite cases)
 
-This is the integration task. The new `index.ts`:
+**Test:**
 
-1. **No module-level `state` variable.** (AC 5)
-2. **Registers `megapowers_signal` tool** using `handleSignal` from `tool-signal.ts` (AC 11)
-3. **Registers `megapowers_save_artifact` tool** using `handleSaveArtifact` from `tool-artifact.ts` (AC 22)
-4. **Overrides `write`/`edit`/`bash`** using `checkWriteOverride`/`processBashResult` from `tool-overrides.ts` and pi's `createWriteTool`/`createEditTool`/`createBashTool` for delegation (AC 25, 26, 30, 32)
-5. **`session_start` handler**: reads state via `readState()`, resets `megaEnabled: true`, renders dashboard (AC 40)
-6. **`before_agent_start` handler**: injects megapowers protocol + phase prompt if `megaEnabled` (AC 41, 42)
-7. **No `session_shutdown` handler** that saves in-memory state — state is always on disk (AC 43)
-8. **No `pi.appendEntry()` calls** (AC 43)
-9. **`/mega off`** sets `megaEnabled: false` via writeState (AC 38)
-10. **`/mega on`** sets `megaEnabled: true` via writeState (AC 39)
-11. **`/task done`** calls `handleSignal(cwd, "task_done")` (AC 49)
-12. **`/phase next`** calls `handleSignal(cwd, "phase_next")` (AC 49)
-13. **`/review approve`** calls `handleSignal(cwd, "review_approve")` (AC 49)
-14. **`/tdd skip`** sets tddTaskState.skipped via readState/writeState (AC 50)
-15. **Satellite mode**: registers only write/edit/bash overrides with in-memory TDD state. No signal/artifact tools. (AC 48)
+Add to `tests/tool-overrides.test.ts`:
+
+```typescript
+import { createSatelliteWriteChecker, type SatelliteTddState } from "../extensions/megapowers/tool-overrides.js";
+
+describe("satellite mode (in-memory TDD)", () => {
+  it("allows test files and tracks state in memory", () => {
+    const sat: SatelliteTddState = { state: "no-test", skipped: false };
+    const checker = createSatelliteWriteChecker("implement", false, sat);
+
+    const result1 = checker("tests/foo.test.ts");
+    expect(result1.allowed).toBe(true);
+    expect(sat.state).toBe("test-written");
+  });
+
+  it("blocks production files until tests fail", () => {
+    const sat: SatelliteTddState = { state: "no-test", skipped: false };
+    const checker = createSatelliteWriteChecker("implement", false, sat);
+
+    const result = checker("src/app.ts");
+    expect(result.allowed).toBe(false);
+  });
+
+  it("allows production files after test failure", () => {
+    const sat: SatelliteTddState = { state: "impl-allowed", skipped: false };
+    const checker = createSatelliteWriteChecker("implement", false, sat);
+
+    const result = checker("src/app.ts");
+    expect(result.allowed).toBe(true);
+  });
+
+  it("allows everything for [no-test] tasks", () => {
+    const sat: SatelliteTddState = { state: "no-test", skipped: false };
+    const checker = createSatelliteWriteChecker("implement", true, sat);
+
+    const result = checker("src/app.ts");
+    expect(result.allowed).toBe(true);
+  });
+
+  it("handles satellite bash result (test failure)", () => {
+    const sat: SatelliteTddState = { state: "test-written", skipped: false };
+    const checker = createSatelliteWriteChecker("implement", false, sat);
+    checker.processBash("bun test", true);
+    expect(sat.state).toBe("impl-allowed");
+  });
+});
+```
 
 **Implementation:**
+
+Add to `extensions/megapowers/tool-overrides.ts`:
+
+```typescript
+export interface SatelliteTddState {
+  state: "no-test" | "test-written" | "impl-allowed";
+  skipped: boolean;
+}
+
+export interface SatelliteWriteResult {
+  allowed: boolean;
+  reason?: string;
+}
+
+export interface SatelliteWriteChecker {
+  (filePath: string): SatelliteWriteResult;
+  processBash(command: string, isError: boolean): void;
+}
+
+export function createSatelliteWriteChecker(
+  phase: string,
+  taskIsNoTest: boolean,
+  tddState: SatelliteTddState,
+): SatelliteWriteChecker {
+  const checker = (filePath: string): SatelliteWriteResult => {
+    // .megapowers/ always allowed
+    if (filePath.startsWith(".megapowers/") || filePath.includes("/.megapowers/")) {
+      return { allowed: true };
+    }
+
+    if (phase !== "implement" && phase !== "code-review") {
+      return { allowed: true };
+    }
+
+    if (isAllowlisted(filePath)) return { allowed: true };
+    if (isTestFile(filePath)) {
+      if (tddState.state === "no-test") tddState.state = "test-written";
+      return { allowed: true };
+    }
+    if (taskIsNoTest || tddState.skipped) return { allowed: true };
+    if (tddState.state === "impl-allowed") return { allowed: true };
+
+    return { allowed: false, reason: "TDD violation: write tests first." };
+  };
+
+  checker.processBash = (command: string, isError: boolean) => {
+    if (phase !== "implement" && phase !== "code-review") return;
+    if (tddState.state !== "test-written") return;
+    if (!isTestRunnerCommand(command)) return;
+    if (isError) tddState.state = "impl-allowed";
+  };
+
+  return checker;
+}
+```
+
+**Verify:** `bun test tests/tool-overrides.test.ts`
+
+---
+
+### Task 13: Rewrite index.ts — tool registration, session lifecycle, /mega commands [depends: 1, 7, 8, 9, 10, 11, 12]
+
+**Covers:** AC5, AC39, AC40, AC43
+
+**Files:**
+- Modify: `extensions/megapowers/index.ts`
+- Test: manual (integration — verified by Tasks 14–15 command tests)
+
+**Implementation:**
+
+Rewrite `extensions/megapowers/index.ts`. Key changes:
+- No module-level `state` variable
+- No `pi.appendEntry()` calls
+- Register `megapowers_signal` and `megapowers_save_artifact` tools
+- Register `write`, `edit`, `bash` overrides using `createWriteTool`/`createEditTool`/`createBashTool` for delegation
+- `session_start` reads state, resets `megaEnabled: true`, writes back
+- `/mega off` and `/mega on` commands
+- Satellite mode uses in-memory TDD via `createSatelliteWriteChecker`
 
 ```typescript
 // extensions/megapowers/index.ts
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
-import { createWriteTool, createEditTool, createBashTool } from "@mariozechner/pi-coding-agent";
+import { createWriteTool, createEditTool, createBashTool } from "@mariozechner/pi-coding-agent/tools";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
-
 import { readState, writeState } from "./state-io.js";
+import { createInitialState } from "./state-machine.js";
+import { createStore, type Store } from "./store.js";
+import { createJJ, formatChangeDescription, type JJ } from "./jj.js";
+import { createUI, filterTriageableIssues, formatTriageIssueList, type MegapowersUI } from "./ui.js";
 import { handleSignal } from "./tool-signal.js";
 import { handleSaveArtifact } from "./tool-artifact.js";
-import { checkWriteOverride, processBashResult } from "./tool-overrides.js";
-import { createStore } from "./store.js";
-import { createJJ, formatChangeDescription, type JJ } from "./jj.js";
-import { createUI, type MegapowersUI } from "./ui.js";
-import { getMegapowersProtocol, getPhasePromptTemplate, interpolatePrompt, BRAINSTORM_PLAN_PHASES, buildImplementTaskVars, formatAcceptanceCriteriaList, buildSourceIssuesContext, loadPromptFile } from "./prompts.js";
-import { extractPlanTasks } from "./plan-parser.js";
-import { extractAcceptanceCriteria, extractFixedWhenCriteria } from "./spec-parser.js";
+import { evaluateWriteOverride, recordTestFileWritten, processBashResult, createSatelliteWriteChecker, type SatelliteTddState } from "./tool-overrides.js";
+import { buildInjectedPrompt } from "./prompt-inject.js";
 import { isSatelliteMode } from "./satellite.js";
-import { canWrite, isTestFile, isTestRunnerCommand, handleTestResult, type TddTaskState } from "./write-policy.js";
+import { loadPromptFile, interpolatePrompt } from "./prompts.js";
 import { createBatchHandler } from "./tools.js";
+import { isTestRunnerCommand } from "./write-policy.js";
 
 export default function megapowers(pi: ExtensionAPI): void {
   // --- Satellite mode ---
@@ -1780,243 +2331,104 @@ export default function megapowers(pi: ExtensionAPI): void {
   });
 
   if (satellite) {
-    // In-memory TDD state (the one documented exception to disk-first)
-    let satelliteTddState: TddTaskState | null = null;
-    let satellitePhase: string | null = null;
-    let satelliteTaskIsNoTest = false;
+    let satChecker: ReturnType<typeof createSatelliteWriteChecker> | null = null;
 
     pi.on("session_start", async (_event, ctx) => {
       const state = readState(ctx.cwd);
-      satellitePhase = state.phase;
-      if (state.phase === "implement" && state.activeIssue) {
-        const store = createStore(ctx.cwd);
-        const plan = store.readPlanFile(state.activeIssue, "plan.md");
-        if (plan) {
-          const tasks = extractPlanTasks(plan);
-          const current = tasks[state.currentTaskIndex];
-          satelliteTaskIsNoTest = current?.noTest ?? false;
-          satelliteTddState = state.tddTaskState ? { ...state.tddTaskState } : {
-            taskIndex: current?.index ?? 0,
-            state: "no-test",
-            skipped: false,
-          };
-        }
+      if (state.activeIssue && (state.phase === "implement" || state.phase === "code-review")) {
+        const { deriveTasks } = await import("./derived.js");
+        const tasks = deriveTasks(ctx.cwd, state.activeIssue);
+        const currentTask = tasks[state.currentTaskIndex];
+        const isNoTest = currentTask?.noTest ?? false;
+        const satState: SatelliteTddState = { state: "no-test", skipped: false };
+        satChecker = createSatelliteWriteChecker(state.phase, isNoTest, satState);
       }
     });
 
-    // Override write/edit with in-memory TDD enforcement
-    // Override bash to track test results in memory
-    // (No megapowers_signal or megapowers_save_artifact for satellites)
-    return;
+    // Override write/edit for satellite TDD
+    pi.registerTool({
+      name: "write",
+      label: "Write File",
+      description: "Create or overwrite a file",
+      parameters: Type.Object({ path: Type.String(), content: Type.String() }),
+      async execute(toolCallId, params, signal, onUpdate, ctx) {
+        if (satChecker) {
+          const result = satChecker(params.path);
+          if (!result.allowed) {
+            return { content: [{ type: "text", text: result.reason ?? "Blocked by TDD guard." }], details: undefined };
+          }
+        }
+        const builtin = createWriteTool(ctx.cwd);
+        return builtin.execute(toolCallId, params, signal, onUpdate);
+      },
+    });
+
+    pi.registerTool({
+      name: "edit",
+      label: "Edit File",
+      description: "Edit a file by replacing text",
+      parameters: Type.Object({ path: Type.String(), oldText: Type.String(), newText: Type.String() }),
+      async execute(toolCallId, params, signal, onUpdate, ctx) {
+        if (satChecker) {
+          const result = satChecker(params.path);
+          if (!result.allowed) {
+            return { content: [{ type: "text", text: result.reason ?? "Blocked by TDD guard." }], details: undefined };
+          }
+        }
+        const builtin = createEditTool(ctx.cwd);
+        return builtin.execute(toolCallId, params, signal, onUpdate);
+      },
+    });
+
+    pi.registerTool({
+      name: "bash",
+      label: "Bash",
+      description: "Execute a bash command",
+      parameters: Type.Object({ command: Type.String(), timeout: Type.Optional(Type.Number()) }),
+      async execute(toolCallId, params, signal, onUpdate, ctx) {
+        const builtin = createBashTool(ctx.cwd);
+        try {
+          const result = await builtin.execute(toolCallId, params, signal, onUpdate);
+          if (satChecker) satChecker.processBash(params.command, false);
+          return result;
+        } catch (err) {
+          if (satChecker) satChecker.processBash(params.command, true);
+          throw err;
+        }
+      },
+    });
+
+    return; // Skip primary session setup
   }
 
   // --- Primary session ---
+
+  let store: Store;
   let jj: JJ;
   let ui: MegapowersUI;
 
-  // Register megapowers_signal tool
-  pi.registerTool({
-    name: "megapowers_signal",
-    label: "Megapowers Signal",
-    description: "State transition signal. Actions: task_done (mark current task complete), review_approve (approve plan review), phase_next (advance to next phase).",
-    parameters: Type.Object({
-      action: StringEnum(["task_done", "review_approve", "phase_next"] as const),
-    }),
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      if (!jj) jj = createJJ(pi);
-      const result = handleSignal(ctx.cwd, params.action, jj);
-      if (!result.success) {
-        return { content: [{ type: "text", text: `Error: ${result.error}` }], details: {} };
-      }
-      // Refresh dashboard
-      if (!ui) ui = createUI();
-      if (ctx.hasUI) {
-        const store = createStore(ctx.cwd);
-        ui.renderDashboard(ctx, readState(ctx.cwd), store);
-      }
-      return { content: [{ type: "text", text: result.message ?? "OK" }], details: {} };
-    },
-  });
-
-  // Register megapowers_save_artifact tool
-  pi.registerTool({
-    name: "megapowers_save_artifact",
-    label: "Megapowers Save Artifact",
-    description: "Save phase output to disk. The phase determines the filename (e.g., phase='spec' → spec.md).",
-    parameters: Type.Object({
-      phase: Type.String({ description: "Phase name: brainstorm, spec, plan, reproduce, diagnosis, review, verify, code-review" }),
-      content: Type.String({ description: "Full content to save" }),
-    }),
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const result = handleSaveArtifact(ctx.cwd, params);
-      if (!result.success) {
-        return { content: [{ type: "text", text: `Error: ${result.error}` }], details: {} };
-      }
-      return { content: [{ type: "text", text: `Artifact saved to ${result.path}` }], details: {} };
-    },
-  });
-
-  // Override write tool
-  pi.registerTool({
-    name: "write",
-    label: "write",
-    description: "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
-    parameters: Type.Object({
-      path: Type.String({ description: "Path to the file to write (relative or absolute)" }),
-      content: Type.String({ description: "Content to write to the file" }),
-    }),
-    async execute(toolCallId, params, signal, onUpdate, ctx) {
-      const check = checkWriteOverride(ctx.cwd, params.path);
-      if (!check.allowed) {
-        return { content: [{ type: "text", text: `Blocked: ${check.reason}` }], details: {} };
-      }
-      const original = createWriteTool(ctx.cwd);
-      return original.execute(toolCallId, params, signal, onUpdate);
-    },
-    // No renderCall/renderResult → built-in renderer used (AC 30)
-  });
-
-  // Override edit tool
-  pi.registerTool({
-    name: "edit",
-    label: "edit",
-    description: "Edit a file by replacing exact text. The oldText must match exactly (including whitespace).",
-    parameters: Type.Object({
-      path: Type.String({ description: "Path to the file to edit" }),
-      oldText: Type.String({ description: "Exact text to find and replace" }),
-      newText: Type.String({ description: "New text to replace the old text with" }),
-    }),
-    async execute(toolCallId, params, signal, onUpdate, ctx) {
-      const check = checkWriteOverride(ctx.cwd, params.path);
-      if (!check.allowed) {
-        return { content: [{ type: "text", text: `Blocked: ${check.reason}` }], details: {} };
-      }
-      const original = createEditTool(ctx.cwd);
-      return original.execute(toolCallId, params, signal, onUpdate);
-    },
-  });
-
-  // Override bash tool
-  pi.registerTool({
-    name: "bash",
-    label: "bash",
-    description: "Execute a bash command in the current working directory.",
-    parameters: Type.Object({
-      command: Type.String({ description: "Bash command to execute" }),
-      timeout: Type.Optional(Type.Number({ description: "Timeout in seconds" })),
-    }),
-    async execute(toolCallId, params, signal, onUpdate, ctx) {
-      const original = createBashTool(ctx.cwd);
-      const result = await original.execute(toolCallId, params, signal, onUpdate);
-      // Post-process: track test results
-      const exitCode = result.details?.exitCode ?? (result.content?.some((c: any) => c.text?.includes("error")) ? 1 : 0);
-      // Actually, we need to detect exit code from the result
-      // The bash tool result has isError flag
-      const isError = result.content?.some((c: any) => c.type === "text" && /exit code [1-9]/.test(c.text ?? ""));
-      processBashResult(ctx.cwd, params.command, isError ? 1 : 0);
-      return result;
-    },
-  });
-
-  // --- Session lifecycle ---
   pi.on("session_start", async (_event, ctx) => {
+    store = createStore(ctx.cwd);
     jj = createJJ(pi);
     ui = createUI();
 
-    // Reset megaEnabled to true at session start (AC 40)
+    // Reset megaEnabled on session start (AC40)
     const state = readState(ctx.cwd);
     if (!state.megaEnabled) {
       writeState(ctx.cwd, { ...state, megaEnabled: true });
     }
 
+    // Render dashboard
     if (ctx.hasUI) {
-      const store = createStore(ctx.cwd);
       ui.renderDashboard(ctx, readState(ctx.cwd), store);
     }
   });
 
   // --- Prompt injection ---
+
   pi.on("before_agent_start", async (_event, ctx) => {
-    const state = readState(ctx.cwd);
-    if (!state.megaEnabled || !state.activeIssue || !state.phase) return;
-
-    const store = createStore(ctx.cwd);
-    const vars: Record<string, string> = {
-      issue_slug: state.activeIssue,
-      phase: state.phase,
-    };
-
-    // Load artifacts for context
-    const artifacts = ["brainstorm.md", "spec.md", "plan.md", "diagnosis.md", "verify.md", "code-review.md"];
-    const varNames = ["brainstorm_content", "spec_content", "plan_content", "diagnosis_content", "verify_content", "code_review_content"];
-    for (let i = 0; i < artifacts.length; i++) {
-      const content = store.readPlanFile(state.activeIssue, artifacts[i]);
-      if (content) vars[varNames[i]] = content;
-    }
-
-    // Bugfix aliases
-    if (state.workflow === "bugfix") {
-      const reproduce = store.readPlanFile(state.activeIssue, "reproduce.md");
-      const diagnosis = store.readPlanFile(state.activeIssue, "diagnosis.md");
-      if (reproduce) { vars.brainstorm_content = reproduce; vars.reproduce_content = reproduce; }
-      if (diagnosis) { vars.spec_content = diagnosis; vars.diagnosis_content = diagnosis; }
-    }
-
-    // Derived data (AC 8, 9 — parsed on demand, not cached)
-    if (vars.spec_content) {
-      const criteria = extractAcceptanceCriteria(vars.spec_content);
-      if (criteria.length > 0) vars.acceptance_criteria_list = formatAcceptanceCriteriaList(criteria);
-    }
-
-    // Implement phase: task vars from plan.md + completedTasks
-    if (state.phase === "implement" && vars.plan_content) {
-      const tasks = extractPlanTasks(vars.plan_content);
-      if (tasks.length > 0) {
-        // Build task vars using completedTasks
-        const completedSet = new Set(state.completedTasks);
-        const tasksWithCompletion = tasks.map(t => ({ ...t, completed: completedSet.has(t.index) }));
-        Object.assign(vars, buildImplementTaskVars(tasksWithCompletion, state.currentTaskIndex));
-      }
-    }
-
-    // Learnings + Roadmap
-    if (BRAINSTORM_PLAN_PHASES.includes(state.phase)) {
-      vars.learnings = store.getLearnings();
-      vars.roadmap = store.readRoadmap();
-    }
-
-    // Source issues
-    const issue = store.getIssue(state.activeIssue);
-    if (issue && issue.sources.length > 0) {
-      const sourceContext = buildSourceIssuesContext(store.getSourceIssues(state.activeIssue));
-      if (sourceContext) vars.source_issues_context = sourceContext;
-    }
-
-    // Build prompt: protocol + phase template
-    const protocol = getMegapowersProtocol();
-    const phaseTemplate = getPhasePromptTemplate(state.phase);
-
-    // Done phase: mode-based template selection
-    let template = phaseTemplate;
-    if (state.phase === "done" && state.doneMode) {
-      const modeMap: Record<string, string> = {
-        "generate-docs": "generate-docs.md",
-        "capture-learnings": "capture-learnings.md",
-        "write-changelog": "write-changelog.md",
-        "generate-bugfix-summary": "generate-bugfix-summary.md",
-      };
-      const f = modeMap[state.doneMode];
-      if (f) { const t = loadPromptFile(f); if (t) template = t; }
-      if (state.jjChangeId && jj) {
-        try { vars.files_changed = await jj.diff(state.jjChangeId); } catch { vars.files_changed = ""; }
-      }
-      vars.learnings = store.getLearnings();
-    }
-
-    let prompt = protocol + "\n\n" + interpolatePrompt(template, vars);
-    if (vars.source_issues_context) prompt += "\n\n" + vars.source_issues_context;
-    if (!prompt.trim()) return;
-
+    const prompt = buildInjectedPrompt(ctx.cwd, store);
+    if (!prompt) return;
     return {
       message: {
         customType: "megapowers-context",
@@ -2026,347 +2438,477 @@ export default function megapowers(pi: ExtensionAPI): void {
     };
   });
 
-  // --- agent_end: refresh dashboard (no artifact routing!) ---
-  pi.on("agent_end", async (_event, ctx) => {
-    const state = readState(ctx.cwd);
-    if (!state.activeIssue || !state.phase || !state.megaEnabled) return;
-    if (ctx.hasUI) {
-      if (!ui) ui = createUI();
-      const store = createStore(ctx.cwd);
-      ui.renderDashboard(ctx, state, store);
-    }
+  // --- Tool overrides: write ---
+
+  pi.registerTool({
+    name: "write",
+    label: "Write File",
+    description: "Create or overwrite a file",
+    parameters: Type.Object({ path: Type.String(), content: Type.String() }),
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      const decision = evaluateWriteOverride(ctx.cwd, params.path);
+      if (!decision.allowed) {
+        return { content: [{ type: "text", text: decision.reason ?? "Write blocked." }], details: undefined };
+      }
+      const builtin = createWriteTool(ctx.cwd);
+      const result = await builtin.execute(toolCallId, params, signal, onUpdate);
+      if (decision.updateTddState) recordTestFileWritten(ctx.cwd);
+      return result;
+    },
+  });
+
+  // --- Tool overrides: edit ---
+
+  pi.registerTool({
+    name: "edit",
+    label: "Edit File",
+    description: "Edit a file by replacing text",
+    parameters: Type.Object({ path: Type.String(), oldText: Type.String(), newText: Type.String() }),
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      const decision = evaluateWriteOverride(ctx.cwd, params.path);
+      if (!decision.allowed) {
+        return { content: [{ type: "text", text: decision.reason ?? "Edit blocked." }], details: undefined };
+      }
+      const builtin = createEditTool(ctx.cwd);
+      const result = await builtin.execute(toolCallId, params, signal, onUpdate);
+      if (decision.updateTddState) recordTestFileWritten(ctx.cwd);
+      return result;
+    },
+  });
+
+  // --- Tool overrides: bash ---
+
+  pi.registerTool({
+    name: "bash",
+    label: "Bash",
+    description: "Execute a bash command",
+    parameters: Type.Object({ command: Type.String(), timeout: Type.Optional(Type.Number()) }),
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
+      const builtin = createBashTool(ctx.cwd);
+      try {
+        const result = await builtin.execute(toolCallId, params, signal, onUpdate);
+        processBashResult(ctx.cwd, params.command, false);
+        return result;
+      } catch (err) {
+        processBashResult(ctx.cwd, params.command, true);
+        throw err;
+      }
+    },
+  });
+
+  // --- Custom tools ---
+
+  pi.registerTool({
+    name: "megapowers_signal",
+    label: "Megapowers Signal",
+    description: "Signal a state transition: task_done, review_approve, or phase_next",
+    parameters: Type.Object({
+      action: StringEnum(["task_done", "review_approve", "phase_next"] as const),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const result = handleSignal(ctx.cwd, params.action);
+      if (result.error) {
+        return { content: [{ type: "text", text: `Error: ${result.error}` }], details: undefined };
+      }
+      if (ctx.hasUI) {
+        ui.renderDashboard(ctx, readState(ctx.cwd), store);
+      }
+      return { content: [{ type: "text", text: result.message ?? "OK" }], details: undefined };
+    },
+  });
+
+  pi.registerTool({
+    name: "megapowers_save_artifact",
+    label: "Save Artifact",
+    description: "Save a phase artifact (spec, plan, brainstorm, etc.)",
+    parameters: Type.Object({
+      phase: Type.String(),
+      content: Type.String(),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const result = handleSaveArtifact(ctx.cwd, params.phase, params.content);
+      if (result.error) {
+        return { content: [{ type: "text", text: `Error: ${result.error}` }], details: undefined };
+      }
+      return { content: [{ type: "text", text: result.message ?? "Saved." }], details: undefined };
+    },
+  });
+
+  pi.registerTool({
+    name: "create_batch",
+    label: "Create Batch",
+    description: "Create a batch issue grouping source issues.",
+    parameters: Type.Object({
+      title: Type.String(),
+      type: StringEnum(["bugfix", "feature"] as const),
+      sourceIds: Type.Array(Type.Number()),
+      description: Type.String(),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (!store) store = createStore(ctx.cwd);
+      const result = createBatchHandler(store, params);
+      if ("error" in result) {
+        return { content: [{ type: "text", text: result.error }], details: undefined };
+      }
+      return { content: [{ type: "text", text: `Created batch: ${result.slug} (id: ${result.id})` }], details: undefined };
+    },
   });
 
   // --- Commands ---
+
   pi.registerCommand("mega", {
     description: "Toggle megapowers enforcement (usage: /mega off | /mega on | /mega)",
     handler: async (args, ctx) => {
+      if (!store) store = createStore(ctx.cwd);
+      if (!ui) ui = createUI();
+
       const sub = args.trim().toLowerCase();
       if (sub === "off") {
         const state = readState(ctx.cwd);
         writeState(ctx.cwd, { ...state, megaEnabled: false });
-        ctx.ui.notify("Megapowers OFF. All overrides are passthrough.", "info");
+        ctx.ui.notify("Megapowers OFF — all enforcement disabled.", "info");
+        ui.renderDashboard(ctx, readState(ctx.cwd), store);
         return;
       }
       if (sub === "on") {
         const state = readState(ctx.cwd);
         writeState(ctx.cwd, { ...state, megaEnabled: true });
-        ctx.ui.notify("Megapowers ON. Enforcement restored.", "info");
+        ctx.ui.notify("Megapowers ON — enforcement restored.", "info");
+        ui.renderDashboard(ctx, readState(ctx.cwd), store);
         return;
       }
-      // Default: show dashboard
-      if (!ui) ui = createUI();
-      const store = createStore(ctx.cwd);
       ui.renderDashboard(ctx, readState(ctx.cwd), store);
     },
   });
 
   pi.registerCommand("task", {
-    description: "Mark current task done (usage: /task done)",
+    description: "Task management (usage: /task done)",
     handler: async (args, ctx) => {
-      if (args.trim() === "done") {
-        if (!jj) jj = createJJ(pi);
-        const result = handleSignal(ctx.cwd, "task_done", jj);
-        ctx.ui.notify(result.success ? (result.message ?? "Done") : `Error: ${result.error}`, result.success ? "info" : "error");
-        if (result.success && ui) {
-          const store = createStore(ctx.cwd);
-          ui.renderDashboard(ctx, readState(ctx.cwd), store);
+      if (args.trim().toLowerCase() === "done") {
+        const result = handleSignal(ctx.cwd, "task_done");
+        if (result.error) {
+          ctx.ui.notify(result.error, "error");
+        } else {
+          ctx.ui.notify(result.message ?? "Task done.", "info");
         }
+        if (ui && store) ui.renderDashboard(ctx, readState(ctx.cwd), store);
       } else {
         ctx.ui.notify("Usage: /task done", "info");
       }
     },
   });
 
-  pi.registerCommand("phase", {
-    description: "Advance phase (usage: /phase next | /phase)",
-    handler: async (args, ctx) => {
-      if (args.trim() === "next") {
-        if (!jj) jj = createJJ(pi);
-        const result = handleSignal(ctx.cwd, "phase_next", jj);
-        ctx.ui.notify(result.success ? (result.message ?? "Advanced") : `Error: ${result.error}`, result.success ? "info" : "error");
-      } else {
-        const state = readState(ctx.cwd);
-        ctx.ui.notify(`Phase: ${state.phase ?? "none"}\nWorkflow: ${state.workflow ?? "none"}\nIssue: ${state.activeIssue ?? "none"}`, "info");
-      }
-      if (ui) {
-        const store = createStore(ctx.cwd);
-        ui.renderDashboard(ctx, readState(ctx.cwd), store);
-      }
-    },
-  });
-
   pi.registerCommand("review", {
-    description: "Approve review (usage: /review approve)",
+    description: "Review management (usage: /review approve)",
     handler: async (args, ctx) => {
-      if (args.trim() === "approve") {
+      if (args.trim().toLowerCase() === "approve") {
         const result = handleSignal(ctx.cwd, "review_approve");
-        ctx.ui.notify(result.success ? (result.message ?? "Approved") : `Error: ${result.error}`, result.success ? "info" : "error");
+        if (result.error) {
+          ctx.ui.notify(result.error, "error");
+        } else {
+          ctx.ui.notify(result.message ?? "Approved.", "info");
+        }
+        if (ui && store) ui.renderDashboard(ctx, readState(ctx.cwd), store);
       } else {
         ctx.ui.notify("Usage: /review approve", "info");
       }
     },
   });
 
-  pi.registerCommand("tdd", {
-    description: "TDD control (usage: /tdd skip | /tdd status)",
+  pi.registerCommand("phase", {
+    description: "Phase management (usage: /phase | /phase next)",
     handler: async (args, ctx) => {
-      const sub = args.trim();
-      if (sub === "skip") {
-        const state = readState(ctx.cwd);
-        if (state.phase !== "implement" && state.phase !== "code-review") {
-          ctx.ui.notify("Not in implement/code-review phase.", "info");
-          return;
+      if (!store) store = createStore(ctx.cwd);
+      if (!jj) jj = createJJ(pi);
+      if (!ui) ui = createUI();
+
+      if (args.trim() === "next") {
+        const result = handleSignal(ctx.cwd, "phase_next");
+        if (result.error) {
+          ctx.ui.notify(result.error, "error");
+        } else {
+          ctx.ui.notify(result.message ?? "Phase advanced.", "info");
         }
-        const tdd = state.tddTaskState ?? { taskIndex: state.currentTaskIndex, state: "no-test" as const, skipped: false };
-        writeState(ctx.cwd, { ...state, tddTaskState: { ...tdd, skipped: true, skipReason: "User-approved runtime skip" } });
-        ctx.ui.notify("TDD enforcement skipped for current task.", "info");
-      } else if (sub === "status") {
-        const state = readState(ctx.cwd);
-        const tddInfo = state.tddTaskState
-          ? `Task ${state.tddTaskState.taskIndex}: ${state.tddTaskState.state}${state.tddTaskState.skipped ? " (skipped)" : ""}`
-          : "No active TDD state";
-        ctx.ui.notify(`TDD: ${tddInfo}\nPhase: ${state.phase ?? "none"}`, "info");
+        ui.renderDashboard(ctx, readState(ctx.cwd), store);
       } else {
-        ctx.ui.notify("Usage: /tdd skip | /tdd status", "info");
+        const state = readState(ctx.cwd);
+        if (state.phase && state.workflow) {
+          ctx.ui.notify(
+            `Phase: ${state.phase}\nWorkflow: ${state.workflow}\nIssue: ${state.activeIssue ?? "none"}`,
+            "info",
+          );
+        } else {
+          ctx.ui.notify("No active workflow. Use /issue to start.", "info");
+        }
       }
     },
   });
 
-  // Retain existing commands: /issue, /done, /learn, /triage, create_batch tool
-  // (These are copied from the current index.ts with readState/writeState replacing the module-level state variable)
-  // ... (full implementations follow the same pattern: read from disk, mutate, write to disk)
+  pi.registerCommand("issue", {
+    description: "Create or list issues (usage: /issue new | /issue list)",
+    getArgumentCompletions: (prefix) => {
+      const subs = ["new", "list"];
+      const filtered = subs.filter((s) => s.startsWith(prefix));
+      return filtered.length > 0 ? filtered.map((s) => ({ value: s, label: s })) : null;
+    },
+    handler: async (args, ctx) => {
+      if (!store) store = createStore(ctx.cwd);
+      if (!jj) jj = createJJ(pi);
+      if (!ui) ui = createUI();
+      // handleIssueCommand already persists via store — it needs migration to writeState
+      // For now, delegate to existing UI handler which still uses store.saveState
+      const state = readState(ctx.cwd);
+      const newState = await ui.handleIssueCommand(ctx, state, store, jj, args);
+      writeState(ctx.cwd, newState);
+      ui.renderDashboard(ctx, readState(ctx.cwd), store);
+    },
+  });
+
+  pi.registerCommand("done", {
+    description: "Trigger wrap-up menu (when in done phase)",
+    handler: async (_args, ctx) => {
+      const state = readState(ctx.cwd);
+      if (state.phase !== "done") {
+        ctx.ui.notify("Not in done phase. Use /phase next to advance.", "info");
+        return;
+      }
+      if (!store) store = createStore(ctx.cwd);
+      if (!jj) jj = createJJ(pi);
+      if (!ui) ui = createUI();
+      const newState = await ui.handleDonePhase(ctx, state, store, jj);
+      writeState(ctx.cwd, newState);
+      ui.renderDashboard(ctx, readState(ctx.cwd), store);
+    },
+  });
+
+  pi.registerCommand("triage", {
+    description: "Triage open issues into batches",
+    handler: async (_args, ctx) => {
+      if (!store) store = createStore(ctx.cwd);
+      const issues = filterTriageableIssues(store.listIssues());
+      if (issues.length === 0) {
+        ctx.ui.notify("No open issues to triage.", "info");
+        return;
+      }
+      const issueList = formatTriageIssueList(issues);
+      const template = loadPromptFile("triage.md");
+      const prompt = interpolatePrompt(template, { open_issues: issueList });
+      pi.sendUserMessage(prompt);
+    },
+  });
+
+  pi.registerCommand("learn", {
+    description: "Capture a learning",
+    handler: async (args, ctx) => {
+      if (!store) store = createStore(ctx.cwd);
+      if (args.trim()) {
+        store.appendLearning(args.trim());
+        ctx.ui.notify("Learning captured.", "info");
+      } else {
+        const learning = await ctx.ui.input("What did you learn?");
+        if (learning?.trim()) {
+          store.appendLearning(learning.trim());
+          ctx.ui.notify("Learning captured.", "info");
+        }
+      }
+    },
+  });
+
+  pi.registerCommand("tdd", {
+    description: "TDD guard control (usage: /tdd skip | /tdd status)",
+    getArgumentCompletions: (prefix) => {
+      const subs = ["skip", "status"];
+      const filtered = subs.filter((s) => s.startsWith(prefix));
+      return filtered.length > 0 ? filtered.map((s) => ({ value: s, label: s })) : null;
+    },
+    handler: async (args, ctx) => {
+      const sub = args.trim();
+      const state = readState(ctx.cwd);
+
+      if (sub === "skip") {
+        if (state.phase !== "implement") {
+          ctx.ui.notify("Not in implement phase.", "info");
+          return;
+        }
+        const { deriveTasks } = await import("./derived.js");
+        const tasks = deriveTasks(ctx.cwd, state.activeIssue ?? "");
+        const currentTask = tasks[state.currentTaskIndex];
+        if (!currentTask) {
+          ctx.ui.notify("No active task to skip TDD for.", "info");
+          return;
+        }
+        const newTdd = {
+          taskIndex: currentTask.index,
+          state: state.tddTaskState?.state ?? ("no-test" as const),
+          skipped: true,
+          skipReason: "User-approved runtime skip",
+        };
+        writeState(ctx.cwd, { ...state, tddTaskState: newTdd });
+        ctx.ui.notify("TDD enforcement skipped for current task.", "info");
+        if (ui && store) ui.renderDashboard(ctx, readState(ctx.cwd), store);
+        return;
+      }
+
+      if (sub === "status") {
+        const tddInfo = state.tddTaskState
+          ? `Task ${state.tddTaskState.taskIndex}: ${state.tddTaskState.state}${state.tddTaskState.skipped ? " (skipped)" : ""}`
+          : "No active TDD state";
+        ctx.ui.notify(`TDD Guard: ${tddInfo}\nPhase: ${state.phase ?? "none"}`, "info");
+        return;
+      }
+
+      ctx.ui.notify("Usage: /tdd skip | /tdd status", "info");
+    },
+  });
 }
 ```
 
-Note: The full index.ts rewrite is ~300 lines. The implementation above shows the architecture. The complete file includes `/issue`, `/done`, `/learn`, `/triage` commands and the `create_batch` tool, all converted from the current event-handler model to read-from-disk pattern. The `session_shutdown` handler is **removed entirely** — no more saving in-memory state.
+**Note on imports:** `createWriteTool`, `createEditTool`, `createBashTool` are imported from `@mariozechner/pi-coding-agent/tools`. If this path doesn't resolve, use `@mariozechner/pi-coding-agent` and access from the tools submodule. The exact import path should be verified during implementation by checking the package exports.
 
-**Verify:** `bun test` (all tests pass). Manual verification: start a session, `/issue new`, interact through phases.
+**Verify:** `bun test` (all existing tests that don't depend on deleted modules should still pass)
 
 ---
 
-### Task 16: store.ts — remove loadState/saveState [depends: 15] [no-test]
+### Task 14: Port /task done, /review approve, /tdd skip commands [depends: 7, 13] [no-test]
+
+**Covers:** AC49, AC50
 
 **Files:**
-- Modify: `extensions/megapowers/store.ts`
+- Already implemented in Task 13's index.ts
+
+The `/task done`, `/review approve`, and `/phase next` commands are implemented in Task 13's index.ts rewrite. They call `handleSignal()` directly — the same logic the LLM tools use. `/tdd skip` is also ported. This task exists to explicitly verify the backward-compatible slash commands work correctly.
+
+**Verify:** Manual verification — commands call `handleSignal` which is tested in Task 7.
+
+---
+
+### Task 15: Port /issue, /done, /learn, /triage commands and create_batch tool [depends: 13] [no-test]
+
+**Covers:** AC49 (continued)
+
+**Files:**
+- Already implemented in Task 13's index.ts
+
+All remaining commands (`/issue`, `/done`, `/learn`, `/triage`) and the `create_batch` tool are ported in Task 13's index.ts. They read state via `readState()` and write via `writeState()` instead of the in-memory variable. The UI handlers (`handleIssueCommand`, `handleDonePhase`) still use `store.saveState` internally — Task 16 migrates those call sites.
+
+**Verify:** Manual verification — these handlers delegate to existing tested UI code.
+
+---
+
+### Task 16: Migrate remaining store.loadState/saveState call sites [depends: 1, 13]
+
+**Covers:** AC5 (completion — no in-memory state)
+
+**Files:**
+- Modify: `extensions/megapowers/ui.ts`
+- Modify: `extensions/megapowers/satellite.ts`
+- Modify: `tests/ui.test.ts`
+- Modify: `tests/satellite.test.ts`
 - Modify: `tests/store.test.ts`
+- Modify: `tests/tools.test.ts`
+- Test: `tests/ui.test.ts` (update for readState/writeState)
 
 **Implementation:**
 
-Remove `loadState()` and `saveState()` from the `Store` interface and `createStore()` implementation. These are now handled by `state-io.ts` (`readState`/`writeState`). All call sites were already updated in Task 15.
+In `extensions/megapowers/ui.ts`:
+- Replace `store.saveState(newState)` calls with `writeState(ctx.cwd, newState)` (import from `state-io.js`)
+- The `handleIssueCommand`, `handlePhaseTransition`, `handleDonePhase`, `handleTriageCommand` methods all call `store.saveState()` — replace each with `writeState()`
+- Add `cwd: string` parameter to functions that need it, or pass through `ctx.cwd`
 
-Update `tests/store.test.ts`: Remove tests for `loadState` and `saveState`. These are now covered by `tests/state-io.test.ts`.
+In `extensions/megapowers/satellite.ts`:
+- Replace `loadSatelliteState` to use `readState` instead of `createStore().loadState()`
 
-**Verify:** `bun test tests/store.test.ts`
+```typescript
+// extensions/megapowers/satellite.ts
+import { readState } from "./state-io.js";
+import type { MegapowersState } from "./state-machine.js";
+
+export { isSatelliteMode } from "./satellite.js"; // keep detection
+
+export function loadSatelliteState(projectRoot: string): Readonly<MegapowersState> {
+  const state = readState(projectRoot);
+  return Object.freeze(state);
+}
+```
+
+In `tests/store.test.ts`:
+- Remove tests for `loadState()`/`saveState()` (these are now in `tests/state-io.test.ts`)
+
+In `tests/tools.test.ts`:
+- Update any references to `store.loadState()` to use `readState()`
+
+In `tests/satellite.test.ts`:
+- Update to use `readState()` instead of `store.loadState()`
+
+**Verify:** `bun test tests/ui.test.ts tests/satellite.test.ts tests/store.test.ts tests/tools.test.ts`
 
 ---
 
-### Task 17: Delete deprecated modules + remove old state fields [depends: 15, 16]
+### Task 17: Delete replaced modules [depends: 13, 16]
+
+**Covers:** AC44, AC45, AC46, AC47
 
 **Files:**
 - Delete: `extensions/megapowers/artifact-router.ts`
 - Delete: `extensions/megapowers/tdd-guard.ts`
 - Delete: `extensions/megapowers/state-recovery.ts`
 - Delete: `extensions/megapowers/satellite-tdd.ts`
+- Delete: `extensions/megapowers/task-coordinator.ts`
 - Delete: `tests/artifact-router.test.ts`
 - Delete: `tests/tdd-guard.test.ts`
 - Delete: `tests/state-recovery.test.ts`
 - Delete: `tests/satellite-tdd.test.ts`
-- Modify: `extensions/megapowers/state-machine.ts`
-- Modify: `tests/state-machine.test.ts`
-- Modify: `tests/030-state-source-of-truth.test.ts`
+- Delete: `tests/task-coordinator.test.ts`
+- Delete: `tests/030-state-source-of-truth.test.ts` (regression tests now covered by new module tests)
 
 **Implementation:**
 
-1. **Delete the 4 deprecated source files** and their 4 test files.
-
-2. **Remove old fields from `MegapowersState`** in `state-machine.ts`:
-   - Remove `planTasks: PlanTask[]`
-   - Remove `acceptanceCriteria: AcceptanceCriterion[]`
-   - Remove the import of `TddTaskState` from `tdd-guard.js` (now from `write-policy.js`)
-   - Keep `PlanTask` and `AcceptanceCriterion` types as exports (used by parsers and prompts)
-
-3. **Update `createInitialState()`** to no longer include `planTasks` or `acceptanceCriteria`.
-
-4. **Update `transition()` function** in `state-machine.ts`:
-   - Remove `next.currentTaskIndex = next.planTasks.findIndex(t => !t.completed)` logic — task index is now managed by `tool-signal.ts` via `completedTasks`
-   - Keep workflow/phase transition logic intact
-
-5. **Update `tests/state-machine.test.ts`**:
-   - Remove references to `planTasks` and `acceptanceCriteria`
-   - Update transition tests that asserted on `planTasks` behavior
-
-6. **Rewrite `tests/030-state-source-of-truth.test.ts`** to test the new architecture:
-   - Test `hasOpenQuestions` sentinel handling (already passing from Task 3)
-   - Test `handleSignal` for task completion (replaces processAgentOutput tests)
-   - Test `checkWriteOverride` for TDD enforcement (replaces tdd-guard tests)
-   - Remove all `processAgentOutput` tests (artifact-router deleted)
-
-**Verify:** `bun test` — all tests pass. The 23 previously-failing tests are gone (they tested the old regex-based detection that's been replaced by tools).
-
----
-
-### Task 18: End-to-end verification [depends: 17]
-
-**Files:**
-- Modify: `tests/030-state-source-of-truth.test.ts`
-
-**Test:** Rewrite as integration tests validating all 8 source issues are resolved:
-
-```typescript
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { readState, writeState } from "../extensions/megapowers/state-io.js";
-import { handleSignal } from "../extensions/megapowers/tool-signal.js";
-import { handleSaveArtifact } from "../extensions/megapowers/tool-artifact.js";
-import { checkWriteOverride, processBashResult } from "../extensions/megapowers/tool-overrides.js";
-import { hasOpenQuestions, extractAcceptanceCriteria } from "../extensions/megapowers/spec-parser.js";
-import { createInitialState } from "../extensions/megapowers/state-machine.js";
-import { createStore } from "../extensions/megapowers/store.js";
-
-let tmp: string;
-beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "mega-e2e-")); });
-afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
-
-describe("#006 — acceptance criteria derived on demand, never cached", () => {
-  it("criteria parsed from spec.md, not stored in state.json", () => {
-    const store = createStore(tmp);
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "spec" });
-    store.ensurePlanDir("001-test");
-    store.writePlanFile("001-test", "spec.md", "## Acceptance Criteria\n1. User can log in\n2. Dashboard loads\n");
-    const criteria = extractAcceptanceCriteria(store.readPlanFile("001-test", "spec.md")!);
-    expect(criteria).toHaveLength(2);
-    // state.json has no acceptanceCriteria field
-    const state = readState(tmp);
-    expect((state as any).acceptanceCriteria).toBeUndefined();
-  });
-});
-
-describe("#017 — [no-test] tasks complete via tool call", () => {
-  it("task_done succeeds for [no-test] task without TDD", () => {
-    const store = createStore(tmp);
-    store.ensurePlanDir("001-test");
-    store.writePlanFile("001-test", "plan.md", "### Task 1: Config update [no-test]\nUpdate config");
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "implement", currentTaskIndex: 0 });
-    const result = handleSignal(tmp, "task_done");
-    expect(result.success).toBe(true);
-  });
-});
-
-describe("#019 — task completion deterministically advances index", () => {
-  it("task_done advances currentTaskIndex to next incomplete task", () => {
-    const store = createStore(tmp);
-    store.ensurePlanDir("001-test");
-    store.writePlanFile("001-test", "plan.md", "### Task 1: A\n\n### Task 2: B\n\n### Task 3: C\n");
-    writeState(tmp, {
-      ...createInitialState(),
-      activeIssue: "001-test", workflow: "feature", phase: "implement",
-      currentTaskIndex: 0,
-      tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
-    });
-    handleSignal(tmp, "task_done");
-    const state = readState(tmp);
-    expect(state.completedTasks).toContain(1);
-    expect(state.currentTaskIndex).toBe(1);
-  });
-});
-
-describe("#021 — disk-only state, no in-memory drift", () => {
-  it("every signal reads from disk, writes to disk", () => {
-    const store = createStore(tmp);
-    store.ensurePlanDir("001-test");
-    store.writePlanFile("001-test", "plan.md", "### Task 1: A\n");
-    writeState(tmp, {
-      ...createInitialState(),
-      activeIssue: "001-test", workflow: "feature", phase: "implement",
-      currentTaskIndex: 0,
-      tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
-    });
-    handleSignal(tmp, "task_done");
-    // Read state again — it persisted
-    const state = readState(tmp);
-    expect(state.completedTasks).toContain(1);
-    expect(state.phase).toBe("verify"); // auto-advanced
-  });
-});
-
-describe("#023 — 'None' in open questions does not block", () => {
-  it("hasOpenQuestions returns false for 'None'", () => {
-    expect(hasOpenQuestions("## Open Questions\nNone\n")).toBe(false);
-    expect(hasOpenQuestions("## Open Questions\nN/A\n")).toBe(false);
-    expect(hasOpenQuestions("## Open Questions\n- None\n")).toBe(false);
-  });
-});
-
-describe("#024 — review approval via tool call, not regex", () => {
-  it("review_approve signal sets reviewApproved", () => {
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "review" });
-    handleSignal(tmp, "review_approve");
-    expect(readState(tmp).reviewApproved).toBe(true);
-  });
-});
-
-describe("#028 — artifacts saved via tool, not prose parsing", () => {
-  it("megapowers_save_artifact writes to disk without parsing content", () => {
-    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "spec" });
-    const result = handleSaveArtifact(tmp, { phase: "spec", content: "Arbitrary content with no special format" });
-    expect(result.success).toBe(true);
-  });
-});
-
-describe("#029 — tasks from plan.md, progress in completedTasks", () => {
-  it("task list derived from plan.md on every signal call", () => {
-    const store = createStore(tmp);
-    store.ensurePlanDir("001-test");
-    store.writePlanFile("001-test", "plan.md", "### Task 1: A\n\n### Task 2: B\n");
-    writeState(tmp, {
-      ...createInitialState(),
-      activeIssue: "001-test", workflow: "feature", phase: "implement",
-      currentTaskIndex: 0,
-      tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
-    });
-    handleSignal(tmp, "task_done");
-    // Completion stored as index, not in planTasks
-    const state = readState(tmp);
-    expect(state.completedTasks).toEqual([1]);
-    expect((state as any).planTasks).toBeUndefined(); // field doesn't exist
-  });
-});
+```bash
+rm extensions/megapowers/artifact-router.ts
+rm extensions/megapowers/tdd-guard.ts
+rm extensions/megapowers/state-recovery.ts
+rm extensions/megapowers/satellite-tdd.ts
+rm extensions/megapowers/task-coordinator.ts
+rm tests/artifact-router.test.ts
+rm tests/tdd-guard.test.ts
+rm tests/state-recovery.test.ts
+rm tests/satellite-tdd.test.ts
+rm tests/task-coordinator.test.ts
+rm tests/030-state-source-of-truth.test.ts
 ```
 
-**Verify:** `bun test` — all tests pass, 0 failures.
+Remove any remaining imports of deleted modules from `index.ts` (should already be gone after Task 13), `ui.ts`, `store.ts`, etc.
+
+Also remove `store.loadState()` and `store.saveState()` from `extensions/megapowers/store.ts` since all callers now use `state-io.ts`.
+
+**Verify:** `bun test` (all tests pass with no references to deleted modules)
 
 ---
 
-## Acceptance Criteria Coverage
+### Task 18: Remove planTasks and acceptanceCriteria from store and state-machine [depends: 17]
 
-| AC | Task(s) |
-|---|---|
-| 1–4 (state-io) | 1 |
-| 5 (no module-level state) | 15 |
-| 6–7 (thin state schema) | 2, 17 |
-| 8–9 (derived data) | 5, 15 |
-| 10 (sentinel fix) | 3 |
-| 11 (megapowers_signal tool) | 8, 9, 10, 15 |
-| 12–15 (task_done) | 10 |
-| 16 (review_approve) | 8 |
-| 17–18 (phase_next) | 9 |
-| 19–21 (jj in signals) | 9, 10 |
-| 22–24 (save_artifact) | 7 |
-| 25–26 (write/edit override) | 11, 15 |
-| 27–28 (phase write policy) | 4 |
-| 29 (TDD tracking in state) | 11 |
-| 30 (built-in rendering) | 15 |
-| 31 (allowlist) | 4 |
-| 32–34 (bash override) | 12, 15 |
-| 35–37 (canWrite) | 4 |
-| 38–40 (mega off/on) | 15 |
-| 41–42 (prompt architecture) | 13 |
-| 43 (no appendEntry) | 15 |
-| 44–47 (delete modules) | 17 |
-| 48 (satellite mode) | 15 |
-| 49 (slash command fallbacks) | 15 |
-| 50 (/tdd skip) | 15 |
-| 51–55 (source issue resolution) | 18 |
+**Covers:** AC7 (final cleanup)
+
+**Files:**
+- Modify: `extensions/megapowers/state-machine.ts` (remove old `transition()` planTasks references)
+- Modify: `extensions/megapowers/store.ts` (remove loadState/saveState methods)
+- Modify: `extensions/megapowers/ui.ts` (update renderDashboardLines to derive from disk)
+- Test: `tests/state-machine.test.ts` (update for new types)
+
+**Implementation:**
+
+In `state-machine.ts`:
+- The `TddTaskState` type is already defined locally (from Task 1)
+- Remove the `import type { TddTaskState } from "./tdd-guard.js"` line
+- Ensure `PlanTask` and `AcceptanceCriterion` types still exist (used by parsers)
+
+In `store.ts`:
+- Remove `loadState()` and `saveState()` from the `Store` interface and `createStore()` implementation
+- Remove the `import { createInitialState }` if no longer needed
+
+In `ui.ts`:
+- `renderDashboardLines` and `renderStatusText` currently read `state.planTasks` — update to accept derived task data or compute from `completedTasks`
+- `handleIssueCommand` creates `MegapowersState` objects with `planTasks: []` — remove those fields
+
+In `tests/state-machine.test.ts`:
+- Update test assertions that reference `planTasks` or `acceptanceCriteria` on
