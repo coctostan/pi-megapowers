@@ -41,10 +41,10 @@
     }
   ],
   "reviewApproved": false,
-  "currentTaskIndex": 7,
+  "currentTaskIndex": 8,
   "completedTasks": [],
   "tddTaskState": {
-    "taskIndex": 7,
+    "taskIndex": 8,
     "state": "test-written",
     "skipped": false
   },
@@ -98,7 +98,7 @@
     {
       "index": 8,
       "description": "**Task 15 — bash exit code hand-waved** — Uses regex on result text (`/exit code [1-9]/`) instead of actual exit code from pi's tool result. Needs to spec how `createBashTool` exposes exit codes.",
-      "completed": false,
+      "completed": true,
       "noTest": false
     },
     {
