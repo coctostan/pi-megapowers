@@ -41,11 +41,11 @@
     }
   ],
   "reviewApproved": false,
-  "currentTaskIndex": 4,
+  "currentTaskIndex": 5,
   "completedTasks": [],
   "tddTaskState": {
-    "taskIndex": 4,
-    "state": "test-written",
+    "taskIndex": 5,
+    "state": "no-test",
     "skipped": false
   },
   "taskJJChanges": {},
@@ -80,7 +80,7 @@
     {
       "index": 5,
       "description": "**Task 10 (AC13) — null-safety gap** — When `tddTaskState` is `null` for a non-`` task, the `&&` short-circuits and the task passes without TDD validation. Should block when null.",
-      "completed": false,
+      "completed": true,
       "noTest": true
     },
     {
