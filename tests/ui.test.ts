@@ -12,6 +12,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createStore } from "../extensions/megapowers/store.js";
+import type { Issue } from "../extensions/megapowers/store.js";
 
 // Stub theme — just returns text unformatted
 const plainTheme = {
@@ -1099,5 +1100,36 @@ describe("handleDonePhase — bugfix workflow", () => {
     await ui.handleDonePhase(ctx as any, state, store, jj as any);
     expect(menuItems).toContain("Generate feature doc");
     expect(menuItems).not.toContain("Generate bugfix summary");
+  });
+});
+
+describe("formatIssueListItem — batch annotation", () => {
+  it("appends batch annotation when batchSlug is provided", () => {
+    const issue: Issue = {
+      id: 6, slug: "006-criteria-bug", title: "Criteria not extracted",
+      type: "bugfix", status: "open", description: "", createdAt: 0, sources: [],
+    };
+    const result = formatIssueListItem(issue, "019-batch-parser-fixes");
+    expect(result).toContain("#006");
+    expect(result).toContain("Criteria not extracted");
+    expect(result).toContain("(in batch 019-batch-parser-fixes)");
+  });
+
+  it("does not append annotation when batchSlug is null", () => {
+    const issue: Issue = {
+      id: 6, slug: "006-criteria-bug", title: "Criteria not extracted",
+      type: "bugfix", status: "open", description: "", createdAt: 0, sources: [],
+    };
+    const result = formatIssueListItem(issue, null);
+    expect(result).not.toContain("in batch");
+  });
+
+  it("does not append annotation when batchSlug is undefined (backwards compat)", () => {
+    const issue: Issue = {
+      id: 6, slug: "006-criteria-bug", title: "Criteria not extracted",
+      type: "bugfix", status: "open", description: "", createdAt: 0, sources: [],
+    };
+    const result = formatIssueListItem(issue);
+    expect(result).not.toContain("in batch");
   });
 });

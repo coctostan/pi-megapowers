@@ -144,9 +144,10 @@ export function renderDashboardLines(state: MegapowersState, _issues: Issue[], t
   return lines;
 }
 
-export function formatIssueListItem(issue: Issue): string {
+export function formatIssueListItem(issue: Issue, batchSlug?: string | null): string {
   const id = `#${String(issue.id).padStart(3, "0")}`;
-  return `${id} ${issue.title} [${issue.type}] [${issue.status}]`;
+  const batchAnnotation = batchSlug ? ` (in batch ${batchSlug})` : "";
+  return `${id} ${issue.title} [${issue.type}] [${issue.status}]${batchAnnotation}`;
 }
 
 // --- Interactive UI (uses ctx.ui) ---
@@ -249,7 +250,7 @@ export function createUI(): MegapowersUI {
           return state;
         }
 
-        const items = issues.map(formatIssueListItem);
+        const items = issues.map(i => formatIssueListItem(i, store.getBatchForIssue(i.id)));
         items.push("+ Create new issue...");
 
         const choice = await ctx.ui.select("Pick an issue:", items);

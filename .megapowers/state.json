@@ -79,7 +79,7 @@
     {
       "index": 7,
       "description": "Annotate issue list items with batch membership",
-      "completed": false,
+      "completed": true,
       "noTest": false,
       "dependsOn": [
         4
@@ -109,10 +109,10 @@
   ],
   "jjChangeId": null,
   "acceptanceCriteria": [],
-  "currentTaskIndex": 6,
+  "currentTaskIndex": 7,
   "tddTaskState": {
-    "taskIndex": 6,
-    "state": "impl-allowed",
+    "taskIndex": 7,
+    "state": "test-written",
     "skipped": false
   },
   "taskJJChanges": {},
