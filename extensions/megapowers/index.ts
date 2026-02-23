@@ -3,7 +3,7 @@ import { createInitialState, getValidTransitions, OPEN_ENDED_PHASES, type Megapo
 import { createStore, type Store } from "./store.js";
 import { createJJ, formatChangeDescription, type JJ } from "./jj.js";
 import { createUI, filterTriageableIssues, formatTriageIssueList, type MegapowersUI } from "./ui.js";
-import { buildImplementTaskVars, formatAcceptanceCriteriaList, loadPromptFile, BRAINSTORM_PLAN_PHASES, interpolatePrompt, getPhasePromptTemplate, allTasksComplete, buildSourceIssuesContext } from "./prompts.js";
+import { buildImplementTaskVars, formatAcceptanceCriteriaList, loadPromptFile, BRAINSTORM_PLAN_PHASES, interpolatePrompt, getPhasePromptTemplate, buildSourceIssuesContext } from "./prompts.js";
 import { extractPlanTasks } from "./plan-parser.js";
 import { processAgentOutput } from "./artifact-router.js";
 import { resolveStartupState } from "./state-recovery.js";
@@ -122,13 +122,12 @@ export default function megapowers(pi: ExtensionAPI): void {
       }
     }
 
-    // Auto-advance: if in implement phase and all tasks are done, offer verify transition
+    // Auto-advance: if in implement phase and all tasks are done, notify user
+    // (don't block startup with interactive prompts — user can /phase next)
     if (state.activeIssue && state.phase === "implement" && state.planTasks.length > 0) {
       const allDone = state.planTasks.every(t => t.completed);
       if (allDone && ctx.hasUI) {
-        ctx.ui.notify("All implementation tasks complete. Ready to advance to verify.", "info");
-        state = await ui.handlePhaseTransition(ctx, state, store, jj);
-        pi.appendEntry("megapowers-state", state);
+        ctx.ui.notify("All implementation tasks complete. Use /phase next to advance to verify.", "info");
       }
     }
 

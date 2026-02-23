@@ -1,4 +1,10 @@
 
+## 2026-02-23 — 026-triage-llm-driven-batching
+
+- When replacing an interactive wizard with an LLM-driven flow, remove the old wizard code entirely during the same issue — dead `handleTriageCommand` code and its tests survived implementation and had to be caught in code review.
+- `Pick<Store, "listIssues" | "createIssue">` on handler parameters makes tool handlers testable without mocking the full store — use this pattern for all future tool handlers.
+- `pi.sendUserMessage()` is the right escape hatch for commands that should trigger LLM conversation rather than performing actions directly — it avoids interactive UI prompts while keeping the user in the loop.
+
 ## 2026-02-21 — cross-cutting-concerns
 
 - ui.ts `handleDonePhase` while-loop hangs tests if a mock select returns a menu label that doesn't match any `if` branch and doesn't break — always ensure every menu action either breaks or has a catch-all exit

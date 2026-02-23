@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### Added
+- **LLM-Driven Triage**: `/triage` command now sends open issues to the LLM as a conversational prompt instead of an interactive wizard — the LLM proposes batch groupings, discusses with the user, and calls `create_batch` on confirmation
+- **`create_batch` tool**: New LLM-callable tool to create batch issues with title, type, sourceIds, and description — validates source IDs exist and are open, returns slug and ID
 - **Issue Triage & Batching**: `/triage` command to review open issues, group them, and create batch issues
 - `sources` field on `Issue` type — batch issues reference source issue IDs in frontmatter (`sources: [6, 13, 17]`)
 - `store.getSourceIssues(slug)` — returns full Issue objects for a batch's source IDs
