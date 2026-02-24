@@ -10,3 +10,10 @@
 - Task completion detection via regex on LLM output (`/task\s+(?:complete|done|finished)/`) is fragile — agent completion messages must contain exact trigger phrases or the task index never advances. A `/task done` command would be more reliable.
 - Import placement matters during incremental development — when multiple tasks add to the same file, new imports tend to land at the insertion point rather than the top. Code review should catch this.
 - `closeSourceIssues` must be called before `updateIssueStatus` on the batch issue itself — the helper reads the batch's sources via `getIssue`, so the batch must still be accessible (not yet reset to initial state).
+
+## 2026-02-24 — agent-context-and-awareness
+
+- When a pure function like `canWrite()` has multiple check layers (allowlist → phase-block → TDD guard), moving the permissive check earlier in the chain is cleaner than adding exceptions inside each downstream branch — it eliminates duplicate checks and makes the policy matrix easier to test exhaustively.
+- Standalone static prompt templates (no `{{vars}}`) that duplicate content from another template create a sync risk — if the protocol changes, both `base.md` and `megapowers-protocol.md` need updating with no automated guard; consider generating one from the other if protocol churn increases.
+- Parameterized test loops (`for (const phase of ALL_PHASES)`) with a `TEMPLATE_PHASE_MAP` that throws on unmapped entries are the right pattern for policy-matrix and template-coverage tests — they self-extend when new phases or templates are added, catching gaps at CI time instead of silently passing.
+- When the TDD guard blocks a class of legitimate work (type-only tasks), the cheapest fix is often prompt-level: guide the agent to use existing escape hatches (`[no-test]` annotation, `/tdd skip`) rather than adding runtime detection logic for edge-case signals like `tsc` output.

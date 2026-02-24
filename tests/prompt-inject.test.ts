@@ -26,9 +26,29 @@ describe("buildInjectedPrompt", () => {
     expect(buildInjectedPrompt(tmp)).toBeNull();
   });
 
-  it("returns null when no active issue", () => {
-    writeState(tmp, createInitialState());
+  // AC1: enabled + no active issue → base.md content
+  it("returns base.md content when megaEnabled but no active issue", () => {
+    writeState(tmp, { ...createInitialState(), megaEnabled: true });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).not.toBeNull();
+    expect(result).toContain("Getting Started");
+    expect(result).toContain("/issue");
+    expect(result).toContain("megapowers_signal");
+  });
+
+  // AC2: disabled → null even with active issue
+  it("returns null when megaEnabled is false even with active issue", () => {
+    setState(tmp, { phase: "spec", megaEnabled: false, activeIssue: "001-test" });
     expect(buildInjectedPrompt(tmp)).toBeNull();
+  });
+
+  // AC3: enabled + active issue → phase prompt (not base.md)
+  it("returns phase prompt (not base.md) when issue is active", () => {
+    setState(tmp, { phase: "spec", megaEnabled: true });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).not.toBeNull();
+    expect(result).not.toContain("Getting Started");
+    expect(result).toContain("executable specification");
   });
 
   it("includes megapowers protocol section with tool descriptions", () => {

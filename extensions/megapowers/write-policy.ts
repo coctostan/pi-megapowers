@@ -33,9 +33,10 @@ export function isAllowlisted(filePath: string): boolean {
 
 // --- Phase classification ---
 
-/** Phases where source code writes are completely blocked (only .megapowers/ allowed). */
+/** Phases where source code writes are completely blocked (only .megapowers/ and allowlisted allowed). */
 const BLOCKING_PHASES: ReadonlySet<string> = new Set([
   "brainstorm", "spec", "plan", "review", "verify", "done",
+  "reproduce", "diagnose",
 ]);
 
 /** Phases where writes require TDD gating (tests before production code). */
@@ -72,18 +73,19 @@ export function canWrite(
     return { allowed: true };
   }
 
-  // Blocking phases: only .megapowers/ allowed (already handled above)
+  // Allowlisted files (docs, config, typings) pass through in ALL phases
+  if (isAllowlisted(filePath)) return { allowed: true };
+
+  // Blocking phases: only .megapowers/ and allowlisted files pass (handled above)
   if (BLOCKING_PHASES.has(phase)) {
     return {
       allowed: false,
-      reason: `Source code writes are blocked during the ${phase} phase. Only .megapowers/ paths are writable.`,
+      reason: `Source code writes are blocked during the ${phase} phase. Only .megapowers/ and allowlisted paths (docs, config, typings) are writable.`,
     };
   }
 
   // TDD-guarded phases
   if (TDD_PHASES.has(phase)) {
-    // Config/docs bypass TDD
-    if (isAllowlisted(filePath)) return { allowed: true };
 
     // Test files always allowed (this is how the RED step happens)
     if (isTestFile(filePath)) return { allowed: true };

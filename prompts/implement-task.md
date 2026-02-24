@@ -58,6 +58,12 @@ Either way, signal task completion when done so megapowers can inspect and advan
 2. Keep tests green throughout
 3. Do NOT add behavior during refactor
 
+## Type-Only Tasks
+
+If the current task is purely type-level (e.g., adding a field to an interface, changing a type alias) and cannot produce a failing runtime test:
+- If the task is annotated `[no-test]` in the plan, TDD is already bypassed — write the implementation directly.
+- Otherwise, use the `/tdd skip` command to bypass the TDD guard for this task, then proceed with the implementation.
+
 ## Rules
 - Work on **only the current task** — don't look ahead or refactor future tasks
 - **No production code without a failing test first**

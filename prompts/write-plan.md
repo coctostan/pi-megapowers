@@ -42,6 +42,7 @@ For each task:
 - **Annotate dependencies** — if a task requires output from prior tasks, add `[depends: N, M]` to the title (e.g., `### Task 3: Integration [depends: 1, 2]`). Omit for tasks with no dependencies.
 - **YAGNI** — no tasks for speculative features
 - **DRY** — extract shared code into utilities, don't duplicate
+- **Type-only tasks** (interface changes, type aliases, `.d.ts` edits) that cannot produce a failing runtime test must be annotated with `[no-test]` in the task title (e.g., `### Task 3: Add phase field to State interface [no-test]`). This bypasses TDD enforcement for that task.
 - Each acceptance criterion from the spec should be covered by at least one task
 
 ## Project Learnings

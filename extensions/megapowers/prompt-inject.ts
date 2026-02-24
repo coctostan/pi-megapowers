@@ -67,7 +67,12 @@ export function buildInjectedPrompt(cwd: string, store?: Store, _jj?: JJ): strin
   const state = readState(cwd);
 
   if (!state.megaEnabled) return null;
-  if (!state.activeIssue || !state.phase) return null;
+
+  // No active issue: return base orientation prompt only (AC1, AC4)
+  if (!state.activeIssue || !state.phase) {
+    const base = loadPromptFile("base.md");
+    return base || null;
+  }
 
   const parts: string[] = [];
 
