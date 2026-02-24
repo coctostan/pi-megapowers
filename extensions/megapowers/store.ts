@@ -1,6 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
-import { createInitialState, type MegapowersState } from "./state-machine.js";
 
 // --- Types ---
 
@@ -18,9 +17,6 @@ export interface Issue {
 }
 
 export interface Store {
-  loadState(): MegapowersState;
-  saveState(state: MegapowersState): void;
-
   listIssues(): Issue[];
   createIssue(title: string, type: "feature" | "bugfix", description: string, sources?: number[]): Issue;
   getIssue(slug: string): Issue | null;
@@ -108,7 +104,6 @@ ${issue.description}
 
 export function createStore(projectRoot: string): Store {
   const root = join(projectRoot, ".megapowers");
-  const stateFile = join(root, "state.json");
   const issuesDir = join(root, "issues");
   const plansDir = join(root, "plans");
   const learningsDir = join(root, "learnings");
@@ -129,28 +124,6 @@ export function createStore(projectRoot: string): Store {
   }
 
   return {
-    loadState(): MegapowersState {
-      if (!existsSync(stateFile)) return createInitialState();
-      try {
-        const raw = JSON.parse(readFileSync(stateFile, "utf-8"));
-        // Merge over defaults to handle missing fields from older versions
-        const merged = { ...createInitialState(), ...raw };
-        // Backfill noTest on planTasks persisted before this field was added
-        merged.planTasks = merged.planTasks.map((task: { noTest?: boolean; [key: string]: unknown }) => ({
-          ...task,
-          noTest: task.noTest ?? false,
-        }));
-        return merged;
-      } catch {
-        return createInitialState();
-      }
-    },
-
-    saveState(state: MegapowersState): void {
-      ensureRoot();
-      writeFileSync(stateFile, JSON.stringify(state, null, 2) + "\n");
-    },
-
     listIssues(): Issue[] {
       ensureRoot();
       if (!existsSync(issuesDir)) return [];

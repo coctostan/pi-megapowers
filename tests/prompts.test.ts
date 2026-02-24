@@ -64,6 +64,14 @@ describe("getPhasePromptTemplate", () => {
   });
 });
 
+describe("prompts module cleanup", () => {
+  it("does not contain buildPhasePrompt helper", () => {
+    const { readFileSync } = require("node:fs");
+    const source = readFileSync("extensions/megapowers/prompts.ts", "utf8");
+    expect(source).not.toContain("buildPhasePrompt(");
+  });
+});
+
 describe("PHASE_PROMPT_MAP — new phases", () => {
   it("maps code-review to a prompt file", () => {
     expect(PHASE_PROMPT_MAP["code-review"]).toBeDefined();
@@ -356,6 +364,16 @@ describe("implement prompt — subagent delegation instructions", () => {
     // Task 3 depends on task 1 which is complete — should be ready
     expect(vars.remaining_tasks).toContain("Task 3");
     expect(vars.remaining_tasks).not.toMatch(/Task 3.*blocked/i);
+  });
+
+  it("implement-task template instructs tests_failed signal after RED test failure", () => {
+    const template = getPhasePromptTemplate("implement");
+    expect(template).toContain('megapowers_signal({ action: "tests_failed" })');
+  });
+
+  it("implement-task template instructs tests_passed signal after GREEN test pass", () => {
+    const template = getPhasePromptTemplate("implement");
+    expect(template).toContain('megapowers_signal({ action: "tests_passed" })');
   });
 });
 

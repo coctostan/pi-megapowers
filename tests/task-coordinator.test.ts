@@ -1,10 +1,21 @@
 import { describe, it, expect } from "bun:test";
+import * as taskCoordinator from "../extensions/megapowers/task-coordinator.js";
 import {
   buildTaskChangeDescription,
   parseTaskDiffFiles,
   buildTaskCompletionReport,
-  shouldCreateTaskChange,
+  createTaskChange,
+  inspectTaskChange,
 } from "../extensions/megapowers/task-coordinator.js";
+import type { JJ } from "../extensions/megapowers/jj.js";
+
+describe("dead exports", () => {
+  it("does not export deprecated task change helpers", () => {
+    expect(taskCoordinator.shouldCreateTaskChange).toBeUndefined();
+    expect(taskCoordinator.abandonTaskChange).toBeUndefined();
+    expect(taskCoordinator.squashTaskChanges).toBeUndefined();
+  });
+});
 
 describe("buildTaskChangeDescription", () => {
   it("formats description with issue slug and task number", () => {
@@ -76,49 +87,82 @@ describe("buildTaskCompletionReport", () => {
   });
 });
 
-describe("shouldCreateTaskChange", () => {
-  it("returns true when in implement phase with active task and no existing change", () => {
-    expect(shouldCreateTaskChange({
-      phase: "implement",
-      currentTaskIndex: 0,
-      planTasks: [{ index: 1, description: "Do thing", completed: false, noTest: false }],
-      taskJJChanges: {},
-    })).toBe(true);
+describe("createTaskChange (AC19/AC20)", () => {
+  function mockJJ(overrides: Partial<JJ> = {}): JJ {
+    return {
+      isJJRepo: async () => true,
+      getCurrentChangeId: async () => "current-id",
+      getChangeDescription: async () => "",
+      hasConflicts: async () => false,
+      newChange: async () => "new-id",
+      describe: async () => {},
+      squash: async () => {},
+      bookmarkSet: async () => {},
+      log: async () => "",
+      diff: async () => "",
+      abandon: async () => {},
+      squashInto: async () => {},
+      ...overrides,
+    };
+  }
+
+  it("creates a new jj change with formatted description", async () => {
+    let createdDesc: string | null = null;
+    let createdParent: string | undefined;
+    const jj = mockJJ({
+      newChange: async (desc: string, parent?: string) => {
+        createdDesc = desc;
+        createdParent = parent;
+        return "task-change-id";
+      },
+    });
+    const result = await createTaskChange(jj, "001-auth", 3, "Add retry logic", "parent-change");
+    expect(result.changeId).toBe("task-change-id");
+    expect(createdDesc).toBe("mega(001-auth): task-3 — Add retry logic");
+    expect(createdParent).toBe("parent-change");
   });
 
-  it("returns false when task already has a change ID", () => {
-    expect(shouldCreateTaskChange({
-      phase: "implement",
-      currentTaskIndex: 0,
-      planTasks: [{ index: 1, description: "Do thing", completed: false, noTest: false }],
-      taskJJChanges: { 1: "existing-change" },
-    })).toBe(false);
+  it("returns null changeId when jj.newChange returns null", async () => {
+    const jj = mockJJ({
+      newChange: async () => null,
+    });
+    const result = await createTaskChange(jj, "001-auth", 1, "Setup");
+    expect(result.changeId).toBeNull();
+  });
+});
+
+describe("inspectTaskChange (AC20)", () => {
+  function mockJJ(overrides: Partial<JJ> = {}): JJ {
+    return {
+      isJJRepo: async () => true,
+      getCurrentChangeId: async () => "current-id",
+      getChangeDescription: async () => "",
+      hasConflicts: async () => false,
+      newChange: async () => "new-id",
+      describe: async () => {},
+      squash: async () => {},
+      bookmarkSet: async () => {},
+      log: async () => "",
+      diff: async () => "",
+      abandon: async () => {},
+      squashInto: async () => {},
+      ...overrides,
+    };
+  }
+
+  it("returns files and hasDiffs from jj diff output", async () => {
+    const jj = mockJJ({
+      diff: async () => "M src/auth.ts\nA tests/auth.test.ts",
+    });
+    const inspection = await inspectTaskChange(jj, "change-abc");
+    expect(inspection.hasDiffs).toBe(true);
+    expect(inspection.files).toEqual(["src/auth.ts", "tests/auth.test.ts"]);
   });
 
-  it("returns false when not in implement phase", () => {
-    expect(shouldCreateTaskChange({
-      phase: "plan",
-      currentTaskIndex: 0,
-      planTasks: [{ index: 1, description: "Do thing", completed: false, noTest: false }],
-      taskJJChanges: {},
-    })).toBe(false);
-  });
-
-  it("returns false when no tasks exist", () => {
-    expect(shouldCreateTaskChange({
-      phase: "implement",
-      currentTaskIndex: 0,
-      planTasks: [],
-      taskJJChanges: {},
-    })).toBe(false);
-  });
-
-  it("returns false when currentTaskIndex is out of bounds", () => {
-    expect(shouldCreateTaskChange({
-      phase: "implement",
-      currentTaskIndex: 5,
-      planTasks: [{ index: 1, description: "Do thing", completed: false, noTest: false }],
-      taskJJChanges: {},
-    })).toBe(false);
+  it("returns hasDiffs=false for empty diff", async () => {
+    const jj = mockJJ({ diff: async () => "" });
+    const inspection = await inspectTaskChange(jj, "change-abc");
+    expect(inspection.hasDiffs).toBe(false);
+    expect(inspection.files).toEqual([]);
   });
 });

@@ -51,17 +51,6 @@ export function interpolatePrompt(template: string, vars: Record<string, string>
   });
 }
 
-// --- High-level: build prompt for a phase ---
-
-export function buildPhasePrompt(
-  phase: Phase,
-  vars: Record<string, string>
-): string {
-  const template = getPhasePromptTemplate(phase);
-  if (!template) return "";
-  return interpolatePrompt(template, vars);
-}
-
 // --- Task implementation helpers ---
 
 /**

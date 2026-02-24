@@ -1,4 +1,3 @@
-import type { PlanTask, Phase } from "./state-machine.js";
 import type { JJ } from "./jj.js";
 
 // --- Pure helpers ---
@@ -52,22 +51,6 @@ export function buildTaskCompletionReport(
   return `Task ${taskIndex} (${taskDescription}) — ${inspection.files.length} files:\n${fileList}`;
 }
 
-export interface TaskChangeContext {
-  phase: Phase | null;
-  currentTaskIndex: number;
-  planTasks: PlanTask[];
-  taskJJChanges: Record<number, string>;
-}
-
-export function shouldCreateTaskChange(ctx: TaskChangeContext): boolean {
-  if (ctx.phase !== "implement") return false;
-  if (ctx.planTasks.length === 0) return false;
-  const currentTask = ctx.planTasks[ctx.currentTaskIndex];
-  if (!currentTask) return false;
-  if (ctx.taskJJChanges[currentTask.index]) return false;
-  return true;
-}
-
 // --- JJ wrappers (thin, used by index.ts) ---
 
 export interface TaskChangeResult {
@@ -95,16 +78,3 @@ export async function inspectTaskChange(
   return { files, hasDiffs: files.length > 0 };
 }
 
-export async function abandonTaskChange(
-  jj: JJ,
-  changeId: string
-): Promise<void> {
-  await jj.abandon(changeId);
-}
-
-export async function squashTaskChanges(
-  jj: JJ,
-  phaseChangeId: string
-): Promise<void> {
-  await jj.squashInto(phaseChangeId);
-}

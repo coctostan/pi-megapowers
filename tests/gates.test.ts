@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { checkGate, type GateResult } from "../extensions/megapowers/gates.js";
 import { createStore } from "../extensions/megapowers/store.js";
 import { createInitialState, type MegapowersState } from "../extensions/megapowers/state-machine.js";
+import { writeState } from "../extensions/megapowers/state-io.js";
 
 let tmp: string;
 
@@ -92,40 +93,38 @@ describe("review → implement", () => {
 });
 
 describe("implement → verify", () => {
-  it("fails when no tasks completed", () => {
+  it("fails when no tasks completed (derived from plan.md)", () => {
     const store = createStore(tmp);
+    store.ensurePlanDir("001-test");
+    store.writePlanFile("001-test", "plan.md", "# Plan\n\n### Task 1: A\nDetails\n\n### Task 2: B\nDetails\n");
     const state = makeState({
       phase: "implement",
-      planTasks: [
-        { index: 1, description: "A", completed: false },
-        { index: 2, description: "B", completed: false },
-      ],
+      completedTasks: [],
     });
-    const result = checkGate(state, "verify", store);
+    const result = checkGate(state, "verify", store, tmp);
     expect(result.pass).toBe(false);
     expect(result.reason).toContain("tasks");
   });
 
-  it("passes when all tasks completed", () => {
+  it("passes when all tasks completed (derived from plan.md)", () => {
     const store = createStore(tmp);
+    store.ensurePlanDir("001-test");
+    store.writePlanFile("001-test", "plan.md", "# Plan\n\n### Task 1: A\nDetails\n\n### Task 2: B\nDetails\n");
     const state = makeState({
       phase: "implement",
-      planTasks: [
-        { index: 1, description: "A", completed: true },
-        { index: 2, description: "B", completed: true },
-      ],
+      completedTasks: [1, 2],
     });
-    const result = checkGate(state, "verify", store);
+    const result = checkGate(state, "verify", store, tmp);
     expect(result.pass).toBe(true);
   });
 
-  it("fails when plan has zero tasks", () => {
+  it("fails when plan has zero tasks (no plan.md)", () => {
     const store = createStore(tmp);
     const state = makeState({
       phase: "implement",
-      planTasks: [],
+      completedTasks: [],
     });
-    const result = checkGate(state, "verify", store);
+    const result = checkGate(state, "verify", store, tmp);
     expect(result.pass).toBe(false);
     expect(result.reason).toContain("tasks");
   });

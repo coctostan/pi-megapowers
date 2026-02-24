@@ -1,6 +1,7 @@
 import type { MegapowersState, Phase } from "./state-machine.js";
 import type { Store } from "./store.js";
 import { hasOpenQuestions } from "./spec-parser.js";
+import { deriveTasks } from "./derived.js";
 
 export interface GateResult {
   pass: boolean;
@@ -17,7 +18,7 @@ function isBackward(from: Phase, to: Phase): boolean {
   return BACKWARD_TARGETS.has(`${from}→${to}`);
 }
 
-export function checkGate(state: MegapowersState, target: Phase, store: Store): GateResult {
+export function checkGate(state: MegapowersState, target: Phase, store: Store, cwd?: string): GateResult {
   const from = state.phase;
   if (!from || !state.activeIssue) {
     return { pass: false, reason: "No active phase or issue" };
@@ -58,14 +59,16 @@ export function checkGate(state: MegapowersState, target: Phase, store: Store): 
     }
 
     case "implement→verify": {
-      if (state.planTasks.length === 0) {
+      const tasks = (state.activeIssue && cwd) ? deriveTasks(cwd, state.activeIssue) : [];
+      if (tasks.length === 0) {
         return { pass: false, reason: "No plan tasks found. Was the plan parsed correctly?" };
       }
-      const incomplete = state.planTasks.filter(t => !t.completed);
+      const completedSet = new Set(state.completedTasks);
+      const incomplete = tasks.filter(t => !completedSet.has(t.index));
       if (incomplete.length > 0) {
         return {
           pass: false,
-          reason: `${incomplete.length} of ${state.planTasks.length} tasks still incomplete.`,
+          reason: `${incomplete.length} of ${tasks.length} tasks still incomplete.`,
         };
       }
       return { pass: true };

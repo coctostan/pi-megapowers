@@ -20,7 +20,8 @@ describe("createInitialState", () => {
     expect(state.phase).toBeNull();
     expect(state.phaseHistory).toEqual([]);
     expect(state.reviewApproved).toBe(false);
-    expect(state.planTasks).toEqual([]);
+    expect(state.completedTasks).toEqual([]);
+    expect(state.megaEnabled).toBe(true);
     expect(state.jjChangeId).toBeNull();
   });
 });
@@ -149,10 +150,11 @@ describe("transition", () => {
 });
 
 describe("createInitialState — new fields", () => {
-  it("includes acceptanceCriteria and currentTaskIndex", () => {
+  it("includes completedTasks and currentTaskIndex", () => {
     const state = createInitialState();
-    expect(state.acceptanceCriteria).toEqual([]);
+    expect(state.completedTasks).toEqual([]);
     expect(state.currentTaskIndex).toBe(0);
+    expect(state.megaEnabled).toBe(true);
   });
 });
 
@@ -165,12 +167,28 @@ describe("transition — taskJJChanges reset", () => {
       phase: "review",
       reviewApproved: true,
       taskJJChanges: { 1: "old-change", 2: "old-change-2" },
-      planTasks: [
-        { index: 1, description: "A", completed: false, noTest: false },
-      ],
     };
 
     const next = transition(state, "implement");
+    expect(next.taskJJChanges).toEqual({});
+  });
+
+  it("does not derive currentTaskIndex from deprecated planTasks fallback", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "review",
+      currentTaskIndex: 7,
+      taskJJChanges: { 1: "old-change" },
+    };
+
+    (state as any).planTasks = [
+      { index: 1, description: "A", completed: false, noTest: false },
+    ];
+
+    const next = transition(state, "implement");
+    expect(next.currentTaskIndex).toBe(7);
     expect(next.taskJJChanges).toEqual({});
   });
 
@@ -181,9 +199,6 @@ describe("transition — taskJJChanges reset", () => {
       workflow: "feature",
       phase: "implement",
       taskJJChanges: { 1: "change-a" },
-      planTasks: [
-        { index: 1, description: "A", completed: true, noTest: false },
-      ],
     };
 
     const next = transition(state, "verify");
@@ -295,3 +310,4 @@ describe("OPEN_ENDED_PHASES", () => {
     expect(getValidTransitions("bugfix", "diagnose").length).toBeGreaterThan(0);
   });
 });
+

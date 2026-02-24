@@ -49,6 +49,8 @@ export function extractFixedWhenCriteria(diagnosisContent: string): AcceptanceCr
   return extractNumberedSection(diagnosisContent, /^##\s+Fixed\s+When/i);
 }
 
+const SENTINEL_PATTERN = /^[-*]?\s*(?:\d+[.)]\s*)?(?:none\.?|n\/a|no open questions\.?|\(none\))$/i;
+
 export function hasOpenQuestions(specContent: string): boolean {
   const lines = specContent.split("\n");
   let inSection = false;
@@ -61,9 +63,20 @@ export function hasOpenQuestions(specContent: string): boolean {
     if (inSection && /^##\s+/.test(line)) {
       break;
     }
-    if (inSection && line.trim().length > 0) {
+    if (!inSection) continue;
+
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+
+    // Skip sentinel values
+    if (SENTINEL_PATTERN.test(trimmed)) continue;
+
+    // Only list items (- , * , 1. , 1) ) containing ? count as open questions
+    const isListItem = /^[-*]\s+/.test(trimmed) || /^\d+[.)]\s+/.test(trimmed);
+    if (isListItem && trimmed.includes("?")) {
       return true;
     }
+    // Non-list lines are treated as commentary, not questions
   }
 
   return false;

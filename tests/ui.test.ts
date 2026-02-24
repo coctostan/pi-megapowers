@@ -16,6 +16,15 @@ import { tmpdir } from "node:os";
 import { createStore } from "../extensions/megapowers/store.js";
 import type { Issue } from "../extensions/megapowers/store.js";
 
+// Shared temp dir for mock contexts that need a cwd for writeState
+let mockCwd: string;
+beforeEach(() => {
+  mockCwd = mkdtempSync(join(tmpdir(), "megapowers-ui-mock-"));
+});
+afterEach(() => {
+  rmSync(mockCwd, { recursive: true, force: true });
+});
+
 // Stub theme — just returns text unformatted
 const plainTheme = {
   fg: (_color: string, text: string) => text,
@@ -24,13 +33,14 @@ const plainTheme = {
   strikethrough: (text: string) => text,
 };
 
-function createMockCtx(selectReturn?: string) {
+function createMockCtx(selectReturn?: string, cwd?: string) {
   const notifications: { msg: string; type: string }[] = [];
   const widgets: Record<string, any> = {};
   const statuses: Record<string, any> = {};
 
   return {
     hasUI: true,
+    cwd: cwd ?? mockCwd,
     ui: {
       theme: plainTheme,
       select: async (_prompt: string, _items: string[]) => selectReturn ?? null,
@@ -71,17 +81,18 @@ describe("renderDashboardLines — no active issue", () => {
 
 describe("renderDashboardLines — active issue", () => {
   it("shows issue, phase, and task progress", () => {
+    const tasks = [
+      { index: 1, description: "A", completed: true, noTest: false },
+      { index: 2, description: "B", completed: false, noTest: false },
+    ];
     const state: MegapowersState = {
       ...createInitialState(),
       activeIssue: "001-auth-refactor",
       workflow: "feature",
       phase: "plan",
-      planTasks: [
-        { index: 1, description: "A", completed: true },
-        { index: 2, description: "B", completed: false },
-      ],
+      completedTasks: [1],
     };
-    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const lines = renderDashboardLines(state, [], plainTheme as any, tasks);
     const joined = lines.join("\n");
     expect(joined).toContain("001-auth-refactor");
     expect(joined).toContain("feature");
@@ -96,17 +107,18 @@ describe("renderStatusText", () => {
   });
 
   it("returns compact status", () => {
+    const tasks = [
+      { index: 1, description: "A", completed: true, noTest: false },
+      { index: 2, description: "B", completed: false, noTest: false },
+      { index: 3, description: "C", completed: false, noTest: false },
+    ];
     const state: MegapowersState = {
       ...createInitialState(),
       activeIssue: "001-test",
       phase: "implement",
-      planTasks: [
-        { index: 1, description: "A", completed: true },
-        { index: 2, description: "B", completed: false },
-        { index: 3, description: "C", completed: false },
-      ],
+      completedTasks: [1],
     };
-    const text = renderStatusText(state);
+    const text = renderStatusText(state, tasks);
     expect(text).toContain("#001");
     expect(text).toContain("implement");
     expect(text).toContain("1/3");
@@ -221,7 +233,7 @@ describe("handlePhaseTransition — gate enforcement", () => {
     };
 
     // Select the gated option (which will include ⛔)
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async (_prompt: string, items: string[]) => {
       // Pick the gated option containing ⛔
       return items.find(i => i.includes("⛔")) ?? items[0];
@@ -245,7 +257,7 @@ describe("handlePhaseTransition — gate enforcement", () => {
     };
 
     // brainstorm → spec always passes gate
-    const ctx = createMockCtx("spec");
+    const ctx = createMockCtx("spec", tmp);
     const result = await ui.handlePhaseTransition(ctx as any, state, store, jj as any);
 
     expect(result.phase).toBe("spec");
@@ -264,7 +276,7 @@ describe("handlePhaseTransition — gate enforcement", () => {
 
     // Capture what select is called with
     let selectItems: string[] = [];
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async (_prompt: string, items: string[]) => {
       selectItems = items;
       return null; // cancel
@@ -288,7 +300,7 @@ describe("handlePhaseTransition — gate enforcement", () => {
     };
 
     let selectItems: string[] = [];
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async (_prompt: string, items: string[]) => {
       selectItems = items;
       return null;
@@ -325,7 +337,7 @@ describe("handlePhaseTransition — post-transition guidance", () => {
       phase: "brainstorm",
     };
 
-    const ctx = createMockCtx("spec");
+    const ctx = createMockCtx("spec", tmp);
     await ui.handlePhaseTransition(ctx as any, state, store, jj as any);
 
     // After transitioning to "spec", the user should receive guidance about what to do
@@ -345,7 +357,7 @@ describe("handlePhaseTransition — post-transition guidance", () => {
       phase: "brainstorm",
     };
 
-    const ctx = createMockCtx("spec");
+    const ctx = createMockCtx("spec", tmp);
     const newState = await ui.handlePhaseTransition(ctx as any, state, store, jj as any);
 
     // The dashboard should render with guidance for the new phase
@@ -358,58 +370,58 @@ describe("handlePhaseTransition — post-transition guidance", () => {
 
 describe("renderDashboardLines — implement phase with tasks", () => {
   it("shows per-task progress count", () => {
+    const tasks = [
+      { index: 1, description: "Set up schema", completed: true, noTest: false },
+      { index: 2, description: "Create endpoint", completed: false, noTest: false },
+      { index: 3, description: "Write tests", completed: false, noTest: false },
+    ];
     const state: MegapowersState = {
       ...createInitialState(),
       activeIssue: "001-auth",
       workflow: "feature",
       phase: "implement",
-      planTasks: [
-        { index: 1, description: "Set up schema", completed: true },
-        { index: 2, description: "Create endpoint", completed: false },
-        { index: 3, description: "Write tests", completed: false },
-      ],
+      completedTasks: [1],
       currentTaskIndex: 1,
     };
-    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const lines = renderDashboardLines(state, [], plainTheme as any, tasks);
     const joined = lines.join("\n");
     expect(joined).toContain("1/3");
   });
 
   it("shows current task name in implement phase", () => {
+    const tasks = [
+      { index: 1, description: "Set up schema", completed: true, noTest: false },
+      { index: 2, description: "Create endpoint", completed: false, noTest: false },
+      { index: 3, description: "Write tests", completed: false, noTest: false },
+    ];
     const state: MegapowersState = {
       ...createInitialState(),
       activeIssue: "001-auth",
       workflow: "feature",
       phase: "implement",
-      planTasks: [
-        { index: 1, description: "Set up schema", completed: true },
-        { index: 2, description: "Create endpoint", completed: false },
-        { index: 3, description: "Write tests", completed: false },
-      ],
+      completedTasks: [1],
       currentTaskIndex: 1,
     };
-    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const lines = renderDashboardLines(state, [], plainTheme as any, tasks);
     const joined = lines.join("\n");
     expect(joined).toContain("Create endpoint");
   });
 });
 
 describe("renderDashboardLines — verify phase with criteria", () => {
-  it("shows acceptance criteria pass count", () => {
+  it("acceptance criteria are derived on demand (not shown in dashboard)", () => {
+    // Acceptance criteria are no longer stored in state — they're derived from spec.md.
+    // The dashboard no longer shows criteria counts (removed deprecated acceptanceCriteria field).
     const state: MegapowersState = {
       ...createInitialState(),
       activeIssue: "001-auth",
       workflow: "feature",
       phase: "verify",
-      acceptanceCriteria: [
-        { id: 1, text: "User can register", status: "pass" },
-        { id: 2, text: "Email validated", status: "pending" },
-      ],
     };
     const lines = renderDashboardLines(state, [], plainTheme as any);
     const joined = lines.join("\n");
-    expect(joined).toContain("Criteria:");
-    expect(joined).toContain("1/2");
+    // Dashboard still shows the verify phase
+    expect(joined).toContain("verify");
   });
 });
 
@@ -436,7 +448,7 @@ describe("handleDonePhase", () => {
       phase: "done",
     };
 
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async () => "Close issue";
 
     const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
@@ -463,7 +475,7 @@ describe("handleDonePhase", () => {
       phase: "done",
     };
 
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async () => "Done — finish without further actions";
 
     const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
@@ -486,7 +498,7 @@ describe("handleDonePhase", () => {
       phase: "done",
     };
 
-    const ctx = createMockCtx(); // returns null by default (cancel)
+    const ctx = createMockCtx(undefined, tmp); // returns null by default (cancel)
     const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
 
     expect(result.activeIssue).toBe("001-test");
@@ -507,7 +519,7 @@ describe("handleDonePhase", () => {
     };
 
     let selectItems: string[] = [];
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async (_prompt: string, items: string[]) => {
       selectItems = items;
       return "Done — finish without further actions";
@@ -531,7 +543,7 @@ describe("handleDonePhase", () => {
     };
 
     let selectItems: string[] = [];
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async (_prompt: string, items: string[]) => {
       selectItems = items;
       return "Done — finish without further actions";
@@ -560,7 +572,7 @@ describe("handleDonePhase", () => {
     };
 
     let callCount = 0;
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async (_prompt: string, _items: string[]) => {
       callCount++;
       if (callCount === 1) return "Squash task changes into phase change";
@@ -596,7 +608,7 @@ describe("handleDonePhase — doneMode actions", () => {
       phase: "done",
     };
 
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async (_prompt: string, _items: string[]) => "Generate feature doc";
 
     const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
@@ -614,7 +626,7 @@ describe("handleDonePhase — doneMode actions", () => {
       phase: "done",
     };
 
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async (_prompt: string, _items: string[]) => "Write changelog entry";
 
     const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
@@ -632,7 +644,7 @@ describe("handleDonePhase — doneMode actions", () => {
       phase: "done",
     };
 
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async (_prompt: string, _items: string[]) => "Capture learnings";
 
     const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
@@ -651,7 +663,7 @@ describe("handleDonePhase — doneMode actions", () => {
     };
 
     let menuItems: string[] = [];
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async (_prompt: string, items: string[]) => {
       menuItems = items;
       return "Done — finish without further actions";
@@ -665,17 +677,19 @@ describe("handleDonePhase — doneMode actions", () => {
 });
 
 describe("renderDashboardLines — TDD state indicator", () => {
+  const implTasks = [{ index: 1, description: "Build auth", completed: false, noTest: false }];
+  const noTestTasks = [{ index: 1, description: "Config schema", completed: false, noTest: true }];
+
   it("shows 🔴 Need test when in no-test state", () => {
     const state: MegapowersState = {
       ...createInitialState(),
       activeIssue: "001-test",
       workflow: "feature",
       phase: "implement",
-      planTasks: [{ index: 1, description: "Build auth", completed: false, noTest: false }],
       currentTaskIndex: 0,
       tddTaskState: { taskIndex: 1, state: "no-test", skipped: false },
     };
-    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const lines = renderDashboardLines(state, [], plainTheme as any, implTasks);
     const tddLine = lines.find(l => l.includes("TDD:"));
     expect(tddLine).toBeDefined();
     expect(tddLine).toContain("🔴");
@@ -688,11 +702,10 @@ describe("renderDashboardLines — TDD state indicator", () => {
       activeIssue: "001-test",
       workflow: "feature",
       phase: "implement",
-      planTasks: [{ index: 1, description: "Build auth", completed: false, noTest: false }],
       currentTaskIndex: 0,
       tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
     };
-    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const lines = renderDashboardLines(state, [], plainTheme as any, implTasks);
     const tddLine = lines.find(l => l.includes("TDD:"));
     expect(tddLine).toContain("🟡");
     expect(tddLine).toContain("Run test");
@@ -704,11 +717,10 @@ describe("renderDashboardLines — TDD state indicator", () => {
       activeIssue: "001-test",
       workflow: "feature",
       phase: "implement",
-      planTasks: [{ index: 1, description: "Build auth", completed: false, noTest: false }],
       currentTaskIndex: 0,
       tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
     };
-    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const lines = renderDashboardLines(state, [], plainTheme as any, implTasks);
     const tddLine = lines.find(l => l.includes("TDD:"));
     expect(tddLine).toContain("🟢");
     expect(tddLine).toContain("Implement");
@@ -720,11 +732,10 @@ describe("renderDashboardLines — TDD state indicator", () => {
       activeIssue: "001-test",
       workflow: "feature",
       phase: "implement",
-      planTasks: [{ index: 1, description: "Config schema", completed: false, noTest: true }],
       currentTaskIndex: 0,
       tddTaskState: null,
     };
-    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const lines = renderDashboardLines(state, [], plainTheme as any, noTestTasks);
     const tddLine = lines.find(l => l.includes("TDD:"));
     expect(tddLine).toContain("⚪");
     expect(tddLine).toContain("Skipped");
@@ -736,11 +747,10 @@ describe("renderDashboardLines — TDD state indicator", () => {
       activeIssue: "001-test",
       workflow: "feature",
       phase: "implement",
-      planTasks: [{ index: 1, description: "Build auth", completed: false, noTest: false }],
       currentTaskIndex: 0,
       tddTaskState: { taskIndex: 1, state: "no-test", skipped: true },
     };
-    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const lines = renderDashboardLines(state, [], plainTheme as any, implTasks);
     const tddLine = lines.find(l => l.includes("TDD:"));
     expect(tddLine).toContain("⚪");
     expect(tddLine).toContain("Skipped");
@@ -770,13 +780,13 @@ describe("handleIssueCommand — new state fields", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  it("new issue includes acceptanceCriteria and currentTaskIndex", async () => {
+  it("new issue resets currentTaskIndex and completedTasks", async () => {
     const store = createStore(tmp);
     const ui = createUI();
     const jj = createMockJJ();
     const state = createInitialState();
 
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.input = async () => "Test issue";
     ctx.ui.select = async (_prompt: string, items: string[]) => {
       return items.includes("feature") ? "feature" : items[0];
@@ -786,11 +796,11 @@ describe("handleIssueCommand — new state fields", () => {
     const result = await ui.handleIssueCommand(ctx as any, state, store, jj as any, "new");
 
     expect(result.activeIssue).toBeTruthy();
-    expect(result.acceptanceCriteria).toEqual([]);
+    expect(result.completedTasks).toEqual([]);
     expect(result.currentTaskIndex).toBe(0);
   });
 
-  it("list activation resets stale acceptanceCriteria and currentTaskIndex", async () => {
+  it("list activation resets completedTasks and currentTaskIndex", async () => {
     const store = createStore(tmp);
     const ui = createUI();
     const jj = createMockJJ();
@@ -803,11 +813,11 @@ describe("handleIssueCommand — new state fields", () => {
       activeIssue: "old-issue",
       workflow: "feature",
       phase: "implement",
-      acceptanceCriteria: [{ id: 1, text: "stale", status: "pass" }],
+      completedTasks: [1, 2, 3],
       currentTaskIndex: 5,
     };
 
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async (_prompt: string, items: string[]) => {
       // Select the existing issue (not "Create new...")
       return items.find(i => i.startsWith("#")) ?? items[0];
@@ -816,11 +826,11 @@ describe("handleIssueCommand — new state fields", () => {
     const result = await ui.handleIssueCommand(ctx as any, state, store, jj as any, "list");
 
     expect(result.activeIssue).toBe(issue.slug);
-    expect(result.acceptanceCriteria).toEqual([]);
+    expect(result.completedTasks).toEqual([]);
     expect(result.currentTaskIndex).toBe(0);
   });
 
-  it("new issue resets stale acceptanceCriteria and currentTaskIndex from previous issue", async () => {
+  it("new issue resets stale completedTasks and currentTaskIndex from previous issue", async () => {
     const store = createStore(tmp);
     const ui = createUI();
     const jj = createMockJJ();
@@ -830,11 +840,11 @@ describe("handleIssueCommand — new state fields", () => {
       activeIssue: "old-issue",
       workflow: "feature",
       phase: "implement",
-      acceptanceCriteria: [{ id: 1, text: "stale criterion", status: "pass" }],
+      completedTasks: [1, 2],
       currentTaskIndex: 3,
     };
 
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.input = async () => "New issue";
     ctx.ui.select = async (_prompt: string, items: string[]) => {
       return items.includes("feature") ? "feature" : items[0];
@@ -845,7 +855,7 @@ describe("handleIssueCommand — new state fields", () => {
 
     expect(result.activeIssue).toBeTruthy();
     expect(result.activeIssue).not.toBe("old-issue");
-    expect(result.acceptanceCriteria).toEqual([]);
+    expect(result.completedTasks).toEqual([]);
     expect(result.currentTaskIndex).toBe(0);
   });
 
@@ -863,7 +873,7 @@ describe("handleIssueCommand — new state fields", () => {
       tddTaskState: { taskIndex: 2, state: "impl-allowed", skipped: false },
     };
 
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.input = async () => "New issue";
     ctx.ui.select = async (_prompt: string, items: string[]) => {
       return items.includes("feature") ? "feature" : items[0];
@@ -893,7 +903,7 @@ describe("handleIssueCommand — new state fields", () => {
       tddTaskState: { taskIndex: 3, state: "impl-allowed", skipped: false },
     };
 
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async (_prompt: string, items: string[]) => {
       return items.find(i => i.startsWith("#")) ?? items[0];
     };
@@ -916,7 +926,7 @@ describe("handleIssueCommand — new state fields", () => {
       taskJJChanges: { 1: "stale-change" },
     };
 
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.input = async () => "New issue";
     ctx.ui.select = async (_prompt: string, items: string[]) => {
       return items.includes("feature") ? "feature" : items[0];
@@ -957,7 +967,7 @@ describe("handleIssueCommand — list filtering", () => {
 
     // Capture what items are shown in the select menu
     let selectItems: string[] = [];
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async (_prompt: string, items: string[]) => {
       selectItems = items;
       return null; // cancel — we just want to inspect the list
@@ -984,7 +994,7 @@ describe("handleIssueCommand — list filtering", () => {
     const issue = store.createIssue("Completed work", "feature", "done");
     store.updateIssueStatus(issue.slug, "done");
 
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     await ui.handleIssueCommand(ctx as any, state, store, jj as any, "list");
 
     // Should notify that there are no (open) issues
@@ -1001,7 +1011,7 @@ describe("handleIssueCommand — list filtering", () => {
     store.updateIssueStatus(inProgressIssue.slug, "in-progress");
 
     let selectItems: string[] = [];
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async (_prompt: string, items: string[]) => {
       selectItems = items;
       return null;
@@ -1031,7 +1041,7 @@ describe("handleDonePhase — bugfix workflow", () => {
     const ui = createUI();
     const jj = createMockJJ();
     let menuItems: string[] = [];
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async (_prompt: string, items: string[]) => {
       menuItems = items;
       return "Done — finish without further actions";
@@ -1054,7 +1064,7 @@ describe("handleDonePhase — bugfix workflow", () => {
     const store = createStore(tmp);
     const ui = createUI();
     const jj = createMockJJ();
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async () => "Generate bugfix summary";
     const state: MegapowersState = {
       ...createInitialState(),
@@ -1070,7 +1080,7 @@ describe("handleDonePhase — bugfix workflow", () => {
     const store = createStore(tmp);
     const ui = createUI();
     const jj = createMockJJ();
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async () => "Generate bugfix summary";
     const state: MegapowersState = {
       ...createInitialState(),
@@ -1088,7 +1098,7 @@ describe("handleDonePhase — bugfix workflow", () => {
     const ui = createUI();
     const jj = createMockJJ();
     let menuItems: string[] = [];
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
     ctx.ui.select = async (_prompt: string, items: string[]) => {
       menuItems = items;
       return "Done — finish without further actions";
@@ -1165,7 +1175,7 @@ describe("handleDonePhase — batch auto-close", () => {
       phase: "done",
     };
 
-    const ctx = createMockCtx("Close issue");
+    const ctx = createMockCtx("Close issue", tmp);
     const jj = createMockJJ();
     const uiInstance = createUI();
 
@@ -1193,7 +1203,7 @@ describe("handleDonePhase — batch auto-close", () => {
       phase: "done",
     };
 
-    const ctx = createMockCtx("Done — finish without further actions");
+    const ctx = createMockCtx("Done — finish without further actions", tmp);
     const jj = createMockJJ();
     const uiInstance = createUI();
 
@@ -1214,7 +1224,7 @@ describe("handleDonePhase — batch auto-close", () => {
       phase: "done",
     };
 
-    const ctx = createMockCtx("Close issue");
+    const ctx = createMockCtx("Close issue", tmp);
     const jj = createMockJJ();
     const uiInstance = createUI();
 
@@ -1247,9 +1257,9 @@ describe("handleTriageCommand", () => {
     const uiInstance = createUI();
     let inputCallCount = 0;
     const ctx = {
-      ...createMockCtx(),
+      ...createMockCtx(undefined, tmp),
       ui: {
-        ...createMockCtx().ui,
+        ...createMockCtx(undefined, tmp).ui,
         select: async (prompt: string, _items: string[]) => {
           if (prompt.toLowerCase().includes("type")) return "bugfix";
           return null;
@@ -1285,7 +1295,7 @@ describe("handleTriageCommand", () => {
     testStore.createIssue("Bug A", "bugfix", "desc");
     const uiInstance = createUI();
     // Default createMockCtx returns null for input, so title prompt returns null → cancel
-    const ctx = createMockCtx();
+    const ctx = createMockCtx(undefined, tmp);
 
     const state = createInitialState();
     const jj = createMockJJ();
@@ -1301,9 +1311,9 @@ describe("handleTriageCommand", () => {
     const uiInstance = createUI();
     const notifications: string[] = [];
     const ctx = {
-      ...createMockCtx(),
+      ...createMockCtx(undefined, tmp),
       ui: {
-        ...createMockCtx().ui,
+        ...createMockCtx(undefined, tmp).ui,
         notify: (msg: string, _type: string) => notifications.push(msg),
       },
     };

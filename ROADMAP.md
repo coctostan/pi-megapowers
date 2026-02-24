@@ -14,9 +14,15 @@ Full brainstorm→done flow with phase gates, prompt injection, and artifact rou
 
 **Tracking:** [docs/plans/2026-02-18-02-feature-mode-design.md](docs/plans/2026-02-18-02-feature-mode-design.md)
 
+### 03: Bugfix Mode ✅
+
+Full reproduce→done flow with regression test enforcement, diagnosis artifacts, and "Fixed When" acceptance criteria extraction.
+
+**Tracking:** [docs/plans/2026-02-22-bugfix-mode-preflight.md](docs/plans/2026-02-22-bugfix-mode-preflight.md)
+
 ### 04: TDD Enforcement ✅
 
-tdd-guard as a mechanical extension — blocks production file writes until tests are written and passing. Includes satellite TDD for subagent sessions.
+TDD guard as a mechanical extension — blocks production file writes until tests are written and failing. Includes satellite TDD for subagent sessions.
 
 **Tracking:** [docs/plans/2026-02-19-04-tdd-enforcement-design.md](docs/plans/2026-02-19-04-tdd-enforcement-design.md)
 
@@ -30,47 +36,68 @@ Per-task jj change tracking, satellite TDD enforcement for subagent sessions, ta
 
 Project learnings persistence with attribution, roadmap awareness in brainstorm/plan prompts, done-phase actions (generate feature docs, capture learnings, write changelog).
 
-**Tracking:** [docs/plans/2026-02-19-06-cross-cutting-design.md](docs/plans/2026-02-19-06-cross-cutting-design.md)
+**Tracking:** [docs/plans/2026-02-21-cross-cutting-concerns.md](docs/plans/2026-02-21-cross-cutting-concerns.md)
 
-## Remaining Component Designs
+### 07: Issue Triage & Batching ✅
 
-- [ ] **03: Bugfix Mode** — Reproduce→done flow, regression test enforcement
+LLM-driven triage that groups related issues into batch issues. `create_batch` tool for the LLM, `/triage` command, batch-aware issue list.
 
-## Future Enhancements
+### 08: State Source of Truth Refactor ✅
 
-### Richer Phase Prompts
+Disk-first, tool-first state architecture. `readState()`/`writeState()` with atomic temp-file-then-rename replaces in-memory state. Tasks and acceptance criteria derived on demand from artifact files. Parser fixes for "None" sentinel detection, review approval, and acceptance criteria extraction.
 
-Upgrade the prompt templates in `prompts/` to produce higher-quality, more constrained LLM output. Inspired by [GitHub's spec-kit](https://github.com/github/spec-kit) templates:
+### 09: Cleanup — Remove Deprecated Fields & Dead Code ✅
 
-- **Spec prompts:** Prioritized user stories (P1/P2/P3), Given/When/Then acceptance criteria, explicit `[NEEDS CLARIFICATION]` markers, edge cases section
-- **Plan prompts:** Technical context section, structured project layout decisions, complexity tracking per task
-- **Task prompts:** Parallel markers `[P]`, user story grouping `[US1]`, phased execution (setup → foundational → per-story → polish), dependency graph, MVP-first delivery
+Pure deletion refactor removing `planTasks`, `acceptanceCriteria` from state, `loadState`/`saveState` from store, `loadSatelliteState` from satellite, `buildPhasePrompt` from prompts, and dead task-coordinator exports. 406 tests, 0 failures.
 
-### Project Constitution
+---
 
-A `.megapowers/constitution.md` file containing project-level architectural principles, coding standards, and constraints. Injected into every phase prompt alongside learnings.
+## Current: Stabilization & Polish
 
-### Clarify Sub-Phase
+Small focused fixes to make the existing workflow reliable and pleasant before adding new capabilities.
 
-An optional phase between brainstorm and spec that systematically identifies ambiguity. The LLM reviews brainstorm output, marks items `[NEEDS CLARIFICATION]`, and resolves them through targeted questions before writing the spec.
+### Open bugfixes
 
-### Cross-Artifact Analysis
+| Issue | Description | Batch |
+|-------|-------------|-------|
+| #20 | TDD guard rejects compound commands (`&&`, `\|`, `;`) | standalone |
+| #13 | `/mega` command may render nothing (needs smoke test) | #31 |
+| #22 | Phase notifications don't include artifact filepath | #31 |
+| #18 | Roadmap not auto-updated on completion | standalone |
 
-An `/analyze` command that reads spec + plan + tasks and checks consistency:
+### Open UX improvements
 
-- Do all spec user stories have corresponding plan tasks?
-- Do task dependencies match the plan's ordering?
-- Are there plan items with no spec coverage (scope creep)?
+| Issue | Description | Batch |
+|-------|-------------|-------|
+| #33 | Issue list UI — colors, icons, sorting (in progress) | standalone |
+| #38 + #39 | save_artifact: overwrite protection + user feedback | #41 |
+| #36 + #37 | Multi-select done menu + prompt injection visibility | #42 |
 
-### TDD Guard Refinements
+---
 
-- Smarter test-to-implementation file mapping
-- Language-aware detection (not just file patterns)
-- Configurable strictness levels
+## Next: Architecture & Extensibility
 
-### Advanced Subagent Strategies
+Structural changes that unlock new capabilities.
 
-- Parallel dispatch for independent plan tasks
-- Specialized reviewer agents
-- Chain-of-agents patterns
-- Configurable strategy selection per project
+| Issue | Description | Batch |
+|-------|-------------|-------|
+| #35 | Extract slash command handlers from index.ts | #43 |
+| #27 | Expose workflow commands as LLM-callable tools | #43 |
+| #11 | Auto-create feature branches on issue start | standalone |
+
+---
+
+## Future: Advanced Capabilities
+
+| Issue | Description | Batch |
+|-------|-------------|-------|
+| #25 | Package subagent tool within megapowers | #32 |
+| #40 | Review and upgrade all injected prompt templates | standalone |
+
+### Enhancements (no issues yet)
+
+- **Richer Phase Prompts** — Prioritized user stories (P1/P2/P3), Given/When/Then acceptance criteria, `[NEEDS CLARIFICATION]` markers, edge cases sections. Inspired by [GitHub's spec-kit](https://github.com/github/spec-kit).
+- **Project Constitution** — `.megapowers/constitution.md` with architectural principles and coding standards, injected into every phase prompt.
+- **Clarify Sub-Phase** — Optional phase between brainstorm and spec that identifies ambiguity via `[NEEDS CLARIFICATION]` markers.
+- **Cross-Artifact Analysis** — `/analyze` command checking spec↔plan↔task consistency.
+- **Advanced Subagent Strategies** — Parallel dispatch, specialized reviewer agents, chain-of-agents patterns.
