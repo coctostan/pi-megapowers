@@ -7,3 +7,7 @@ dist/
 
 # Pi workflow monitor state
 .pi/superpowers-state.json
+
+# Megapowers runtime state
+.megapowers/state.json
+.megapowers/subagents/

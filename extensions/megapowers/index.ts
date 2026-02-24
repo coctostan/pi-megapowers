@@ -4,17 +4,23 @@ import { createStore, type Store } from "./store.js";
 import { createJJ, type JJ } from "./jj.js";
 import { createUI, filterTriageableIssues, formatTriageIssueList, type MegapowersUI } from "./ui.js";
 import { loadPromptFile, interpolatePrompt } from "./prompts.js";
-import { isSatelliteMode } from "./satellite.js";
+import { isSatelliteMode, resolveProjectRoot } from "./satellite.js";
 import { createBatchHandler } from "./tools.js";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { readState, writeState } from "./state-io.js";
 import { handleSignal } from "./tool-signal.js";
 import { handleSaveArtifact } from "./tool-artifact.js";
-import { evaluateWriteOverride, recordTestFileWritten, processBashResult } from "./tool-overrides.js";
-import { canWrite, isTestFile, isTestRunnerCommand } from "./write-policy.js";
+import { evaluateWriteOverride, recordTestFileWritten } from "./tool-overrides.js";
+import { canWrite, isTestFile } from "./write-policy.js";
 import { buildInjectedPrompt } from "./prompt-inject.js";
 import { deriveTasks } from "./derived.js";
+import { handleSubagentDispatch, handleSubagentStatus } from "./subagent-tools.js";
+import { writeSubagentStatus, updateSubagentStatus } from "./subagent-status.js";
+import { buildSpawnArgs, buildSpawnEnv, createRunnerState, processJsonlLine } from "./subagent-runner.js";
+import { buildWorkspaceName, buildWorkspaceAddArgs, buildWorkspaceForgetArgs, buildDiffSummaryArgs, buildDiffFullArgs } from "./subagent-workspace.js";
+import { detectRepeatedErrors } from "./subagent-errors.js";
+import { parseTaskDiffFiles } from "./task-coordinator.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 
@@ -46,8 +52,8 @@ export default function megapowers(pi: ExtensionAPI): void {
     // state stays in-memory to avoid competing with the primary session for
     // state.json writes.
     //
-    // megapowers_signal and megapowers_save_artifact are NOT registered for
-    // satellites — only write/edit/bash overrides for TDD enforcement.
+    // Satellites keep TDD state in-memory and expose a limited megapowers_signal
+    // tool for explicit tests_failed/tests_passed transitions.
 
     let satelliteTddState: import("./state-machine.js").TddTaskState | null = null;
 
@@ -58,11 +64,13 @@ export default function megapowers(pi: ExtensionAPI): void {
       const filePath: string | undefined = (event.input as any)?.path;
       if (!filePath) return;
 
-      // Read coordination state from disk (phase, megaEnabled, etc.)
-      const state = readState(ctx.cwd);
+      // Read coordination state from project root (not workspace cwd) so
+      // subagents in jj workspace dirs can find .megapowers/state.json (AC16)
+      const projectRoot = resolveProjectRoot(ctx.cwd, process.env as Record<string, string | undefined>);
+      const state = readState(projectRoot);
       let taskIsNoTest = false;
       if (state.activeIssue && (state.phase === "implement" || state.phase === "code-review")) {
-        const tasks = deriveTasks(ctx.cwd, state.activeIssue);
+        const tasks = deriveTasks(projectRoot, state.activeIssue);
         const currentTask = tasks[state.currentTaskIndex];
         taskIsNoTest = currentTask?.noTest ?? false;
       }
@@ -81,10 +89,11 @@ export default function megapowers(pi: ExtensionAPI): void {
       if ((toolName === "write" || toolName === "edit") && !event.isError) {
         const filePath: string | undefined = (event.input as any)?.path;
         if (filePath && isTestFile(filePath)) {
-          const state = readState(ctx.cwd);
+          const projectRoot = resolveProjectRoot(ctx.cwd, process.env as Record<string, string | undefined>);
+          const state = readState(projectRoot);
           const isTddPhase = state.phase === "implement" || state.phase === "code-review";
           if (isTddPhase && state.megaEnabled) {
-            const tasks = state.activeIssue ? deriveTasks(ctx.cwd, state.activeIssue) : [];
+            const tasks = state.activeIssue ? deriveTasks(projectRoot, state.activeIssue) : [];
             const currentTask = tasks[state.currentTaskIndex];
             const taskIndex = currentTask?.index ?? state.currentTaskIndex + 1;
             satelliteTddState = {
@@ -96,18 +105,38 @@ export default function megapowers(pi: ExtensionAPI): void {
         }
       }
 
-      // After bash, track test runner results for TDD RED detection (in-memory)
-      if (toolName === "bash") {
-        const command = (event.input as any)?.command;
-        if (command && satelliteTddState?.state === "test-written") {
-          const state = readState(ctx.cwd);
-          if (state.megaEnabled && (state.phase === "implement" || state.phase === "code-review")) {
-            if (isTestRunnerCommand(command) && event.isError) {
-              satelliteTddState = { ...satelliteTddState, state: "impl-allowed" };
-            }
-          }
+    });
+
+    pi.registerTool({
+      name: "megapowers_signal",
+      label: "Megapowers Signal",
+      description: "Satellite TDD signals: tests_failed (mark RED), tests_passed (acknowledge GREEN).",
+      parameters: Type.Object({
+        action: Type.Union([Type.Literal("tests_failed"), Type.Literal("tests_passed")]),
+      }),
+      async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+        const projectRoot = resolveProjectRoot(ctx.cwd, process.env as Record<string, string | undefined>);
+        const state = readState(projectRoot);
+        if (!state.megaEnabled) {
+          return { content: [{ type: "text", text: "Error: Megapowers is disabled (megaEnabled=false)." }], details: undefined };
         }
-      }
+        if (state.phase !== "implement" && state.phase !== "code-review") {
+          return { content: [{ type: "text", text: `Error: ${params.action} can only be called during implement/code-review.` }], details: undefined };
+        }
+
+        if (params.action === "tests_failed") {
+          if (!satelliteTddState || satelliteTddState.state !== "test-written") {
+            return { content: [{ type: "text", text: "Error: No test written yet, or tests have not failed yet." }], details: undefined };
+          }
+          satelliteTddState = { ...satelliteTddState, state: "impl-allowed" };
+          return {
+            content: [{ type: "text", text: "Tests failed (RED ✓). Production code writes are now allowed." }],
+            details: undefined,
+          };
+        }
+
+        return { content: [{ type: "text", text: "Tests passed (GREEN ✓)." }], details: undefined };
+      },
     });
 
     return; // Skip all primary session setup
@@ -204,10 +233,6 @@ export default function megapowers(pi: ExtensionAPI): void {
       }
     }
 
-    if (toolName === "bash") {
-      const command = (event.input as any)?.command;
-      if (command) processBashResult(ctx.cwd, command, event.isError);
-    }
   });
 
   // --- Agent completion: offer phase transitions ---
@@ -270,12 +295,14 @@ export default function megapowers(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "megapowers_signal",
     label: "Megapowers Signal",
-    description: "Signal a megapowers state transition. Actions: task_done (mark current implement task complete), review_approve (approve plan in review phase), phase_next (advance to next workflow phase).",
+    description: "Signal a megapowers state transition. Actions: task_done (mark current implement task complete), review_approve (approve plan in review phase), phase_next (advance to next workflow phase), tests_failed (mark RED after a failing test run), tests_passed (acknowledge GREEN after a passing test run).",
     parameters: Type.Object({
       action: Type.Union([
         Type.Literal("task_done"),
         Type.Literal("review_approve"),
         Type.Literal("phase_next"),
+        Type.Literal("tests_failed"),
+        Type.Literal("tests_passed"),
       ]),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -335,6 +362,249 @@ export default function megapowers(pi: ExtensionAPI): void {
     },
   });
 
+  // --- Tools: subagent ---
+
+  pi.registerTool({
+    name: "subagent",
+    label: "Subagent",
+    description: "Delegate a task to a subagent running in an isolated jj workspace. Returns immediately with a subagent ID. Use subagent_status to check progress.",
+    parameters: Type.Object({
+      task: Type.String({ description: "Task description for the subagent" }),
+      taskIndex: Type.Optional(Type.Number({ description: "Plan task index (validates dependencies)" })),
+      agent: Type.Optional(Type.String({ description: "Agent name (default: worker)" })),
+      timeoutMs: Type.Optional(Type.Number({ description: "Timeout in milliseconds (default: 600000)" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (!jj) jj = createJJ(pi);
+
+      const dispatchResult = await handleSubagentDispatch(ctx.cwd, {
+        task: params.task,
+        taskIndex: params.taskIndex,
+        agent: params.agent,
+        timeoutMs: params.timeoutMs,
+      }, jj);
+
+      if (dispatchResult.error) {
+        return { content: [{ type: "text", text: `Error: ${dispatchResult.error}` }], details: undefined };
+      }
+
+      const config = dispatchResult.config!;
+      const id = dispatchResult.id!;
+      const promptFilePath = dispatchResult.promptFilePath!;
+      const startedAt = Date.now();
+
+      // Write initial status with parent's current workflow phase (AC5)
+      const currentState = readState(ctx.cwd);
+      writeSubagentStatus(ctx.cwd, id, {
+        id,
+        state: "running",
+        turnsUsed: 0,
+        startedAt,
+        phase: currentState.phase ?? undefined,
+      });
+
+      // Create jj workspace and spawn (async, fire-and-forget)
+      const wsName = buildWorkspaceName(id);
+
+      (async () => {
+        const runnerState = createRunnerState(id, startedAt);
+
+        try {
+          // Create jj workspace
+          const wsResult = await pi.exec("jj", buildWorkspaceAddArgs(wsName, config.workspacePath));
+          if (wsResult.code !== 0) {
+            writeSubagentStatus(ctx.cwd, id, {
+              id,
+              state: "failed",
+              turnsUsed: 0,
+              startedAt,
+              completedAt: Date.now(),
+              error: `Failed to create jj workspace: ${wsResult.stderr}`,
+            });
+            return;
+          }
+
+          // Build spawn args — pass prompt as @file reference
+          const args = buildSpawnArgs(promptFilePath, {
+            model: config.model,
+            tools: config.tools,
+            thinking: config.thinking,
+            systemPromptPath: config.systemPromptPath,
+          });
+          const env = buildSpawnEnv({
+            subagentId: id,
+            projectRoot: ctx.cwd,
+          });
+
+          const { spawn } = await import("node:child_process");
+          const child = spawn(args[0], args.slice(1), {
+            cwd: config.workspacePath,
+            env,
+            detached: true,
+            stdio: ["ignore", "pipe", "pipe"],
+          });
+
+          let stderr = "";
+          let stdoutBuffer = "";
+
+          child.stdout?.on("data", (data: Buffer) => {
+            stdoutBuffer += data.toString();
+            const lines = stdoutBuffer.split("\n");
+            stdoutBuffer = lines.pop() || "";
+            for (const line of lines) {
+              processJsonlLine(runnerState, line);
+            }
+            if (!runnerState.isTerminal) {
+              updateSubagentStatus(ctx.cwd, id, { turnsUsed: runnerState.turnsUsed });
+            }
+          });
+
+          child.stderr?.on("data", (data: Buffer) => { stderr += data.toString(); });
+
+          // Timeout: set terminal flag and kill. Cleanup in close handler.
+          const timer = setTimeout(() => {
+            if (runnerState.isTerminal) return;
+            runnerState.isTerminal = true;
+            runnerState.timedOut = true;
+            try { child.kill("SIGTERM"); } catch {}
+            setTimeout(() => {
+              try { if (!child.killed) child.kill("SIGKILL"); } catch {}
+            }, 5000);
+          }, config.timeoutMs);
+
+          child.on("close", async (code) => {
+            clearTimeout(timer);
+            const detectedErrors = detectRepeatedErrors(runnerState.errorLines);
+
+            if (runnerState.timedOut) {
+              writeSubagentStatus(ctx.cwd, id, {
+                id,
+                state: "timed-out",
+                turnsUsed: runnerState.turnsUsed,
+                startedAt,
+                completedAt: Date.now(),
+                phase: currentState.phase ?? undefined,
+                error: `Subagent timed out after ${config.timeoutMs / 1000}s`,
+                detectedErrors: detectedErrors.length > 0 ? detectedErrors : undefined,
+              });
+            } else if (!runnerState.isTerminal) {
+              runnerState.isTerminal = true;
+
+              if (stdoutBuffer.trim()) {
+                processJsonlLine(runnerState, stdoutBuffer);
+              }
+
+              if (code !== 0) {
+                writeSubagentStatus(ctx.cwd, id, {
+                  id,
+                  state: "failed",
+                  turnsUsed: runnerState.turnsUsed,
+                  startedAt,
+                  completedAt: Date.now(),
+                  phase: currentState.phase ?? undefined,
+                  error: `Process exited with code ${code}. ${stderr}`.trim(),
+                  detectedErrors: detectedErrors.length > 0 ? detectedErrors : undefined,
+                });
+              } else {
+                // Get diff from workspace (AC7)
+                try {
+                  const summaryResult = await pi.exec("jj", buildDiffSummaryArgs(), { cwd: config.workspacePath });
+                  const filesChanged = parseTaskDiffFiles(summaryResult.stdout);
+                  const fullDiffResult = await pi.exec("jj", buildDiffFullArgs(), { cwd: config.workspacePath });
+
+                  const MAX_INLINE_DIFF = 100 * 1024;
+                  let diff: string | undefined;
+                  let diffPath: string | undefined;
+
+                  if (fullDiffResult.stdout.length > MAX_INLINE_DIFF) {
+                    const { join: joinPath } = await import("node:path");
+                    const { writeFileSync: writeFile } = await import("node:fs");
+                    const patchPath = joinPath(ctx.cwd, ".megapowers", "subagents", id, "diff.patch");
+                    writeFile(patchPath, fullDiffResult.stdout);
+                    diffPath = `.megapowers/subagents/${id}/diff.patch`;
+                  } else {
+                    diff = fullDiffResult.stdout;
+                  }
+
+                  writeSubagentStatus(ctx.cwd, id, {
+                    id,
+                    state: "completed",
+                    turnsUsed: runnerState.turnsUsed,
+                    startedAt,
+                    completedAt: Date.now(),
+                    phase: currentState.phase ?? undefined,
+                    filesChanged,
+                    diff,
+                    diffPath,
+                    testsPassed: runnerState.lastTestPassed ?? true,
+                    detectedErrors: detectedErrors.length > 0 ? detectedErrors : undefined,
+                  });
+                } catch {
+                  writeSubagentStatus(ctx.cwd, id, {
+                    id,
+                    state: "completed",
+                    turnsUsed: runnerState.turnsUsed,
+                    startedAt,
+                    completedAt: Date.now(),
+                    phase: currentState.phase ?? undefined,
+                    testsPassed: runnerState.lastTestPassed ?? true,
+                  });
+                }
+              }
+            }
+
+            // Always cleanup workspace (AC9)
+            try {
+              await pi.exec("jj", buildWorkspaceForgetArgs(wsName));
+            } catch {}
+          });
+
+          child.unref();
+        } catch (err) {
+          runnerState.isTerminal = true;
+          writeSubagentStatus(ctx.cwd, id, {
+            id,
+            state: "failed",
+            turnsUsed: 0,
+            startedAt,
+            completedAt: Date.now(),
+            phase: currentState.phase ?? undefined,
+            error: `Spawn failed: ${err}`,
+          });
+          try {
+            await pi.exec("jj", buildWorkspaceForgetArgs(wsName));
+          } catch {}
+        }
+      })();
+
+      return {
+        content: [{ type: "text", text: `Subagent dispatched: ${id}\nWorkspace: ${wsName}\nUse subagent_status to check progress.` }],
+        details: undefined,
+      };
+    },
+  });
+
+  // --- Tools: subagent_status ---
+
+  pi.registerTool({
+    name: "subagent_status",
+    label: "Subagent Status",
+    description: "Check the status of a running subagent. Returns JSON with state, files changed, test results, diff, and detected errors.",
+    parameters: Type.Object({
+      id: Type.String({ description: "Subagent ID returned from the subagent tool" }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const result = handleSubagentStatus(ctx.cwd, params.id);
+      if (result.error) {
+        return { content: [{ type: "text", text: `Error: ${result.error}` }], details: undefined };
+      }
+      return {
+        content: [{ type: "text", text: JSON.stringify(result.status!, null, 2) }],
+        details: undefined,
+      };
+    },
+  });
+
   // --- Commands ---
 
   pi.registerCommand("mega", {
@@ -350,7 +620,7 @@ export default function megapowers(pi: ExtensionAPI): void {
         writeState(ctx.cwd, { ...state, megaEnabled: false });
         // Hide custom tools from LLM (AC38)
         const activeTools = pi.getActiveTools().filter(
-          t => t !== "megapowers_signal" && t !== "megapowers_save_artifact"
+          t => t !== "megapowers_signal" && t !== "megapowers_save_artifact" && t !== "subagent" && t !== "subagent_status"
         );
         pi.setActiveTools(activeTools);
         if (ctx.hasUI) ctx.ui.notify("Megapowers OFF — all enforcement disabled.", "info");
@@ -362,8 +632,10 @@ export default function megapowers(pi: ExtensionAPI): void {
         writeState(ctx.cwd, { ...state, megaEnabled: true });
         // Restore custom tools (AC38)
         const activeTools = pi.getActiveTools();
-        if (!activeTools.includes("megapowers_signal")) {
-          pi.setActiveTools([...activeTools, "megapowers_signal", "megapowers_save_artifact"]);
+        const toolsToAdd = ["megapowers_signal", "megapowers_save_artifact", "subagent", "subagent_status"];
+        const missing = toolsToAdd.filter(t => !activeTools.includes(t));
+        if (missing.length > 0) {
+          pi.setActiveTools([...activeTools, ...missing]);
         }
         if (ctx.hasUI) ctx.ui.notify("Megapowers ON — enforcement restored.", "info");
         return;

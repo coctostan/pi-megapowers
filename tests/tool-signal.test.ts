@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { handleSignal } from "../extensions/megapowers/tool-signal.js";
@@ -337,6 +337,138 @@ describe("handleSignal", () => {
       expect(result.error).toBeUndefined();
       await new Promise(r => setTimeout(r, 50));
       expect(diffCalled).toBe(false);
+    });
+  });
+
+  // ======================================================================
+  // tests_failed
+  // ======================================================================
+
+  describe("tests_failed", () => {
+    it("transitions test-written to impl-allowed during code-review", () => {
+      setState(tmp, {
+        phase: "code-review",
+        tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
+      });
+
+      const result = handleSignal(tmp, "tests_failed");
+      expect(result.error).toBeUndefined();
+      expect(result.message).toContain("RED");
+
+      const state = readState(tmp);
+      expect(state.tddTaskState?.state).toBe("impl-allowed");
+    });
+
+        it("transitions test-written to impl-allowed during implement", () => {
+      setState(tmp, {
+        phase: "implement",
+        tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
+      });
+
+      const result = handleSignal(tmp, "tests_failed");
+      expect(result.error).toBeUndefined();
+      expect(result.message).toContain("RED");
+
+      const state = readState(tmp);
+      expect(state.tddTaskState).toEqual({ taskIndex: 1, state: "impl-allowed", skipped: false });
+    });
+
+    it("returns error outside implement phase", () => {
+      setState(tmp, {
+        phase: "brainstorm",
+        tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
+      });
+
+      const result = handleSignal(tmp, "tests_failed");
+      expect(result.error).toContain("tests_failed can only be called during the implement or code-review phase");
+    });
+
+    it("returns error when tddTaskState is null", () => {
+      setState(tmp, {
+        phase: "implement",
+        tddTaskState: null,
+      });
+
+      const result = handleSignal(tmp, "tests_failed");
+      expect(result.error).toContain("No test written yet");
+    });
+
+    it("returns error when already impl-allowed", () => {
+      setState(tmp, {
+        phase: "implement",
+        tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
+      });
+
+      const result = handleSignal(tmp, "tests_failed");
+      expect(result.error).toContain("already in impl-allowed");
+    });
+
+    it("returns error when state is red-pending", () => {
+      setState(tmp, {
+        phase: "implement",
+        tddTaskState: { taskIndex: 1, state: "red-pending", skipped: false },
+      });
+
+      const result = handleSignal(tmp, "tests_failed");
+      expect(result.error).toContain("No test written yet");
+    });
+  });
+
+  // ======================================================================
+  // tests_passed
+  // ======================================================================
+
+  describe("tests_passed", () => {
+    it("is accepted during code-review and does not change tddTaskState", () => {
+      setState(tmp, {
+        phase: "code-review",
+        tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
+      });
+
+      const before = readState(tmp).tddTaskState;
+      const result = handleSignal(tmp, "tests_passed");
+      const after = readState(tmp).tddTaskState;
+
+      expect(result.error).toBeUndefined();
+      expect(result.message).toContain("GREEN");
+      expect(after).toEqual(before);
+    });
+
+        it("is accepted during implement and does not change tddTaskState", () => {
+      setState(tmp, {
+        phase: "implement",
+        tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
+      });
+
+      const before = readState(tmp).tddTaskState;
+      const result = handleSignal(tmp, "tests_passed");
+      const after = readState(tmp).tddTaskState;
+
+      expect(result.error).toBeUndefined();
+      expect(result.message).toContain("GREEN");
+      expect(after).toEqual(before);
+    });
+
+    it("returns error outside implement phase", () => {
+      setState(tmp, {
+        phase: "brainstorm",
+        tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
+      });
+
+      const result = handleSignal(tmp, "tests_passed");
+      expect(result.error).toContain("tests_passed can only be called during the implement or code-review phase");
+    });
+  });
+
+  // ======================================================================
+  // megapowers_signal schema
+  // ======================================================================
+
+  describe("megapowers_signal schema", () => {
+    it("includes tests_failed and tests_passed actions", () => {
+      const indexSource = readFileSync(join(process.cwd(), "extensions/megapowers/index.ts"), "utf8");
+      expect(indexSource).toContain('Type.Literal("tests_failed")');
+      expect(indexSource).toContain('Type.Literal("tests_passed")');
     });
   });
 

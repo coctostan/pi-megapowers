@@ -1,7 +1,7 @@
 ---
 id: 10
 type: bugfix
-status: open
+status: done
 created: 2026-02-22T17:00:00.000Z
 ---
 
@@ -15,3 +15,5 @@ When subagents are actually invoked in parallel, a majority of them fail. 4 suba
 - Subagent session context missing required state
 
 Needs reproduction and diagnosis to determine which failure mode(s) are occurring.
+
+**Closed:** Premature — subagent tool not yet implemented (#25). Reopen if the problem resurfaces after #25 ships.

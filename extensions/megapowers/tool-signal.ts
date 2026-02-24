@@ -29,6 +29,10 @@ export function handleSignal(
       return handleReviewApprove(cwd);
     case "phase_next":
       return handlePhaseNext(cwd, jj);
+    case "tests_failed":
+      return handleTestsFailed(cwd);
+    case "tests_passed":
+      return handleTestsPassed(cwd);
     default:
       return { error: `Unknown signal action: ${String(action)}` };
   }
@@ -173,6 +177,46 @@ function handleTaskDone(cwd: string, jj?: JJ): SignalResult {
   return {
     message: `Task ${currentTask.index} (${currentTask.description}) marked complete. ${remaining} task${remaining === 1 ? "" : "s"} remaining. Next: Task ${nextTask.index}: ${nextTask.description}`,
   };
+}
+
+// ---------------------------------------------------------------------------
+// tests_failed
+// ---------------------------------------------------------------------------
+
+function handleTestsFailed(cwd: string): SignalResult {
+  const state = readState(cwd);
+
+  if (state.phase !== "implement" && state.phase !== "code-review") {
+    return { error: "tests_failed can only be called during the implement or code-review phase." };
+  }
+
+  if (!state.tddTaskState || state.tddTaskState.state !== "test-written") {
+    if (state.tddTaskState?.state === "impl-allowed") {
+      return { error: "TDD state is already in impl-allowed." };
+    }
+    return { error: "No test written yet, or tests have not failed yet." };
+  }
+
+  writeState(cwd, {
+    ...state,
+    tddTaskState: { ...state.tddTaskState, state: "impl-allowed" },
+  });
+
+  return { message: "Tests failed (RED ✓). Production code writes are now allowed." };
+}
+
+// ---------------------------------------------------------------------------
+// tests_passed
+// ---------------------------------------------------------------------------
+
+function handleTestsPassed(cwd: string): SignalResult {
+  const state = readState(cwd);
+
+  if (state.phase !== "implement" && state.phase !== "code-review") {
+    return { error: "tests_passed can only be called during the implement or code-review phase." };
+  }
+
+  return { message: "Tests passed (GREEN ✓)." };
 }
 
 // ---------------------------------------------------------------------------

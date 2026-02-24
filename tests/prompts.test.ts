@@ -365,6 +365,16 @@ describe("implement prompt — subagent delegation instructions", () => {
     expect(vars.remaining_tasks).toContain("Task 3");
     expect(vars.remaining_tasks).not.toMatch(/Task 3.*blocked/i);
   });
+
+  it("implement-task template instructs tests_failed signal after RED test failure", () => {
+    const template = getPhasePromptTemplate("implement");
+    expect(template).toContain('megapowers_signal({ action: "tests_failed" })');
+  });
+
+  it("implement-task template instructs tests_passed signal after GREEN test pass", () => {
+    const template = getPhasePromptTemplate("implement");
+    expect(template).toContain('megapowers_signal({ action: "tests_passed" })');
+  });
 });
 
 describe("prompt templates — new template files exist", () => {

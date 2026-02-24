@@ -1,14 +1,21 @@
 import { describe, it, expect } from "bun:test";
+import * as taskCoordinator from "../extensions/megapowers/task-coordinator.js";
 import {
   buildTaskChangeDescription,
   parseTaskDiffFiles,
   buildTaskCompletionReport,
-  shouldCreateTaskChange,
-  squashTaskChanges,
   createTaskChange,
   inspectTaskChange,
 } from "../extensions/megapowers/task-coordinator.js";
 import type { JJ } from "../extensions/megapowers/jj.js";
+
+describe("dead exports", () => {
+  it("does not export deprecated task change helpers", () => {
+    expect(taskCoordinator.shouldCreateTaskChange).toBeUndefined();
+    expect(taskCoordinator.abandonTaskChange).toBeUndefined();
+    expect(taskCoordinator.squashTaskChanges).toBeUndefined();
+  });
+});
 
 describe("buildTaskChangeDescription", () => {
   it("formats description with issue slug and task number", () => {
@@ -77,89 +84,6 @@ describe("buildTaskCompletionReport", () => {
     });
     expect(report).toContain("⚠");
     expect(report).toContain("no file changes");
-  });
-});
-
-describe("shouldCreateTaskChange", () => {
-  it("returns true when in implement phase with active task and no existing change", () => {
-    expect(shouldCreateTaskChange({
-      phase: "implement",
-      currentTaskIndex: 0,
-      tasks: [{ index: 1, description: "Do thing", completed: false, noTest: false }],
-      taskJJChanges: {},
-    })).toBe(true);
-  });
-
-  it("returns false when task already has a change ID", () => {
-    expect(shouldCreateTaskChange({
-      phase: "implement",
-      currentTaskIndex: 0,
-      tasks: [{ index: 1, description: "Do thing", completed: false, noTest: false }],
-      taskJJChanges: { 1: "existing-change" },
-    })).toBe(false);
-  });
-
-  it("returns false when not in implement phase", () => {
-    expect(shouldCreateTaskChange({
-      phase: "plan",
-      currentTaskIndex: 0,
-      tasks: [{ index: 1, description: "Do thing", completed: false, noTest: false }],
-      taskJJChanges: {},
-    })).toBe(false);
-  });
-
-  it("returns false when no tasks exist", () => {
-    expect(shouldCreateTaskChange({
-      phase: "implement",
-      currentTaskIndex: 0,
-      tasks: [],
-      taskJJChanges: {},
-    })).toBe(false);
-  });
-
-  it("returns false when currentTaskIndex is out of bounds", () => {
-    expect(shouldCreateTaskChange({
-      phase: "implement",
-      currentTaskIndex: 5,
-      tasks: [{ index: 1, description: "Do thing", completed: false, noTest: false }],
-      taskJJChanges: {},
-    })).toBe(false);
-  });
-});
-
-describe("squashTaskChanges (AC21)", () => {
-  function mockJJ(overrides: Partial<JJ> = {}): JJ {
-    return {
-      isJJRepo: async () => true,
-      getCurrentChangeId: async () => "current-id",
-      getChangeDescription: async () => "",
-      hasConflicts: async () => false,
-      newChange: async () => "new-id",
-      describe: async () => {},
-      squash: async () => {},
-      bookmarkSet: async () => {},
-      log: async () => "",
-      diff: async () => "",
-      abandon: async () => {},
-      squashInto: async () => {},
-      ...overrides,
-    };
-  }
-
-  it("calls jj.squashInto with the phase change ID", async () => {
-    let squashedInto: string | null = null;
-    const jj = mockJJ({
-      squashInto: async (id: string) => { squashedInto = id; },
-    });
-    await squashTaskChanges(jj, "phase-change-abc");
-    expect(squashedInto).toBe("phase-change-abc");
-  });
-
-  it("propagates errors from jj.squashInto", async () => {
-    const jj = mockJJ({
-      squashInto: async () => { throw new Error("squash failed"); },
-    });
-    expect(squashTaskChanges(jj, "phase-change-abc")).rejects.toThrow("squash failed");
   });
 });
 

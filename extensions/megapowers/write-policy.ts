@@ -2,10 +2,6 @@
 //
 // Pure write-policy functions — no disk I/O, no pi imports.
 // Used by tool-overrides.ts (disk-based) and satellite mode (in-memory).
-//
-// Key design (AC32-34, Task 8 fix):
-// processBashResult uses isError: boolean from createBashTool's throw behaviour
-// (createBashTool rejects / throws on non-zero exit) — NOT regex on result text.
 
 import type { Phase, TddTaskState } from "./state-machine.js";
 
@@ -32,30 +28,6 @@ const ALLOWLIST_PATTERNS = [
 
 export function isAllowlisted(filePath: string): boolean {
   for (const p of ALLOWLIST_PATTERNS) if (p.test(filePath)) return true;
-  return false;
-}
-
-// --- Test runner detection ---
-//
-// IMPORTANT: compound commands (chained with ;, &&, ||, |, newline) are NOT
-// considered test runs. This prevents false positives and security issues.
-
-const TEST_RUNNER_PATTERNS = [
-  /^\s*bun\s+test(\s|$)/,
-  /^\s*npm\s+test(\s|$)/,
-  /^\s*npx\s+(jest|vitest|mocha)(\s|$)/,
-  /^\s*pytest(\s|$)/,
-  /^\s*python\s+-m\s+pytest(\s|$)/,
-  /^\s*cargo\s+test(\s|$)/,
-  /^\s*go\s+test(\s|$)/,
-  /^\s*deno\s+test(\s|$)/,
-  /^\s*npm\s+run\s+test(\s|$)/,
-];
-
-export function isTestRunnerCommand(command: string): boolean {
-  // Reject compound commands
-  if (/[;&|\n]/.test(command)) return false;
-  for (const p of TEST_RUNNER_PATTERNS) if (p.test(command)) return true;
   return false;
 }
 

@@ -1,7 +1,7 @@
 ---
 id: 14
 type: bugfix
-status: in-progress
+status: done
 created: 2026-02-22T23:50:17.524Z
 ---
 
