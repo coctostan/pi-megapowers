@@ -1,9 +1,15 @@
 {
   "version": 1,
-  "activeIssue": null,
-  "workflow": null,
-  "phase": null,
-  "phaseHistory": [],
+  "activeIssue": "032-subagent-implementation-reliability",
+  "workflow": "feature",
+  "phase": "spec",
+  "phaseHistory": [
+    {
+      "from": "brainstorm",
+      "to": "spec",
+      "timestamp": 1771944063615
+    }
+  ],
   "reviewApproved": false,
   "currentTaskIndex": 0,
   "completedTasks": [],
