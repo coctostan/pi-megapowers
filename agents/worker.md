@@ -1,6 +1,6 @@
 ---
 name: worker
-model: claude-sonnet-4-20250514
+model: openai/gpt-5.3-codex
 tools: [read, write, edit, bash]
 thinking: full
 ---

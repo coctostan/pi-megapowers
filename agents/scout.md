@@ -1,6 +1,6 @@
 ---
 name: scout
-model: claude-sonnet-4-20250514
+model: anthropic/claude-haiku-4-5
 tools: [read, bash]
 thinking: full
 ---

@@ -1,6 +1,6 @@
 ---
 name: reviewer
-model: claude-sonnet-4-20250514
+model: anthropic/claude-sonnet-4-6
 tools: [read, bash]
 thinking: full
 ---
