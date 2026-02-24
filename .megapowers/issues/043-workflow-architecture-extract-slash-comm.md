@@ -3,7 +3,7 @@ id: 43
 type: feature
 status: open
 created: 2026-02-24T00:48:17.085Z
-sources: [27, 35]
+sources: [13, 27, 35]
 ---
 
 # Workflow architecture — extract slash commands and expose as LLM tools

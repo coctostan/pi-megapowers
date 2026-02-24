@@ -1,7 +1,7 @@
 ---
 id: 32
 type: feature
-status: in-progress
+status: done
 created: 2026-02-23T17:33:56.358Z
 sources: [25]
 ---
