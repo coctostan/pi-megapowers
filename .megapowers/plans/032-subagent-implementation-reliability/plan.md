@@ -2,11 +2,11 @@
 
 ## Summary
 
-Build `subagent` and `subagent_status` tools within megapowers, using jj workspace isolation and an async status file protocol. 19 tasks covering: agent frontmatter parsing, builtin agents, agent discovery, workspace lifecycle, status protocol, error detection, JSONL runner, context assembly, dependency validation, spawn args, async dispatch config, tool handlers, tool registration, phase availability, satellite TDD, no-auto-squash, workspace cleanup, mega off/on, and upstream tracking.
+Build `subagent` and `subagent_status` tools within megapowers, using jj workspace isolation and an async status file protocol. 14 tasks covering: agent frontmatter parsing, builtin agents, agent discovery, workspace lifecycle, status protocol, error detection, JSONL runner, context assembly, dependency validation, spawn args, async dispatch config, tool handlers, tool registration, phase availability, satellite TDD, no-auto-squash, workspace cleanup, mega off/on, and upstream tracking.
 
 **AC17 is pre-existing** — `[depends: N, M]` parsing already exists in `plan-parser.ts` with full test coverage. No task needed.
 
-### Review feedback addressed
+### Review feedback addressed (round 1)
 
 - **Task ordering**: Builtin agents (Task 2) now precede agent discovery (Task 3) so fallback tests pass.
 - **JSONL streaming runner** (Task 8): New task reads pi JSONL events from stdout, incrementally updates status.json with turn counts, error detection, and test outcomes. Satisfies AC5/AC6/AC20.
@@ -19,6 +19,15 @@ Build `subagent` and `subagent_status` tools within megapowers, using jj workspa
 - **jj-required guard**: `handleSubagentDispatch` checks `isJJRepo()` and returns clear error if false.
 - **UPSTREAM.md**: Pinned to commit `1281c04`.
 - **jj diff strategy**: Runs `jj diff --summary` with `cwd` set to workspace path so `@` refers to that workspace's working copy.
+
+### Review feedback addressed (round 2)
+
+- **AC5 `phase` field**: Added `phase?: string` to `SubagentStatus` type (Task 4). Initial status write in Task 12 stores `state.phase` from `readState(cwd)` so running subagents report the parent's current workflow phase.
+- **Agent system prompt applied**: `handleSubagentDispatch` (Task 11) now writes `agent.systemPrompt` to `.megapowers/subagents/<id>/agent-prompt.md` and passes the path as `systemPromptPath` into `buildDispatchConfig()`. Task 12 passes it through to `buildSpawnArgs()` via `--append-system-prompt`. Builtin worker/scout/reviewer bodies are now functional.
+- **Agent `thinking` forwarded**: `buildSpawnArgs()` (Task 8) now supports `--thinking <level>` flag. `DispatchConfig` (Task 10) carries `thinking` field. Task 11 passes `agent?.thinking` through. Task 12 includes it in spawn args.
+- **ESM imports in Task 12 tests**: Replaced `require()` calls with `await import()` for satellite TDD enforcement test.
+- **Summary task count**: Fixed from "19 tasks" to "14 tasks".
+- **`resolveAgent()` robustness**: Now continues searching subsequent directories when a file exists but has invalid frontmatter (parse returns null). Added test for this fallback behavior.
 
 ---
 
@@ -331,6 +340,19 @@ describe("resolveAgent", () => {
     rmSync(fakeHome, { recursive: true, force: true });
   });
 
+  it("skips files with invalid frontmatter and continues search", () => {
+    const projectAgentsDir = join(tmp, ".megapowers", "agents");
+    mkdirSync(projectAgentsDir, { recursive: true });
+    // Write a file with frontmatter missing 'name' (parse returns null)
+    writeFileSync(join(projectAgentsDir, "worker.md"), `---\nmodel: broken\n---\nNo name field.`);
+
+    // Should fall through to builtin
+    const agent = resolveAgent("worker", tmp);
+    expect(agent).not.toBeNull();
+    expect(agent!.name).toBe("worker");
+    expect(agent!.model).not.toBe("broken");
+  });
+
   it("project agent takes priority over user home agent", () => {
     const fakeHome = mkdtempSync(join(tmpdir(), "agent-home-test-"));
     const userAgentsDir = join(fakeHome, ".megapowers", "agents");
@@ -385,7 +407,9 @@ export function resolveAgent(
     if (existsSync(filepath)) {
       try {
         const content = readFileSync(filepath, "utf-8");
-        return parseAgentFrontmatter(content);
+        const parsed = parseAgentFrontmatter(content);
+        if (parsed) return parsed;
+        continue; // invalid frontmatter, try next directory
       } catch {
         continue;
       }
@@ -514,6 +538,19 @@ describe("writeSubagentStatus / readSubagentStatus", () => {
     expect(read!.diff).toContain("src/a.ts");
   });
 
+  it("includes phase field for running subagent", () => {
+    const status: SubagentStatus = {
+      id: "sa-006",
+      state: "running",
+      turnsUsed: 1,
+      startedAt: 1000,
+      phase: "implement",
+    };
+    writeSubagentStatus(tmp, "sa-006", status);
+    const read = readSubagentStatus(tmp, "sa-006");
+    expect(read!.phase).toBe("implement");
+  });
+
   it("includes detectedErrors field", () => {
     const status: SubagentStatus = {
       id: "sa-005",
@@ -544,6 +581,7 @@ export interface SubagentStatus {
   turnsUsed: number;
   startedAt: number;
   completedAt?: number;
+  phase?: string;
   filesChanged?: string[];
   diff?: string;
   testsPassed?: boolean;
@@ -1032,6 +1070,12 @@ describe("buildSpawnArgs", () => {
     expect(args).toContain("--append-system-prompt");
     expect(args).toContain("/tmp/prompt.md");
   });
+
+  it("includes thinking flag when specified", () => {
+    const args = buildSpawnArgs("task", { thinking: "full" });
+    expect(args).toContain("--thinking");
+    expect(args).toContain("full");
+  });
 });
 
 describe("buildSpawnEnv", () => {
@@ -1175,6 +1219,10 @@ export function buildSpawnArgs(prompt: string, options?: SpawnOptions): string[]
 
   if (options?.tools && options.tools.length > 0) {
     args.push("--tools", options.tools.join(","));
+  }
+
+  if (options?.thinking) {
+    args.push("--thinking", options.thinking);
   }
 
   if (options?.systemPromptPath) {
@@ -1454,6 +1502,7 @@ export interface DispatchConfig {
   timeoutMs: number;
   model?: string;
   tools?: string[];
+  thinking?: string;
   systemPromptPath?: string;
 }
 
@@ -1465,6 +1514,7 @@ export interface DispatchInput {
   timeoutMs?: number;
   model?: string;
   tools?: string[];
+  thinking?: string;
   systemPromptPath?: string;
 }
 
@@ -1480,6 +1530,7 @@ export function buildDispatchConfig(input: DispatchInput): DispatchConfig {
     timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     model: input.model,
     tools: input.tools,
+    thinking: input.thinking,
     systemPromptPath: input.systemPromptPath,
   };
 }
@@ -1607,6 +1658,24 @@ describe("handleSubagentDispatch", () => {
     });
     expect(result.error).toBeUndefined();
     expect(result.id).toBeDefined();
+  });
+
+  it("persists agent system prompt to disk and includes systemPromptPath in config", async () => {
+    const projectAgentsDir = join(tmp, ".megapowers", "agents");
+    mkdirSync(projectAgentsDir, { recursive: true });
+    writeFileSync(join(projectAgentsDir, "worker.md"), `---\nname: worker\nmodel: test-model\nthinking: full\n---\nYou are a custom worker.`);
+
+    const result = await handleSubagentDispatch(tmp, { task: "Build thing", agent: "worker" }, {
+      isJJRepo: async () => true,
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.config!.systemPromptPath).toBeDefined();
+    expect(result.config!.thinking).toBe("full");
+
+    // Verify the system prompt was written to disk
+    const { readFileSync: readFile } = await import("node:fs");
+    const promptContent = readFile(result.config!.systemPromptPath!, "utf-8");
+    expect(promptContent).toBe("You are a custom worker.");
   });
 
   it("returns DispatchConfig for spawning", async () => {
@@ -1768,6 +1837,18 @@ export async function handleSubagentDispatch(
   // Generate ID
   const id = generateSubagentId(input.taskIndex);
 
+  // Persist agent system prompt to disk so pi can load it via --append-system-prompt
+  let systemPromptPath: string | undefined;
+  if (agent?.systemPrompt) {
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const agentPromptDir = join(cwd, ".megapowers", "subagents", id);
+    mkdirSync(agentPromptDir, { recursive: true });
+    const promptPath = join(agentPromptDir, "agent-prompt.md");
+    writeFileSync(promptPath, agent.systemPrompt);
+    systemPromptPath = promptPath;
+  }
+
   // Validate task dependencies if taskIndex provided
   if (input.taskIndex !== undefined) {
     const tasks = deriveTasks(cwd, state.activeIssue);
@@ -1812,6 +1893,8 @@ export async function handleSubagentDispatch(
     timeoutMs: input.timeoutMs,
     model: agent?.model,
     tools: agent?.tools,
+    systemPromptPath,
+    thinking: agent?.thinking,
   });
 
   return { id, config };
@@ -1873,10 +1956,12 @@ describe("subagent available in all phases", () => {
 describe("satellite TDD enforcement", () => {
   it("sets PI_SUBAGENT=1 in spawn env for TDD enforcement", () => {
     // Verify contract: buildSpawnEnv sets PI_SUBAGENT=1 which triggers isSatelliteMode()
-    const { buildSpawnEnv } = require("../extensions/megapowers/subagent-runner.js");
-    const { isSatelliteMode } = require("../extensions/megapowers/satellite.js");
+    // buildSpawnEnv is already imported at top of this test file
+    // isSatelliteMode imported from satellite module
+    const { isSatelliteMode } = await import("../extensions/megapowers/satellite.js");
+    const { buildSpawnEnv: buildEnv } = await import("../extensions/megapowers/subagent-runner.js");
 
-    const env = buildSpawnEnv("sa-test");
+    const env = buildEnv("sa-test");
     expect(isSatelliteMode({ isTTY: false, env })).toBe(true);
   });
 });
@@ -1950,12 +2035,14 @@ Add after the existing `create_batch` tool registration block:
       const id = result.id!;
       const startedAt = Date.now();
 
-      // Write initial status
+      // Write initial status with parent's current workflow phase (AC5)
+      const currentState = readState(ctx.cwd);
       writeSubagentStatus(ctx.cwd, id, {
         id,
         state: "running",
         turnsUsed: 0,
         startedAt,
+        phase: currentState.phase,
       });
 
       // Create jj workspace and spawn (async, fire-and-forget)
@@ -1983,6 +2070,7 @@ Add after the existing `create_batch` tool registration block:
           const args = buildSpawnArgs(config.prompt, {
             model: config.model,
             tools: config.tools,
+            thinking: config.thinking,
             systemPromptPath: config.systemPromptPath,
           });
           const env = buildSpawnEnv(id);
@@ -2308,7 +2396,7 @@ Review pi-subagents for improvements to shared patterns quarterly or when upstre
 | 2 | 11, 12 | `subagent_status` tool registered via pi.registerTool() |
 | 3 | 6, 12 | jj workspace created via `jj workspace add` with path under `.megapowers/subagents/<id>/workspace` |
 | 4 | 8, 12 | Detached pi process with `--mode json -p --no-session`, PI_SUBAGENT=1, returns ID |
-| 5 | 4, 8, 12 | Status.json updated incrementally via JSONL streaming (turns, errors) |
+| 5 | 4, 8, 12 | Status.json updated incrementally via JSONL streaming (turns, phase, errors) |
 | 6 | 4, 8, 11, 12 | subagent_status returns structured data: state, files, tests, turns, detected errors |
 | 7 | 4, 11, 12 | Completed status includes jj diff (run with cwd=workspace) |
 | 8 | 11 (no-auto-squash test) | Status returns diff only, no squash call |
