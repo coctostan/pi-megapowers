@@ -2,7 +2,7 @@
   "version": 1,
   "activeIssue": "034-030-cleanup-remove-deprecated-fields-and-dead-code",
   "workflow": "feature",
-  "phase": "implement",
+  "phase": "done",
   "phaseHistory": [
     {
       "from": "brainstorm",
@@ -23,15 +23,32 @@
       "from": "review",
       "to": "implement",
       "timestamp": 1771887284801
+    },
+    {
+      "from": "implement",
+      "to": "verify",
+      "timestamp": 1771888591950
+    },
+    {
+      "from": "verify",
+      "to": "code-review",
+      "timestamp": 1771888753081
+    },
+    {
+      "from": "code-review",
+      "to": "done",
+      "timestamp": 1771889145480
     }
   ],
   "reviewApproved": true,
-  "currentTaskIndex": 4,
+  "currentTaskIndex": 5,
   "completedTasks": [
     1,
     2,
     3,
-    4
+    4,
+    5,
+    6
   ],
   "tddTaskState": null,
   "taskJJChanges": {},
