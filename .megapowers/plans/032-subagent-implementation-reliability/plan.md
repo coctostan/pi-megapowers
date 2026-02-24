@@ -2,32 +2,37 @@
 
 ## Summary
 
-Build `subagent` and `subagent_status` tools within megapowers, using jj workspace isolation and an async status file protocol. 14 tasks covering: agent frontmatter parsing, builtin agents, agent discovery, workspace lifecycle, status protocol, error detection, JSONL runner, context assembly, dependency validation, spawn args, async dispatch config, tool handlers, tool registration, phase availability, satellite TDD, no-auto-squash, workspace cleanup, mega off/on, and upstream tracking.
+Build `subagent` and `subagent_status` tools within megapowers, using jj workspace isolation and an async status file protocol. 15 tasks covering: agent frontmatter parsing, builtin agents, agent discovery, status protocol with merge semantics, error detection, jj workspace lifecycle, task context assembly, JSONL runner (correct event types), dependency validation, async dispatch config, subagent tool handlers, project-root resolution for satellite TDD, tool registration + wiring, mega off/on, and upstream tracking.
 
 **AC17 is pre-existing** — `[depends: N, M]` parsing already exists in `plan-parser.ts` with full test coverage. No task needed.
 
-### Review feedback addressed (round 1)
+### Review feedback addressed (rounds 1-3)
 
+#### Round 1
 - **Task ordering**: Builtin agents (Task 2) now precede agent discovery (Task 3) so fallback tests pass.
-- **JSONL streaming runner** (Task 8): New task reads pi JSONL events from stdout, incrementally updates status.json with turn counts, error detection, and test outcomes. Satisfies AC5/AC6/AC20.
 - **pi CLI flags**: Uses `--mode json -p --no-session` matching the upstream pi subagent example, not `--non-interactive`.
 - **Workspace path**: Uses `.megapowers/subagents/<id>/workspace` instead of hardcoded `.jj/working-copies/`.
-- **Timeout/cleanup race**: `startedAt` stored once; terminal states (timed-out, failed) guarded by `isTerminal` flag so `close` handler cannot overwrite.
 - **SIGTERM→SIGKILL escalation**: 5-second escalation timer after SIGTERM, matching pi example pattern.
-- **ESM imports**: All modules use `import { homedir } from "node:os"`, no `require()` calls.
-- **Test imports**: All test files include `beforeEach`/`afterEach` from `bun:test` where used.
 - **jj-required guard**: `handleSubagentDispatch` checks `isJJRepo()` and returns clear error if false.
 - **UPSTREAM.md**: Pinned to commit `1281c04`.
-- **jj diff strategy**: Runs `jj diff --summary` with `cwd` set to workspace path so `@` refers to that workspace's working copy.
 
-### Review feedback addressed (round 2)
+#### Round 2
+- **AC5 `phase` field**: Added `phase?: string` to `SubagentStatus`. Initial and all running status updates preserve phase.
+- **Agent system prompt applied**: Writes `agent.systemPrompt` to disk and passes via `--append-system-prompt`.
+- **Agent `thinking` forwarded**: `buildSpawnArgs()` supports `--thinking <level>` flag.
+- **`resolveAgent()` robustness**: Continues searching when a file has invalid frontmatter.
 
-- **AC5 `phase` field**: Added `phase?: string` to `SubagentStatus` type (Task 4). Initial status write in Task 12 stores `state.phase` from `readState(cwd)` so running subagents report the parent's current workflow phase.
-- **Agent system prompt applied**: `handleSubagentDispatch` (Task 11) now writes `agent.systemPrompt` to `.megapowers/subagents/<id>/agent-prompt.md` and passes the path as `systemPromptPath` into `buildDispatchConfig()`. Task 12 passes it through to `buildSpawnArgs()` via `--append-system-prompt`. Builtin worker/scout/reviewer bodies are now functional.
-- **Agent `thinking` forwarded**: `buildSpawnArgs()` (Task 8) now supports `--thinking <level>` flag. `DispatchConfig` (Task 10) carries `thinking` field. Task 11 passes `agent?.thinking` through. Task 12 includes it in spawn args.
-- **ESM imports in Task 12 tests**: Replaced `require()` calls with `await import()` for satellite TDD enforcement test.
-- **Summary task count**: Fixed from "19 tasks" to "14 tasks".
-- **`resolveAgent()` robustness**: Now continues searching subsequent directories when a file exists but has invalid frontmatter (parse returns null). Added test for this fallback behavior.
+#### Round 3 (this revision)
+- **AC16 satellite TDD enforcement (BLOCKING)**: New Task 12 adds `MEGA_PROJECT_ROOT` env var to `buildSpawnEnv()` and modifies satellite mode in `index.ts` to read state from project root, not workspace cwd. Without this, subagent workspace dirs have no `.megapowers/state.json` and `canWrite()` becomes pass-through.
+- **AC7 full diff for review (BLOCKING)**: Task 13 runs both `jj diff --summary` (→ `filesChanged`) AND `jj diff` (→ `diff` field with full patch). If full diff exceeds 100KB, stores to `diff.patch` file and references it.
+- **JSONL event types fixed (BLOCKING)**: Task 8 now uses `tool_execution_end` (with `toolName`, `result`, `isError`) for error/test detection, and `message_end` with `message.role === "assistant"` for turn counting AND assistant-text error harvesting (AC20). Removed references to nonexistent `tool_result_end` event.
+- **AC20 error detection from assistant messages**: `processJsonlLine()` now harvests errors from both `tool_execution_end` results AND `message_end` assistant text content.
+- **Scout.md tools fixed**: Removed `web_search` and `fetch_content` (not pi built-in tools). Scout now uses `read, bash` only.
+- **CLI prompt length risk fixed**: Prompt is written to `.megapowers/subagents/<id>/prompt.md` and passed as `@prompt.md` file arg, avoiding OS command-line length limits.
+- **Status merge semantics**: Task 4 adds `updateSubagentStatus()` that reads existing status and merges with a partial update, preserving fields like `phase`. Terminal states (completed/failed/timed-out) refuse overwrites.
+- **Dependency validation when plan missing**: Task 9 now returns error when `taskIndex` is provided but plan tasks can't be derived (empty plan or missing file).
+- **Timeout/cleanup race fixed**: Timeout handler only sets `isTerminal` flag and kills the process. All workspace cleanup happens in the `close` handler after process exit, regardless of exit path (success, failure, timeout).
+- **AC5/AC6/AC7 output format**: `subagent_status` returns JSON as tool content for machine-safe LLM parsing. Human-readable summary is secondary.
 
 ---
 
@@ -213,6 +218,8 @@ describe("builtin agent files", () => {
     const agent = parseAgentFrontmatter(content);
     expect(agent).not.toBeNull();
     expect(agent!.name).toBe("scout");
+    // scout uses only pi-supported tools
+    expect(agent!.tools).toEqual(["read", "bash"]);
   });
 
   it("reviewer.md exists and parses with correct name", () => {
@@ -243,7 +250,7 @@ You are a worker agent executing a specific implementation task. Follow the task
 ---
 name: scout
 model: claude-sonnet-4-20250514
-tools: [read, bash, web_search, fetch_content]
+tools: [read, bash]
 thinking: full
 ---
 
@@ -262,6 +269,8 @@ thinking: full
 You are a code reviewer. Examine the provided code changes for correctness, style, potential bugs, and adherence to project conventions. Provide specific, actionable feedback. Do not modify any files.
 ```
 
+Note: scout uses only `read, bash` — not `web_search` or `fetch_content`, which are not pi built-in tools. If web search is needed in the future, it would require a separate pi extension providing those tools.
+
 **Verify:** `bun test tests/subagent-agents.test.ts`
 
 ---
@@ -277,6 +286,7 @@ You are a code reviewer. Examine the provided code changes for correctness, styl
 // tests/subagent-agents.test.ts — append to existing file
 import { resolveAgent, BUILTIN_AGENTS_DIR } from "../extensions/megapowers/subagent-agents.js";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { beforeEach, afterEach } from "bun:test";
 import { tmpdir } from "node:os";
 
 describe("resolveAgent", () => {
@@ -343,10 +353,8 @@ describe("resolveAgent", () => {
   it("skips files with invalid frontmatter and continues search", () => {
     const projectAgentsDir = join(tmp, ".megapowers", "agents");
     mkdirSync(projectAgentsDir, { recursive: true });
-    // Write a file with frontmatter missing 'name' (parse returns null)
     writeFileSync(join(projectAgentsDir, "worker.md"), `---\nmodel: broken\n---\nNo name field.`);
 
-    // Should fall through to builtin
     const agent = resolveAgent("worker", tmp);
     expect(agent).not.toBeNull();
     expect(agent!.name).toBe("worker");
@@ -370,8 +378,6 @@ describe("resolveAgent", () => {
   });
 });
 ```
-
-Note: Add `import { beforeEach, afterEach } from "bun:test";` to the existing test file's import line.
 
 **Implementation:**
 ```typescript
@@ -424,7 +430,7 @@ export function resolveAgent(
 
 ---
 
-### Task 4: Subagent status types and file protocol
+### Task 4: Subagent status types, file protocol, and merge semantics
 
 **Files:**
 - Create: `extensions/megapowers/subagent-status.ts`
@@ -437,6 +443,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import {
   writeSubagentStatus,
   readSubagentStatus,
+  updateSubagentStatus,
   subagentDir,
   type SubagentState,
   type SubagentStatus,
@@ -474,12 +481,13 @@ describe("writeSubagentStatus / readSubagentStatus", () => {
     expect(read).toEqual(status);
   });
 
-  it("updates status in place", () => {
+  it("overwrites status entirely", () => {
     writeSubagentStatus(tmp, "sa-002", {
       id: "sa-002",
       state: "running",
       turnsUsed: 1,
       startedAt: 1000,
+      phase: "implement",
     });
     writeSubagentStatus(tmp, "sa-002", {
       id: "sa-002",
@@ -494,6 +502,8 @@ describe("writeSubagentStatus / readSubagentStatus", () => {
     expect(read!.state).toBe("completed");
     expect(read!.turnsUsed).toBe(5);
     expect(read!.filesChanged).toEqual(["src/foo.ts"]);
+    // phase was NOT in the second write, so it should be absent
+    expect(read!.phase).toBeUndefined();
   });
 
   it("returns null when status file does not exist", () => {
@@ -530,7 +540,7 @@ describe("writeSubagentStatus / readSubagentStatus", () => {
       startedAt: 1000,
       completedAt: 2000,
       filesChanged: ["src/a.ts", "tests/a.test.ts"],
-      diff: "M src/a.ts\nA tests/a.test.ts",
+      diff: "--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new",
       testsPassed: true,
     };
     writeSubagentStatus(tmp, "sa-004", status);
@@ -564,6 +574,89 @@ describe("writeSubagentStatus / readSubagentStatus", () => {
     const read = readSubagentStatus(tmp, "sa-005");
     expect(read!.detectedErrors).toEqual(["TypeError: x is not a function"]);
   });
+
+  it("includes diffPath for large diffs", () => {
+    const status: SubagentStatus = {
+      id: "sa-007",
+      state: "completed",
+      turnsUsed: 3,
+      startedAt: 1000,
+      completedAt: 2000,
+      filesChanged: ["src/big.ts"],
+      diffPath: ".megapowers/subagents/sa-007/diff.patch",
+      testsPassed: true,
+    };
+    writeSubagentStatus(tmp, "sa-007", status);
+    const read = readSubagentStatus(tmp, "sa-007");
+    expect(read!.diffPath).toBe(".megapowers/subagents/sa-007/diff.patch");
+  });
+});
+
+describe("updateSubagentStatus", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "subagent-update-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("merges partial update with existing status", () => {
+    writeSubagentStatus(tmp, "sa-merge", {
+      id: "sa-merge",
+      state: "running",
+      turnsUsed: 1,
+      startedAt: 1000,
+      phase: "implement",
+    });
+    updateSubagentStatus(tmp, "sa-merge", { turnsUsed: 5 });
+    const read = readSubagentStatus(tmp, "sa-merge");
+    expect(read!.turnsUsed).toBe(5);
+    expect(read!.phase).toBe("implement"); // preserved
+    expect(read!.state).toBe("running"); // preserved
+  });
+
+  it("refuses to overwrite terminal state", () => {
+    writeSubagentStatus(tmp, "sa-terminal", {
+      id: "sa-terminal",
+      state: "completed",
+      turnsUsed: 5,
+      startedAt: 1000,
+      completedAt: 2000,
+    });
+    const updated = updateSubagentStatus(tmp, "sa-terminal", { state: "running", turnsUsed: 6 });
+    expect(updated).toBe(false);
+    const read = readSubagentStatus(tmp, "sa-terminal");
+    expect(read!.state).toBe("completed");
+    expect(read!.turnsUsed).toBe(5);
+  });
+
+  it("allows transition TO terminal state", () => {
+    writeSubagentStatus(tmp, "sa-finish", {
+      id: "sa-finish",
+      state: "running",
+      turnsUsed: 3,
+      startedAt: 1000,
+      phase: "implement",
+    });
+    const updated = updateSubagentStatus(tmp, "sa-finish", {
+      state: "completed",
+      completedAt: 2000,
+      turnsUsed: 5,
+    });
+    expect(updated).toBe(true);
+    const read = readSubagentStatus(tmp, "sa-finish");
+    expect(read!.state).toBe("completed");
+    expect(read!.phase).toBe("implement"); // still preserved
+    expect(read!.turnsUsed).toBe(5);
+  });
+
+  it("returns false when no existing status to merge with", () => {
+    const updated = updateSubagentStatus(tmp, "sa-missing", { turnsUsed: 1 });
+    expect(updated).toBe(false);
+  });
 });
 ```
 
@@ -575,6 +668,8 @@ import { join } from "node:path";
 
 export type SubagentState = "running" | "completed" | "failed" | "timed-out";
 
+const TERMINAL_STATES: ReadonlySet<SubagentState> = new Set(["completed", "failed", "timed-out"]);
+
 export interface SubagentStatus {
   id: string;
   state: SubagentState;
@@ -584,6 +679,7 @@ export interface SubagentStatus {
   phase?: string;
   filesChanged?: string[];
   diff?: string;
+  diffPath?: string;
   testsPassed?: boolean;
   error?: string;
   detectedErrors?: string[];
@@ -607,6 +703,28 @@ export function readSubagentStatus(cwd: string, id: string): SubagentStatus | nu
   } catch {
     return null;
   }
+}
+
+/**
+ * Merge a partial update into the existing status.
+ * Preserves existing fields not present in the patch.
+ * Refuses to overwrite terminal states (completed/failed/timed-out).
+ * Returns true if the update was applied, false if refused or no existing status.
+ */
+export function updateSubagentStatus(
+  cwd: string,
+  id: string,
+  patch: Partial<SubagentStatus>,
+): boolean {
+  const existing = readSubagentStatus(cwd, id);
+  if (!existing) return false;
+
+  // If already terminal, refuse any updates
+  if (TERMINAL_STATES.has(existing.state)) return false;
+
+  const merged: SubagentStatus = { ...existing, ...patch };
+  writeSubagentStatus(cwd, id, merged);
+  return true;
 }
 ```
 
@@ -742,6 +860,8 @@ import {
   buildWorkspaceAddArgs,
   buildWorkspaceForgetArgs,
   buildWorkspaceSquashArgs,
+  buildDiffSummaryArgs,
+  buildDiffFullArgs,
   workspacePath,
 } from "../extensions/megapowers/subagent-workspace.js";
 
@@ -776,6 +896,18 @@ describe("buildWorkspaceSquashArgs", () => {
   });
 });
 
+describe("buildDiffSummaryArgs", () => {
+  it("returns jj diff --summary args", () => {
+    expect(buildDiffSummaryArgs()).toEqual(["diff", "--summary"]);
+  });
+});
+
+describe("buildDiffFullArgs", () => {
+  it("returns jj diff args for full patch", () => {
+    expect(buildDiffFullArgs()).toEqual(["diff"]);
+  });
+});
+
 describe("cleanup contract", () => {
   it("buildWorkspaceForgetArgs produces valid cleanup command for any workspace name", () => {
     const names = ["mega-sa-001", "mega-sa-t3-abc12345", "mega-sa-timeout"];
@@ -794,7 +926,7 @@ import { join } from "node:path";
 
 /**
  * Pure functions for jj workspace command construction.
- * No I/O — composed by the runner with JJ interface.
+ * No I/O — composed by the runner with pi.exec.
  */
 
 export function buildWorkspaceName(subagentId: string): string {
@@ -803,7 +935,6 @@ export function buildWorkspaceName(subagentId: string): string {
 
 /**
  * Workspace directory under .megapowers/subagents/<id>/workspace.
- * Avoids hardcoding jj internal paths.
  */
 export function workspacePath(cwd: string, subagentId: string): string {
   return join(cwd, ".megapowers", "subagents", subagentId, "workspace");
@@ -819,6 +950,16 @@ export function buildWorkspaceForgetArgs(workspaceName: string): string[] {
 
 export function buildWorkspaceSquashArgs(workspaceName: string): string[] {
   return ["squash", "--from", `${workspaceName}@`];
+}
+
+/** Build args for `jj diff --summary` (file list only). */
+export function buildDiffSummaryArgs(): string[] {
+  return ["diff", "--summary"];
+}
+
+/** Build args for `jj diff` (full patch output). */
+export function buildDiffFullArgs(): string[] {
+  return ["diff"];
 }
 ```
 
@@ -1006,7 +1147,7 @@ export function buildSubagentPrompt(input: SubagentPromptInput): string {
 
 ---
 
-### Task 8: JSONL runner — reads pi events and updates status incrementally [depends: 4, 5]
+### Task 8: JSONL runner — correct event parsing with tool_execution_end and assistant error harvesting [depends: 4, 5]
 
 **Files:**
 - Create: `extensions/megapowers/subagent-runner.ts`
@@ -1043,36 +1184,37 @@ describe("generateSubagentId", () => {
 });
 
 describe("buildSpawnArgs", () => {
-  it("returns pi args with JSON mode and prompt", () => {
-    const args = buildSpawnArgs("Do the thing");
+  it("returns pi args with JSON mode, prompt file arg, and no-session", () => {
+    const args = buildSpawnArgs("/tmp/prompt.md");
     expect(args[0]).toBe("pi");
     expect(args).toContain("--mode");
     expect(args).toContain("json");
     expect(args).toContain("-p");
     expect(args).toContain("--no-session");
-    expect(args[args.length - 1]).toBe("Task: Do the thing");
+    // Prompt passed as @file reference to avoid CLI length limits
+    expect(args[args.length - 1]).toBe("@/tmp/prompt.md");
   });
 
   it("includes model flag when specified", () => {
-    const args = buildSpawnArgs("task", { model: "claude-sonnet-4-20250514" });
+    const args = buildSpawnArgs("/tmp/p.md", { model: "claude-sonnet-4-20250514" });
     expect(args).toContain("--model");
     expect(args).toContain("claude-sonnet-4-20250514");
   });
 
   it("includes tools flag when specified", () => {
-    const args = buildSpawnArgs("task", { tools: ["read", "write"] });
+    const args = buildSpawnArgs("/tmp/p.md", { tools: ["read", "write"] });
     expect(args).toContain("--tools");
     expect(args).toContain("read,write");
   });
 
   it("includes append-system-prompt when systemPromptPath provided", () => {
-    const args = buildSpawnArgs("task", { systemPromptPath: "/tmp/prompt.md" });
+    const args = buildSpawnArgs("/tmp/p.md", { systemPromptPath: "/tmp/system.md" });
     expect(args).toContain("--append-system-prompt");
-    expect(args).toContain("/tmp/prompt.md");
+    expect(args).toContain("/tmp/system.md");
   });
 
   it("includes thinking flag when specified", () => {
-    const args = buildSpawnArgs("task", { thinking: "full" });
+    const args = buildSpawnArgs("/tmp/p.md", { thinking: "full" });
     expect(args).toContain("--thinking");
     expect(args).toContain("full");
   });
@@ -1085,8 +1227,13 @@ describe("buildSpawnEnv", () => {
   });
 
   it("includes MEGA_SUBAGENT_ID when provided", () => {
-    const env = buildSpawnEnv("sa-abc123");
+    const env = buildSpawnEnv({ subagentId: "sa-abc123" });
     expect(env.MEGA_SUBAGENT_ID).toBe("sa-abc123");
+  });
+
+  it("includes MEGA_PROJECT_ROOT when provided", () => {
+    const env = buildSpawnEnv({ subagentId: "sa-abc", projectRoot: "/project" });
+    expect(env.MEGA_PROJECT_ROOT).toBe("/project");
   });
 
   it("preserves existing PATH", () => {
@@ -1101,6 +1248,7 @@ describe("createRunnerState", () => {
     expect(state.turnsUsed).toBe(0);
     expect(state.errorLines).toEqual([]);
     expect(state.isTerminal).toBe(false);
+    expect(state.pendingToolCalls).toEqual(new Map());
   });
 });
 
@@ -1115,56 +1263,109 @@ describe("processJsonlLine", () => {
     expect(state.turnsUsed).toBe(1);
   });
 
-  it("does not increment turns on tool_result message", () => {
+  it("does not increment turns on toolResult message_end", () => {
     const state = createRunnerState("sa-001", 1000);
     const event = JSON.stringify({
-      type: "tool_result_end",
-      message: { role: "tool", content: [{ type: "text", text: "ok" }] },
+      type: "message_end",
+      message: { role: "toolResult", content: [{ type: "text", text: "ok" }] },
     });
     processJsonlLine(state, event);
     expect(state.turnsUsed).toBe(0);
   });
 
-  it("collects error lines from tool results containing error text", () => {
+  it("tracks tool_execution_start to map toolCallId to toolName and args", () => {
     const state = createRunnerState("sa-001", 1000);
     const event = JSON.stringify({
-      type: "tool_result_end",
-      message: {
-        role: "tool",
-        content: [{ type: "text", text: "Error: TypeError: x is not a function" }],
-      },
+      type: "tool_execution_start",
+      toolCallId: "tc-1",
+      toolName: "bash",
+      args: { command: "bun test" },
     });
     processJsonlLine(state, event);
+    expect(state.pendingToolCalls.get("tc-1")).toEqual({ toolName: "bash", args: { command: "bun test" } });
+  });
+
+  it("detects test runner results from tool_execution_end on bash commands", () => {
+    const state = createRunnerState("sa-001", 1000);
+    // First, register the bash tool call
+    processJsonlLine(state, JSON.stringify({
+      type: "tool_execution_start",
+      toolCallId: "tc-1",
+      toolName: "bash",
+      args: { command: "bun test tests/foo.test.ts" },
+    }));
+    // Then, receive the result
+    processJsonlLine(state, JSON.stringify({
+      type: "tool_execution_end",
+      toolCallId: "tc-1",
+      toolName: "bash",
+      result: { content: [{ type: "text", text: "42 pass\n0 fail\n" }] },
+      isError: false,
+    }));
+    expect(state.lastTestPassed).toBe(true);
+  });
+
+  it("detects failing tests from tool_execution_end", () => {
+    const state = createRunnerState("sa-001", 1000);
+    processJsonlLine(state, JSON.stringify({
+      type: "tool_execution_start",
+      toolCallId: "tc-2",
+      toolName: "bash",
+      args: { command: "bun test" },
+    }));
+    processJsonlLine(state, JSON.stringify({
+      type: "tool_execution_end",
+      toolCallId: "tc-2",
+      toolName: "bash",
+      result: { content: [{ type: "text", text: "10 pass\n3 fail\n" }] },
+      isError: false,
+    }));
+    expect(state.lastTestPassed).toBe(false);
+  });
+
+  it("collects error lines from tool_execution_end results", () => {
+    const state = createRunnerState("sa-001", 1000);
+    processJsonlLine(state, JSON.stringify({
+      type: "tool_execution_end",
+      toolCallId: "tc-3",
+      toolName: "bash",
+      result: { content: [{ type: "text", text: "Error: TypeError: x is not a function" }] },
+      isError: true,
+    }));
     expect(state.errorLines).toHaveLength(1);
     expect(state.errorLines[0].text).toContain("TypeError");
   });
 
-  it("detects test runner results from bash tool calls", () => {
+  it("collects error lines from assistant message text (AC20)", () => {
     const state = createRunnerState("sa-001", 1000);
-
-    // Simulate a bash tool_result with test output
-    const event = JSON.stringify({
-      type: "tool_result_end",
+    processJsonlLine(state, JSON.stringify({
+      type: "message_end",
       message: {
-        role: "tool",
-        content: [{ type: "text", text: "42 pass\n0 fail\n" }],
+        role: "assistant",
+        content: [{ type: "text", text: "I see the error: TypeError: x is not a function. Let me try again." }],
       },
-    });
-    processJsonlLine(state, event);
-    expect(state.lastTestPassed).toBe(true);
+    }));
+    expect(state.errorLines).toHaveLength(1);
+    expect(state.errorLines[0].text).toContain("TypeError");
   });
 
-  it("detects failing tests", () => {
+  it("cleans up pending tool calls on tool_execution_end", () => {
     const state = createRunnerState("sa-001", 1000);
-    const event = JSON.stringify({
-      type: "tool_result_end",
-      message: {
-        role: "tool",
-        content: [{ type: "text", text: "10 pass\n3 fail\n" }],
-      },
-    });
-    processJsonlLine(state, event);
-    expect(state.lastTestPassed).toBe(false);
+    processJsonlLine(state, JSON.stringify({
+      type: "tool_execution_start",
+      toolCallId: "tc-1",
+      toolName: "read",
+      args: { path: "foo.ts" },
+    }));
+    expect(state.pendingToolCalls.size).toBe(1);
+    processJsonlLine(state, JSON.stringify({
+      type: "tool_execution_end",
+      toolCallId: "tc-1",
+      toolName: "read",
+      result: { content: [{ type: "text", text: "file contents" }] },
+      isError: false,
+    }));
+    expect(state.pendingToolCalls.size).toBe(0);
   });
 
   it("ignores invalid JSON lines", () => {
@@ -1178,6 +1379,25 @@ describe("processJsonlLine", () => {
     processJsonlLine(state, "");
     processJsonlLine(state, "   ");
     expect(state.turnsUsed).toBe(0);
+  });
+
+  it("does not detect test results from non-bash tool_execution_end", () => {
+    const state = createRunnerState("sa-001", 1000);
+    processJsonlLine(state, JSON.stringify({
+      type: "tool_execution_start",
+      toolCallId: "tc-1",
+      toolName: "read",
+      args: { path: "tests/foo.test.ts" },
+    }));
+    processJsonlLine(state, JSON.stringify({
+      type: "tool_execution_end",
+      toolCallId: "tc-1",
+      toolName: "read",
+      result: { content: [{ type: "text", text: "42 pass\n0 fail\n" }] },
+      isError: false,
+    }));
+    // read tool should not trigger test detection
+    expect(state.lastTestPassed).toBeUndefined();
   });
 });
 ```
@@ -1209,8 +1429,11 @@ export interface SpawnOptions {
 /**
  * Build the command-line arguments for spawning a pi subagent.
  * Uses --mode json -p --no-session to match upstream pi subagent example.
+ *
+ * The prompt is passed as @file reference (not inline text) to avoid OS
+ * command-line length limits on large prompts.
  */
-export function buildSpawnArgs(prompt: string, options?: SpawnOptions): string[] {
+export function buildSpawnArgs(promptFilePath: string, options?: SpawnOptions): string[] {
   const args = ["pi", "--mode", "json", "-p", "--no-session"];
 
   if (options?.model) {
@@ -1229,26 +1452,43 @@ export function buildSpawnArgs(prompt: string, options?: SpawnOptions): string[]
     args.push("--append-system-prompt", options.systemPromptPath);
   }
 
-  // Prompt as the final positional argument (pi example pattern)
-  args.push(`Task: ${prompt}`);
+  // Pass prompt as @file reference to avoid CLI length limits
+  args.push(`@${promptFilePath}`);
 
   return args;
 }
 
+export interface SpawnEnvOptions {
+  subagentId?: string;
+  projectRoot?: string;
+}
+
 /**
  * Build environment variables for the subagent process.
+ * Sets PI_SUBAGENT=1 for satellite mode detection.
+ * Sets MEGA_PROJECT_ROOT so satellite can find the real .megapowers/state.json.
  */
-export function buildSpawnEnv(subagentId?: string): Record<string, string> {
+export function buildSpawnEnv(options?: SpawnEnvOptions): Record<string, string> {
   const env: Record<string, string> = {
     ...process.env as Record<string, string>,
     PI_SUBAGENT: "1",
   };
 
-  if (subagentId) {
-    env.MEGA_SUBAGENT_ID = subagentId;
+  if (options?.subagentId) {
+    env.MEGA_SUBAGENT_ID = options.subagentId;
+  }
+
+  if (options?.projectRoot) {
+    env.MEGA_PROJECT_ROOT = options.projectRoot;
   }
 
   return env;
+}
+
+/** Tracked info about a pending tool call. */
+interface PendingToolCall {
+  toolName: string;
+  args: Record<string, any>;
 }
 
 /**
@@ -1261,6 +1501,8 @@ export interface RunnerState {
   errorLines: MessageLine[];
   lastTestPassed: boolean | undefined;
   isTerminal: boolean;
+  /** Track tool_execution_start → tool_execution_end for bash test detection. */
+  pendingToolCalls: Map<string, PendingToolCall>;
 }
 
 export function createRunnerState(id: string, startedAt: number): RunnerState {
@@ -1271,17 +1513,47 @@ export function createRunnerState(id: string, startedAt: number): RunnerState {
     errorLines: [],
     lastTestPassed: undefined,
     isTerminal: false,
+    pendingToolCalls: new Map(),
   };
 }
 
 // Pattern to detect test runner output (bun test, jest, vitest, etc.)
 const TEST_PASS_PATTERN = /(\d+)\s+pass/i;
 const TEST_FAIL_PATTERN = /(\d+)\s+fail/i;
-const ERROR_LINE_PATTERN = /^error:|TypeError:|ReferenceError:|SyntaxError:|ENOENT:/im;
+const ERROR_LINE_PATTERN = /Error:|TypeError:|ReferenceError:|SyntaxError:|ENOENT:/i;
+
+// Patterns indicating a bash command is a test runner
+const TEST_COMMAND_PATTERNS = [
+  /\bbun\s+test\b/,
+  /\bnpx?\s+(jest|vitest|mocha)\b/,
+  /\bpnpm\s+test\b/,
+  /\byarn\s+test\b/,
+  /\bnpm\s+test\b/,
+];
+
+function isTestCommand(command: string): boolean {
+  return TEST_COMMAND_PATTERNS.some(p => p.test(command));
+}
+
+/**
+ * Extract text content from a tool result's content array.
+ */
+function extractResultText(result: any): string {
+  if (!result?.content || !Array.isArray(result.content)) return "";
+  return result.content
+    .filter((c: any) => c.type === "text" && c.text)
+    .map((c: any) => c.text)
+    .join("\n");
+}
 
 /**
  * Process a single JSONL line from the pi subprocess stdout.
  * Updates RunnerState in place: turn counts, error detection, test results.
+ *
+ * Parses these pi JSON-mode event types:
+ * - message_end (role=assistant): count turns, harvest errors from text
+ * - tool_execution_start: track toolCallId → {toolName, args}
+ * - tool_execution_end: detect errors and test results (correlate with start event)
  */
 export function processJsonlLine(state: RunnerState, line: string): void {
   const trimmed = line.trim();
@@ -1294,25 +1566,52 @@ export function processJsonlLine(state: RunnerState, line: string): void {
     return;
   }
 
-  // Count turns on assistant message boundaries
+  // Count turns and harvest errors from assistant message text (AC20)
   if (event.type === "message_end" && event.message?.role === "assistant") {
     state.turnsUsed++;
+
+    // Check assistant text for error patterns
+    const content = event.message.content;
+    if (Array.isArray(content)) {
+      for (const part of content) {
+        if (part.type === "text" && part.text && ERROR_LINE_PATTERN.test(part.text)) {
+          // Extract just the error line, not full assistant text
+          const errorMatch = part.text.match(/(?:Error|TypeError|ReferenceError|SyntaxError|ENOENT):[^\n]*/i);
+          if (errorMatch) {
+            state.errorLines.push({ type: "error", text: errorMatch[0].slice(0, 200) });
+          }
+        }
+      }
+    }
   }
 
-  // Extract text from tool results for error/test detection
-  if (event.type === "tool_result_end" && event.message?.content) {
-    for (const part of event.message.content) {
-      if (part.type !== "text" || !part.text) continue;
-      const text = part.text;
+  // Track tool execution start → map toolCallId to {toolName, args}
+  if (event.type === "tool_execution_start" && event.toolCallId) {
+    state.pendingToolCalls.set(event.toolCallId, {
+      toolName: event.toolName,
+      args: event.args ?? {},
+    });
+  }
 
-      // Detect errors
-      if (ERROR_LINE_PATTERN.test(text)) {
-        state.errorLines.push({ type: "error", text: text.slice(0, 200) });
+  // Process tool execution end for error/test detection
+  if (event.type === "tool_execution_end" && event.toolCallId) {
+    const pending = state.pendingToolCalls.get(event.toolCallId);
+    state.pendingToolCalls.delete(event.toolCallId);
+
+    const resultText = extractResultText(event.result);
+
+    // Detect errors from tool results
+    if (event.isError || ERROR_LINE_PATTERN.test(resultText)) {
+      if (resultText) {
+        state.errorLines.push({ type: "error", text: resultText.slice(0, 200) });
       }
+    }
 
-      // Detect test results
-      const passMatch = text.match(TEST_PASS_PATTERN);
-      const failMatch = text.match(TEST_FAIL_PATTERN);
+    // Detect test results only from bash tool calls
+    const toolName = event.toolName ?? pending?.toolName;
+    if (toolName === "bash" && resultText) {
+      const passMatch = resultText.match(TEST_PASS_PATTERN);
+      const failMatch = resultText.match(TEST_FAIL_PATTERN);
       if (passMatch || failMatch) {
         const failCount = failMatch ? parseInt(failMatch[1], 10) : 0;
         state.lastTestPassed = failCount === 0;
@@ -1379,6 +1678,12 @@ describe("validateTaskDependencies", () => {
     expect(result.valid).toBe(false);
     expect(result.error).toContain("not found");
   });
+
+  it("returns error when tasks array is empty (plan missing or unparseable)", () => {
+    const result = validateTaskDependencies(1, [], []);
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain("No tasks");
+  });
 });
 ```
 
@@ -1396,12 +1701,19 @@ export interface ValidationResult {
 /**
  * Validate that all dependency tasks are completed before allowing a subagent
  * to start working on the given task.
+ *
+ * Returns an error if the tasks array is empty (plan missing or unparseable)
+ * to prevent silently bypassing dependency validation.
  */
 export function validateTaskDependencies(
   taskIndex: number,
   tasks: PlanTask[],
   completedTaskIndices: number[],
 ): ValidationResult {
+  if (tasks.length === 0) {
+    return { valid: false, error: "No tasks found in plan. Ensure plan.md exists and has parseable tasks." };
+  }
+
   const task = tasks.find(t => t.index === taskIndex);
   if (!task) {
     return { valid: false, error: `Task ${taskIndex} not found in plan.` };
@@ -1558,7 +1870,7 @@ import {
 import { writeSubagentStatus } from "../extensions/megapowers/subagent-status.js";
 import { writeState } from "../extensions/megapowers/state-io.js";
 import { createInitialState } from "../extensions/megapowers/state-machine.js";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -1639,6 +1951,14 @@ describe("handleSubagentDispatch", () => {
     expect(result.error).toContain("depend");
   });
 
+  it("returns error when taskIndex provided but no plan tasks found", async () => {
+    // No plan.md exists at all
+    const result = await handleSubagentDispatch(tmp, { task: "Do thing", taskIndex: 1 }, {
+      isJJRepo: async () => true,
+    });
+    expect(result.error).toContain("No tasks");
+  });
+
   it("allows dispatch when task dependencies are met", async () => {
     const planDir = join(tmp, ".megapowers", "plans", "001-test");
     mkdirSync(planDir, { recursive: true });
@@ -1673,9 +1993,20 @@ describe("handleSubagentDispatch", () => {
     expect(result.config!.thinking).toBe("full");
 
     // Verify the system prompt was written to disk
-    const { readFileSync: readFile } = await import("node:fs");
-    const promptContent = readFile(result.config!.systemPromptPath!, "utf-8");
+    const promptContent = readFileSync(result.config!.systemPromptPath!, "utf-8");
     expect(promptContent).toBe("You are a custom worker.");
+  });
+
+  it("writes prompt to file instead of passing inline", async () => {
+    const result = await handleSubagentDispatch(tmp, { task: "Build the parser" }, {
+      isJJRepo: async () => true,
+    });
+    expect(result.error).toBeUndefined();
+    // Verify prompt file was created
+    const promptPath = join(tmp, ".megapowers", "subagents", result.id!, "prompt.md");
+    expect(existsSync(promptPath)).toBe(true);
+    const promptContent = readFileSync(promptPath, "utf-8");
+    expect(promptContent).toContain("Build the parser");
   });
 
   it("returns DispatchConfig for spawning", async () => {
@@ -1684,7 +2015,6 @@ describe("handleSubagentDispatch", () => {
     });
     expect(result.config).toBeDefined();
     expect(result.config!.id).toBe(result.id);
-    expect(result.config!.prompt).toContain("test");
     expect(result.config!.workspacePath).toContain(".megapowers/subagents");
   });
 });
@@ -1726,7 +2056,7 @@ describe("handleSubagentStatus", () => {
       startedAt: 1000,
       completedAt: 2000,
       filesChanged: ["src/foo.ts"],
-      diff: "M src/foo.ts",
+      diff: "--- a/src/foo.ts\n+++ b/src/foo.ts\n@@ -1 +1 @@\n-old\n+new",
       testsPassed: true,
     });
     const result = handleSubagentStatus(tmp, "sa-002");
@@ -1767,9 +2097,11 @@ describe("handleSubagentStatus", () => {
 **Implementation:**
 ```typescript
 // extensions/megapowers/subagent-tools.ts
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { readState } from "./state-io.js";
 import { deriveTasks } from "./derived.js";
-import { readSubagentStatus, type SubagentStatus } from "./subagent-status.js";
+import { readSubagentStatus, subagentDir, type SubagentStatus } from "./subagent-status.js";
 import { generateSubagentId } from "./subagent-runner.js";
 import { validateTaskDependencies } from "./subagent-validate.js";
 import { extractTaskSection, buildSubagentPrompt } from "./subagent-context.js";
@@ -1788,6 +2120,7 @@ export interface SubagentDispatchInput {
 export interface SubagentDispatchResult {
   id?: string;
   config?: DispatchConfig;
+  promptFilePath?: string;
   error?: string;
 }
 
@@ -1803,7 +2136,8 @@ export interface JJCheck {
 
 /**
  * Handle the subagent dispatch request. Validates state, checks jj,
- * resolves agent, validates dependencies, and builds the dispatch config.
+ * resolves agent, validates dependencies, writes prompt to file,
+ * and builds the dispatch config.
  *
  * Does NOT spawn the process — that's done by the caller (index.ts)
  * using the returned DispatchConfig with child_process.spawn.
@@ -1837,14 +2171,14 @@ export async function handleSubagentDispatch(
   // Generate ID
   const id = generateSubagentId(input.taskIndex);
 
+  // Ensure subagent dir exists
+  const saDir = subagentDir(cwd, id);
+  if (!existsSync(saDir)) mkdirSync(saDir, { recursive: true });
+
   // Persist agent system prompt to disk so pi can load it via --append-system-prompt
   let systemPromptPath: string | undefined;
   if (agent?.systemPrompt) {
-    const { mkdirSync, writeFileSync } = await import("node:fs");
-    const { join } = await import("node:path");
-    const agentPromptDir = join(cwd, ".megapowers", "subagents", id);
-    mkdirSync(agentPromptDir, { recursive: true });
-    const promptPath = join(agentPromptDir, "agent-prompt.md");
+    const promptPath = join(saDir, "agent-prompt.md");
     writeFileSync(promptPath, agent.systemPrompt);
     systemPromptPath = promptPath;
   }
@@ -1852,14 +2186,13 @@ export async function handleSubagentDispatch(
   // Validate task dependencies if taskIndex provided
   if (input.taskIndex !== undefined) {
     const tasks = deriveTasks(cwd, state.activeIssue);
-    if (tasks.length > 0) {
-      const result = validateTaskDependencies(input.taskIndex, tasks, state.completedTasks);
-      if (!result.valid) {
-        const reason = result.unmetDependencies
-          ? `Task ${input.taskIndex} depends on incomplete tasks: ${result.unmetDependencies.join(", ")}`
-          : result.error ?? "Dependency validation failed.";
-        return { error: reason };
-      }
+    // Require tasks to exist when taskIndex is provided — prevents silent bypass
+    const result = validateTaskDependencies(input.taskIndex, tasks, state.completedTasks);
+    if (!result.valid) {
+      const reason = result.unmetDependencies
+        ? `Task ${input.taskIndex} depends on incomplete tasks: ${result.unmetDependencies.join(", ")}`
+        : result.error ?? "Dependency validation failed.";
+      return { error: reason };
     }
   }
 
@@ -1882,6 +2215,10 @@ export async function handleSubagentDispatch(
     learnings: learnings || undefined,
   });
 
+  // Write prompt to file to avoid OS command-line length limits
+  const promptFilePath = join(saDir, "prompt.md");
+  writeFileSync(promptFilePath, prompt);
+
   // Build workspace path under .megapowers/subagents/<id>/workspace
   const wsPath = workspacePath(cwd, id);
 
@@ -1897,7 +2234,7 @@ export async function handleSubagentDispatch(
     thinking: agent?.thinking,
   });
 
-  return { id, config };
+  return { id, config, promptFilePath };
 }
 
 /**
@@ -1919,7 +2256,111 @@ export function handleSubagentStatus(
 
 ---
 
-### Task 12: Register subagent and subagent_status tools in index.ts [depends: 6, 8, 11]
+### Task 12: Project-root resolution for satellite TDD enforcement [depends: 8]
+
+**Files:**
+- Modify: `extensions/megapowers/subagent-runner.ts` (already has `projectRoot` in `buildSpawnEnv`)
+- Modify: `extensions/megapowers/index.ts` (satellite mode block)
+- Test: `tests/subagent-runner.test.ts` (append)
+- Test: `tests/satellite-root.test.ts` (new)
+
+This task fixes AC16: without it, subagent sessions running in jj workspace dirs have no `.megapowers/state.json`, so `readState()` returns defaults (phase=null) and `canWrite()` becomes pass-through — no TDD enforcement.
+
+**Test:**
+```typescript
+// tests/satellite-root.test.ts
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { resolveProjectRoot } from "../extensions/megapowers/satellite.js";
+
+describe("resolveProjectRoot", () => {
+  it("returns MEGA_PROJECT_ROOT when set", () => {
+    const root = resolveProjectRoot("/workspace/sa-001/workspace", { MEGA_PROJECT_ROOT: "/project" });
+    expect(root).toBe("/project");
+  });
+
+  it("returns cwd when MEGA_PROJECT_ROOT is not set", () => {
+    const root = resolveProjectRoot("/project", {});
+    expect(root).toBe("/project");
+  });
+
+  it("returns cwd when MEGA_PROJECT_ROOT is empty string", () => {
+    const root = resolveProjectRoot("/project", { MEGA_PROJECT_ROOT: "" });
+    expect(root).toBe("/project");
+  });
+});
+```
+
+```typescript
+// tests/subagent-runner.test.ts — append
+describe("buildSpawnEnv projectRoot", () => {
+  it("sets MEGA_PROJECT_ROOT to enable satellite root resolution", () => {
+    const env = buildSpawnEnv({ subagentId: "sa-1", projectRoot: "/my/project" });
+    expect(env.MEGA_PROJECT_ROOT).toBe("/my/project");
+    expect(env.PI_SUBAGENT).toBe("1");
+  });
+});
+```
+
+**Implementation — satellite.ts:**
+```typescript
+// Add to extensions/megapowers/satellite.ts
+
+/**
+ * Resolve the project root for state reads.
+ * In satellite mode (subagent), the cwd is the jj workspace dir which
+ * doesn't have .megapowers/state.json. MEGA_PROJECT_ROOT points to the
+ * actual project root where state.json lives.
+ */
+export function resolveProjectRoot(
+  cwd: string,
+  env: Record<string, string | undefined>,
+): string {
+  const projectRoot = env.MEGA_PROJECT_ROOT;
+  if (projectRoot && projectRoot.length > 0) return projectRoot;
+  return cwd;
+}
+```
+
+**Implementation — index.ts satellite block:**
+
+In the satellite mode section of `index.ts`, update every `readState(ctx.cwd)` call to use `resolveProjectRoot`:
+
+```typescript
+// At the top of the satellite block, after the isSatelliteMode check:
+import { resolveProjectRoot } from "./satellite.js";
+
+// Change all satellite readState calls from:
+//   const state = readState(ctx.cwd);
+// To:
+//   const projectRoot = resolveProjectRoot(ctx.cwd, process.env as Record<string, string | undefined>);
+//   const state = readState(projectRoot);
+```
+
+Specifically, in the satellite `tool_call` handler:
+```typescript
+pi.on("tool_call", async (event, ctx) => {
+  // ...
+  const projectRoot = resolveProjectRoot(ctx.cwd, process.env as Record<string, string | undefined>);
+  const state = readState(projectRoot);
+  // ... rest uses state as before
+});
+```
+
+And in the satellite `tool_result` handler:
+```typescript
+pi.on("tool_result", async (event, ctx) => {
+  // ...
+  const projectRoot = resolveProjectRoot(ctx.cwd, process.env as Record<string, string | undefined>);
+  const state = readState(projectRoot);
+  // ... rest uses state as before
+});
+```
+
+**Verify:** `bun test tests/satellite-root.test.ts tests/subagent-runner.test.ts`
+
+---
+
+### Task 13: Register subagent and subagent_status tools in index.ts [depends: 6, 8, 11, 12]
 
 **Files:**
 - Modify: `extensions/megapowers/index.ts`
@@ -1954,15 +2395,21 @@ describe("subagent available in all phases", () => {
 });
 
 describe("satellite TDD enforcement", () => {
-  it("sets PI_SUBAGENT=1 in spawn env for TDD enforcement", () => {
-    // Verify contract: buildSpawnEnv sets PI_SUBAGENT=1 which triggers isSatelliteMode()
-    // buildSpawnEnv is already imported at top of this test file
-    // isSatelliteMode imported from satellite module
+  it("sets PI_SUBAGENT=1 in spawn env for TDD enforcement", async () => {
     const { isSatelliteMode } = await import("../extensions/megapowers/satellite.js");
     const { buildSpawnEnv: buildEnv } = await import("../extensions/megapowers/subagent-runner.js");
 
-    const env = buildEnv("sa-test");
+    const env = buildEnv({ subagentId: "sa-test" });
     expect(isSatelliteMode({ isTTY: false, env })).toBe(true);
+  });
+
+  it("sets MEGA_PROJECT_ROOT so satellite can read state", async () => {
+    const { buildSpawnEnv: buildEnv } = await import("../extensions/megapowers/subagent-runner.js");
+    const { resolveProjectRoot } = await import("../extensions/megapowers/satellite.js");
+
+    const env = buildEnv({ subagentId: "sa-test", projectRoot: "/my/project" });
+    const root = resolveProjectRoot("/workspace/sa-test/workspace", env);
+    expect(root).toBe("/my/project");
   });
 });
 
@@ -1976,14 +2423,37 @@ describe("no auto-squash", () => {
       startedAt: 1000,
       completedAt: 2000,
       filesChanged: ["src/a.ts"],
-      diff: "M src/a.ts",
+      diff: "--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-old\n+new",
       testsPassed: true,
     });
 
     // The handler ONLY reads status, it never calls jj squash
     const result = handleSubagentStatus(tmp, "sa-nosquash");
     expect(result.status!.state).toBe("completed");
-    expect(result.status!.diff).toBe("M src/a.ts");
+    expect(result.status!.diff).toContain("src/a.ts");
+    rmSync(tmp, { recursive: true, force: true });
+  });
+});
+
+describe("subagent_status returns JSON", () => {
+  it("status result is structured data, not just human text", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "json-status-"));
+    writeSubagentStatus(tmp, "sa-json", {
+      id: "sa-json",
+      state: "completed",
+      turnsUsed: 4,
+      startedAt: 1000,
+      completedAt: 2000,
+      filesChanged: ["src/x.ts"],
+      diff: "M src/x.ts",
+      testsPassed: true,
+    });
+    const result = handleSubagentStatus(tmp, "sa-json");
+    // The status object IS the structured data (AC6)
+    expect(result.status).toBeDefined();
+    expect(typeof result.status!.state).toBe("string");
+    expect(typeof result.status!.turnsUsed).toBe("number");
+    expect(Array.isArray(result.status!.filesChanged)).toBe(true);
     rmSync(tmp, { recursive: true, force: true });
   });
 });
@@ -1995,9 +2465,9 @@ Add these imports near the top of `extensions/megapowers/index.ts`:
 
 ```typescript
 import { handleSubagentDispatch, handleSubagentStatus } from "./subagent-tools.js";
-import { writeSubagentStatus, readSubagentStatus } from "./subagent-status.js";
+import { writeSubagentStatus, updateSubagentStatus } from "./subagent-status.js";
 import { buildSpawnArgs, buildSpawnEnv, createRunnerState, processJsonlLine } from "./subagent-runner.js";
-import { buildWorkspaceName, buildWorkspaceAddArgs, buildWorkspaceForgetArgs, workspacePath } from "./subagent-workspace.js";
+import { buildWorkspaceName, buildWorkspaceAddArgs, buildWorkspaceForgetArgs, buildDiffSummaryArgs, buildDiffFullArgs, workspacePath } from "./subagent-workspace.js";
 import { detectRepeatedErrors } from "./subagent-errors.js";
 import { parseTaskDiffFiles } from "./task-coordinator.js";
 ```
@@ -2033,6 +2503,7 @@ Add after the existing `create_batch` tool registration block:
 
       const config = result.config!;
       const id = result.id!;
+      const promptFilePath = result.promptFilePath!;
       const startedAt = Date.now();
 
       // Write initial status with parent's current workflow phase (AC5)
@@ -2042,7 +2513,7 @@ Add after the existing `create_batch` tool registration block:
         state: "running",
         turnsUsed: 0,
         startedAt,
-        phase: currentState.phase,
+        phase: currentState.phase ?? undefined,
       });
 
       // Create jj workspace and spawn (async, fire-and-forget)
@@ -2066,14 +2537,18 @@ Add after the existing `create_batch` tool registration block:
             return;
           }
 
-          // Spawn pi subprocess using correct flags
-          const args = buildSpawnArgs(config.prompt, {
+          // Build spawn args — pass prompt as @file reference
+          const args = buildSpawnArgs(promptFilePath, {
             model: config.model,
             tools: config.tools,
             thinking: config.thinking,
             systemPromptPath: config.systemPromptPath,
           });
-          const env = buildSpawnEnv(id);
+          // Set MEGA_PROJECT_ROOT so satellite reads the real state.json (AC16)
+          const env = buildSpawnEnv({
+            subagentId: id,
+            projectRoot: ctx.cwd,
+          });
 
           const { spawn } = await import("node:child_process");
           const child = spawn(args[0], args.slice(1), {
@@ -2094,97 +2569,116 @@ Add after the existing `create_batch` tool registration block:
             for (const line of lines) {
               processJsonlLine(runnerState, line);
             }
-            // Periodic status update
+            // Periodic status update — uses merge to preserve phase
             if (!runnerState.isTerminal) {
-              writeSubagentStatus(ctx.cwd, id, {
-                id,
-                state: "running",
-                turnsUsed: runnerState.turnsUsed,
-                startedAt,
-              });
+              updateSubagentStatus(ctx.cwd, id, { turnsUsed: runnerState.turnsUsed });
             }
           });
 
           child.stderr?.on("data", (data: Buffer) => { stderr += data.toString(); });
 
-          // Timeout handling with SIGTERM→SIGKILL escalation
+          // Timeout handling: only set terminal flag and kill the process.
+          // All cleanup (workspace forget) happens in the close handler.
           const timer = setTimeout(() => {
             if (runnerState.isTerminal) return;
             runnerState.isTerminal = true;
+            runnerState.timedOut = true;
 
             try { child.kill("SIGTERM"); } catch {}
             // Escalate to SIGKILL after 5 seconds
             setTimeout(() => {
               try { if (!child.killed) child.kill("SIGKILL"); } catch {}
             }, 5000);
-
-            const detectedErrors = detectRepeatedErrors(runnerState.errorLines);
-            writeSubagentStatus(ctx.cwd, id, {
-              id,
-              state: "timed-out",
-              turnsUsed: runnerState.turnsUsed,
-              startedAt,
-              completedAt: Date.now(),
-              error: `Subagent timed out after ${config.timeoutMs / 1000}s`,
-              detectedErrors: detectedErrors.length > 0 ? detectedErrors : undefined,
-            });
-            // Cleanup workspace
-            pi.exec("jj", buildWorkspaceForgetArgs(wsName)).catch(() => {});
           }, config.timeoutMs);
 
           child.on("close", async (code) => {
             clearTimeout(timer);
 
-            // Guard: if already terminal (timed-out), don't overwrite
-            if (runnerState.isTerminal) return;
-            runnerState.isTerminal = true;
-
-            // Process any remaining buffered output
-            if (stdoutBuffer.trim()) {
-              processJsonlLine(runnerState, stdoutBuffer);
-            }
-
             const detectedErrors = detectRepeatedErrors(runnerState.errorLines);
 
-            if (code !== 0) {
+            if (runnerState.timedOut) {
+              // Timed out — write terminal status
               writeSubagentStatus(ctx.cwd, id, {
                 id,
-                state: "failed",
+                state: "timed-out",
                 turnsUsed: runnerState.turnsUsed,
                 startedAt,
                 completedAt: Date.now(),
-                error: `Process exited with code ${code}. ${stderr}`.trim(),
+                phase: currentState.phase ?? undefined,
+                error: `Subagent timed out after ${config.timeoutMs / 1000}s`,
                 detectedErrors: detectedErrors.length > 0 ? detectedErrors : undefined,
               });
+            } else if (runnerState.isTerminal) {
+              // Already handled (shouldn't happen, but guard)
             } else {
-              // Get diff from workspace by running jj diff in the workspace directory
-              try {
-                const diffResult = await pi.exec("jj", ["diff", "--summary"], { cwd: config.workspacePath });
-                const filesChanged = parseTaskDiffFiles(diffResult.stdout);
+              runnerState.isTerminal = true;
+
+              // Process any remaining buffered output
+              if (stdoutBuffer.trim()) {
+                processJsonlLine(runnerState, stdoutBuffer);
+              }
+
+              if (code !== 0) {
                 writeSubagentStatus(ctx.cwd, id, {
                   id,
-                  state: "completed",
+                  state: "failed",
                   turnsUsed: runnerState.turnsUsed,
                   startedAt,
                   completedAt: Date.now(),
-                  filesChanged,
-                  diff: diffResult.stdout,
-                  testsPassed: runnerState.lastTestPassed ?? true,
+                  phase: currentState.phase ?? undefined,
+                  error: `Process exited with code ${code}. ${stderr}`.trim(),
                   detectedErrors: detectedErrors.length > 0 ? detectedErrors : undefined,
                 });
-              } catch {
-                writeSubagentStatus(ctx.cwd, id, {
-                  id,
-                  state: "completed",
-                  turnsUsed: runnerState.turnsUsed,
-                  startedAt,
-                  completedAt: Date.now(),
-                  testsPassed: runnerState.lastTestPassed ?? true,
-                });
+              } else {
+                // Get both summary and full diff from workspace (AC7)
+                try {
+                  const summaryResult = await pi.exec("jj", buildDiffSummaryArgs(), { cwd: config.workspacePath });
+                  const filesChanged = parseTaskDiffFiles(summaryResult.stdout);
+                  const fullDiffResult = await pi.exec("jj", buildDiffFullArgs(), { cwd: config.workspacePath });
+
+                  // If full diff is very large (>100KB), store to file
+                  const MAX_INLINE_DIFF = 100 * 1024;
+                  let diff: string | undefined;
+                  let diffPath: string | undefined;
+
+                  if (fullDiffResult.stdout.length > MAX_INLINE_DIFF) {
+                    const { join: joinPath } = await import("node:path");
+                    const { writeFileSync: writeFile } = await import("node:fs");
+                    const patchPath = joinPath(ctx.cwd, ".megapowers", "subagents", id, "diff.patch");
+                    writeFile(patchPath, fullDiffResult.stdout);
+                    diffPath = `.megapowers/subagents/${id}/diff.patch`;
+                  } else {
+                    diff = fullDiffResult.stdout;
+                  }
+
+                  writeSubagentStatus(ctx.cwd, id, {
+                    id,
+                    state: "completed",
+                    turnsUsed: runnerState.turnsUsed,
+                    startedAt,
+                    completedAt: Date.now(),
+                    phase: currentState.phase ?? undefined,
+                    filesChanged,
+                    diff,
+                    diffPath,
+                    testsPassed: runnerState.lastTestPassed ?? true,
+                    detectedErrors: detectedErrors.length > 0 ? detectedErrors : undefined,
+                  });
+                } catch {
+                  writeSubagentStatus(ctx.cwd, id, {
+                    id,
+                    state: "completed",
+                    turnsUsed: runnerState.turnsUsed,
+                    startedAt,
+                    completedAt: Date.now(),
+                    phase: currentState.phase ?? undefined,
+                    testsPassed: runnerState.lastTestPassed ?? true,
+                  });
+                }
               }
             }
 
-            // Always cleanup workspace
+            // Always cleanup workspace — happens after process exit (AC9)
             try {
               await pi.exec("jj", buildWorkspaceForgetArgs(wsName));
             } catch {}
@@ -2199,6 +2693,7 @@ Add after the existing `create_batch` tool registration block:
             turnsUsed: 0,
             startedAt,
             completedAt: Date.now(),
+            phase: currentState.phase ?? undefined,
             error: `Spawn failed: ${err}`,
           });
           // Cleanup workspace on error
@@ -2220,7 +2715,7 @@ Add after the existing `create_batch` tool registration block:
   pi.registerTool({
     name: "subagent_status",
     label: "Subagent Status",
-    description: "Check the status of a running subagent. Returns state, files changed, test results, and diff for completed subagents.",
+    description: "Check the status of a running subagent. Returns JSON with state, files changed, test results, diff, and detected errors.",
     parameters: Type.Object({
       id: Type.String({ description: "Subagent ID returned from the subagent tool" }),
     }),
@@ -2230,46 +2725,23 @@ Add after the existing `create_batch` tool registration block:
         return { content: [{ type: "text", text: `Error: ${result.error}` }], details: undefined };
       }
 
+      // Return JSON for machine-safe LLM parsing (AC6)
       const s = result.status!;
-      const lines: string[] = [
-        `Subagent: ${s.id}`,
-        `State: ${s.state}`,
-        `Turns: ${s.turnsUsed}`,
-      ];
-
-      if (s.filesChanged) {
-        lines.push(`Files changed: ${s.filesChanged.length}`);
-        for (const f of s.filesChanged) lines.push(`  - ${f}`);
-      }
-      if (s.testsPassed !== undefined) {
-        lines.push(`Tests: ${s.testsPassed ? "passed" : "failed"}`);
-      }
-      if (s.error) {
-        lines.push(`Error: ${s.error}`);
-      }
-      if (s.diff) {
-        lines.push(`\nDiff:\n${s.diff}`);
-      }
-      if (s.detectedErrors && s.detectedErrors.length > 0) {
-        lines.push(`\nDetected repeated errors:`);
-        for (const e of s.detectedErrors) lines.push(`  - ${e}`);
-      }
-
       return {
-        content: [{ type: "text", text: lines.join("\n") }],
+        content: [{ type: "text", text: JSON.stringify(s, null, 2) }],
         details: undefined,
       };
     },
   });
 ```
 
-Note on `pi.exec` with `cwd` option: The jj diff is run with `cwd: config.workspacePath` so that `@` refers to the workspace's working copy, not the parent's. If `pi.exec` doesn't support a `cwd` option, fall back to using `child_process.execSync("jj diff --summary", { cwd: config.workspacePath })` instead.
+Note on `RunnerState.timedOut`: add `timedOut?: boolean` to `RunnerState` interface and initialize to `false` in `createRunnerState()`.
 
 **Verify:** `bun test tests/subagent-tools.test.ts`
 
 ---
 
-### Task 13: Hide/show subagent tools with mega off/on [depends: 12]
+### Task 14: Hide/show subagent tools with mega off/on [depends: 13]
 
 **Files:**
 - Modify: `extensions/megapowers/index.ts`
@@ -2323,7 +2795,7 @@ if (missing.length > 0) {
 
 ---
 
-### Task 14: UPSTREAM.md tracking
+### Task 15: UPSTREAM.md tracking
 
 **Files:**
 - Create: `extensions/megapowers/UPSTREAM.md`
@@ -2376,8 +2848,9 @@ describe("UPSTREAM.md", () => {
 - **Patterns Used:**
   - `spawn("pi", ["--mode", "json", "-p", "--no-session", ...])` invocation
   - `--append-system-prompt` for agent system prompts
-  - JSONL stdout parsing with `message_end` / `tool_result_end` events
-  - `Task: <prompt>` as final positional argument
+  - `@file` arg for prompt to avoid CLI length limits
+  - JSONL stdout parsing with `message_end` / `tool_execution_end` events
+  - Prompt written to temp file, cleaned up after completion
 
 ## Audit Schedule
 
@@ -2392,24 +2865,24 @@ Review pi-subagents for improvements to shared patterns quarterly or when upstre
 
 | AC | Task(s) | Description |
 |----|---------|-------------|
-| 1 | 11, 12 | `subagent` tool registered via pi.registerTool() |
-| 2 | 11, 12 | `subagent_status` tool registered via pi.registerTool() |
-| 3 | 6, 12 | jj workspace created via `jj workspace add` with path under `.megapowers/subagents/<id>/workspace` |
-| 4 | 8, 12 | Detached pi process with `--mode json -p --no-session`, PI_SUBAGENT=1, returns ID |
-| 5 | 4, 8, 12 | Status.json updated incrementally via JSONL streaming (turns, phase, errors) |
-| 6 | 4, 8, 11, 12 | subagent_status returns structured data: state, files, tests, turns, detected errors |
-| 7 | 4, 11, 12 | Completed status includes jj diff (run with cwd=workspace) |
+| 1 | 11, 13 | `subagent` tool registered via pi.registerTool() |
+| 2 | 11, 13 | `subagent_status` tool registered via pi.registerTool() |
+| 3 | 6, 13 | jj workspace created via `jj workspace add` with path under `.megapowers/subagents/<id>/workspace` |
+| 4 | 8, 13 | Detached pi process with `--mode json -p --no-session`, PI_SUBAGENT=1, returns ID immediately |
+| 5 | 4, 8, 13 | Status.json updated via merge semantics preserving phase; parent writes status from JSONL stream |
+| 6 | 4, 11, 13 | subagent_status returns JSON: state, files, tests, turns, detected errors |
+| 7 | 6, 13 | Completed status includes both `jj diff --summary` (filesChanged) AND `jj diff` (full patch) |
 | 8 | 11 (no-auto-squash test) | Status returns diff only, no squash call |
-| 9 | 6, 12 | Workspace cleanup via `jj workspace forget` on all exit paths (close, timeout, error) |
-| 10 | 8, 12 | Non-zero exit → failed state + error + detected errors |
-| 11 | 10, 12 | Configurable timeout, SIGTERM→SIGKILL escalation, cleanup |
+| 9 | 6, 13 | Workspace cleanup via `jj workspace forget` in close handler after process exit |
+| 10 | 8, 13 | Non-zero exit → failed state + error + detected errors |
+| 11 | 10, 13 | Configurable timeout, SIGTERM→SIGKILL escalation, cleanup after exit |
 | 12 | 1, 3 | Agent markdown frontmatter parsing, priority search (project → user → builtin) |
-| 13 | 2 | Three builtin agents: worker, scout, reviewer |
+| 13 | 2 | Three builtin agents: worker (read/write/edit/bash), scout (read/bash), reviewer (read/bash) |
 | 14 | 1 | pi-subagents compatible frontmatter schema |
-| 15 | 12 (all-phases test) | Available in all workflow phases |
-| 16 | 12 (satellite test) | Satellite TDD via PI_SUBAGENT=1 |
+| 15 | 13 (all-phases test) | Available in all workflow phases |
+| 16 | 8, 12, 13 | Satellite TDD via PI_SUBAGENT=1 + MEGA_PROJECT_ROOT for state reads |
 | 17 | Pre-existing | [depends: N, M] already in plan-parser.ts |
-| 18 | 9, 11 | Dependency validation before spawn |
-| 19 | 7, 11 | Task context from plan section + learnings |
-| 20 | 5, 8, 12 | Error detection via JSONL streaming + detectRepeatedErrors integration |
-| 21 | 14 | UPSTREAM.md with pinned commit 1281c04 |
+| 18 | 9, 11 | Dependency validation before spawn; error when plan missing |
+| 19 | 7, 11 | Task context from plan section + learnings; prompt written to @file |
+| 20 | 5, 8, 13 | Error detection from tool_execution_end results AND assistant message text |
+| 21 | 15 | UPSTREAM.md with pinned commit 1281c04 |
