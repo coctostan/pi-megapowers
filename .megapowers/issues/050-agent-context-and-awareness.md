@@ -3,7 +3,7 @@ id: 50
 type: feature
 status: open
 created: 2026-02-24T19:15:00.000Z
-sources: [40, 47, 48]
+sources: [40, 44, 47, 48]
 ---
 
 # Agent context & awareness — prompt quality, TDD edge cases, and baseline context
