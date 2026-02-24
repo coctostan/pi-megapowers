@@ -166,15 +166,11 @@ export default function megapowers(pi: ExtensionAPI): void {
     const currentState = readState(ctx.cwd);
     if (currentState.activeIssue && currentState.jjChangeId && await jj.isJJRepo()) {
       const currentId = await jj.getCurrentChangeId();
-      if (currentId && currentId !== currentState.jjChangeId) {
+      if (currentId && !currentId.startsWith(currentState.jjChangeId) && !currentState.jjChangeId.startsWith(currentId)) {
+        // Auto-update stored change ID and notify (select dialog is broken during session_start — see #061)
+        writeState(ctx.cwd, { ...currentState, jjChangeId: currentId });
         if (ctx.hasUI) {
-          const choice = await ctx.ui.select(
-            `jj change mismatch: on ${currentId.slice(0, 8)}, expected ${currentState.jjChangeId.slice(0, 8)} for ${currentState.activeIssue}`,
-            ["Continue on current change", "Ignore (update stored ID)"]
-          );
-          if (choice?.startsWith("Ignore")) {
-            writeState(ctx.cwd, { ...currentState, jjChangeId: currentId });
-          }
+          ctx.ui.notify(`jj change updated: ${currentState.jjChangeId.slice(0, 8)} → ${currentId.slice(0, 8)} for ${currentState.activeIssue}`);
         }
       }
     }
