@@ -18,3 +18,18 @@ export function isSatelliteMode(ctx: SatelliteDetectionContext): boolean {
   return ctx.env.PI_SUBAGENT === "1";
 }
 
+/**
+ * Resolve the project root for state reads.
+ * In satellite mode (subagent), the cwd is the jj workspace dir which
+ * doesn't have .megapowers/state.json. MEGA_PROJECT_ROOT points to the
+ * actual project root where state.json lives.
+ */
+export function resolveProjectRoot(
+  cwd: string,
+  env: Record<string, string | undefined>,
+): string {
+  const projectRoot = env.MEGA_PROJECT_ROOT;
+  if (projectRoot && projectRoot.length > 0) return projectRoot;
+  return cwd;
+}
+
