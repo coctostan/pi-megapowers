@@ -1,20 +1,13 @@
 // extensions/megapowers/tool-overrides.ts
 //
-// Disk-backed wrappers for write/edit/bash tool overrides.
-//
-// Key design for bash override (AC32-34, Task 8 fix):
-//   createBashTool THROWS on non-zero exit (confirmed from pi source).
-//   Our bash override wraps it in try/catch:
-//     - catch block → isError = true → processBashResult(cwd, cmd, true) → impl-allowed
-//     - success path → isError = false → processBashResult(cwd, cmd, false) → no change
-//   This is explicit and correct — NOT regex on result text like "/exit code [1-9]/".
+// Disk-backed wrappers for write/edit tool overrides.
 
 import { readState, writeState } from "./state-io.js";
-import { canWrite, isTestFile, isAllowlisted, isTestRunnerCommand } from "./write-policy.js";
+import { canWrite, isTestFile, isAllowlisted } from "./write-policy.js";
 import { deriveTasks } from "./derived.js";
 
 // Re-export for consumers who only want policy utilities
-export { isTestFile, isAllowlisted, isTestRunnerCommand };
+export { isTestFile, isAllowlisted };
 
 // =============================================================================
 // Write override
@@ -86,61 +79,3 @@ export function recordTestFileWritten(cwd: string): void {
   });
 }
 
-// =============================================================================
-// Bash override — processBashResult
-//
-// DESIGN (Task 8 fix — AC32-34):
-//
-// createBashTool from @mariozechner/pi-coding-agent throws (rejects) when
-// the command exits with a non-zero code. The message ends with:
-//   "Command exited with code N"
-//
-// Our bash override wraps the built-in execute in try/catch:
-//
-//   try {
-//     const result = await builtinBash.execute(...);
-//     processBashResult(cwd, command, false);  // zero exit
-//     return result;
-//   } catch (err) {
-//     processBashResult(cwd, command, true);   // non-zero exit
-//     throw err;  // re-throw so pi handles error display
-//   }
-//
-// isError=true means the command failed → tests are RED → impl-allowed.
-// isError=false means the command succeeded → tests passed → stay at test-written.
-//
-// We do NOT inspect the error message text for patterns like /exit code [1-9]/.
-// The boolean is the authoritative signal.
-// =============================================================================
-
-/**
- * Process the result of a bash command for TDD state tracking.
- *
- * @param cwd     - Working directory (for state I/O)
- * @param command - The bash command that was executed
- * @param isError - true = command threw/failed (non-zero exit from createBashTool),
- *                  false = command succeeded (zero exit)
- */
-export function processBashResult(cwd: string, command: string, isError: boolean): void {
-  const state = readState(cwd);
-
-  // Only active in implement/code-review with mega on
-  if (!state.megaEnabled) return;
-  if (state.phase !== "implement" && state.phase !== "code-review") return;
-
-  // Only relevant when in test-written state (waiting for RED confirmation)
-  if (!state.tddTaskState || state.tddTaskState.state !== "test-written") return;
-
-  // Only test runner commands count
-  if (!isTestRunnerCommand(command)) return;
-
-  // isError=true → command exited non-zero → tests are RED → allow impl
-  if (isError) {
-    writeState(cwd, {
-      ...state,
-      tddTaskState: { ...state.tddTaskState, state: "impl-allowed" },
-    });
-  }
-  // isError=false → tests passed → do NOT transition (stay at test-written)
-  // This handles: tests were already passing before the RED step
-}

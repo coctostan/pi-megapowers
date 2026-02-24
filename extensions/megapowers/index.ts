@@ -11,8 +11,8 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import { readState, writeState } from "./state-io.js";
 import { handleSignal } from "./tool-signal.js";
 import { handleSaveArtifact } from "./tool-artifact.js";
-import { evaluateWriteOverride, recordTestFileWritten, processBashResult } from "./tool-overrides.js";
-import { canWrite, isTestFile, isTestRunnerCommand } from "./write-policy.js";
+import { evaluateWriteOverride, recordTestFileWritten } from "./tool-overrides.js";
+import { canWrite, isTestFile } from "./write-policy.js";
 import { buildInjectedPrompt } from "./prompt-inject.js";
 import { deriveTasks } from "./derived.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
@@ -46,8 +46,8 @@ export default function megapowers(pi: ExtensionAPI): void {
     // state stays in-memory to avoid competing with the primary session for
     // state.json writes.
     //
-    // megapowers_signal and megapowers_save_artifact are NOT registered for
-    // satellites — only write/edit/bash overrides for TDD enforcement.
+    // Satellites keep TDD state in-memory and expose a limited megapowers_signal
+    // tool for explicit tests_failed/tests_passed transitions.
 
     let satelliteTddState: import("./state-machine.js").TddTaskState | null = null;
 
@@ -96,18 +96,37 @@ export default function megapowers(pi: ExtensionAPI): void {
         }
       }
 
-      // After bash, track test runner results for TDD RED detection (in-memory)
-      if (toolName === "bash") {
-        const command = (event.input as any)?.command;
-        if (command && satelliteTddState?.state === "test-written") {
-          const state = readState(ctx.cwd);
-          if (state.megaEnabled && (state.phase === "implement" || state.phase === "code-review")) {
-            if (isTestRunnerCommand(command) && event.isError) {
-              satelliteTddState = { ...satelliteTddState, state: "impl-allowed" };
-            }
-          }
+    });
+
+    pi.registerTool({
+      name: "megapowers_signal",
+      label: "Megapowers Signal",
+      description: "Satellite TDD signals: tests_failed (mark RED), tests_passed (acknowledge GREEN).",
+      parameters: Type.Object({
+        action: Type.Union([Type.Literal("tests_failed"), Type.Literal("tests_passed")]),
+      }),
+      async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+        const state = readState(ctx.cwd);
+        if (!state.megaEnabled) {
+          return { content: [{ type: "text", text: "Error: Megapowers is disabled (megaEnabled=false)." }], details: undefined };
         }
-      }
+        if (state.phase !== "implement" && state.phase !== "code-review") {
+          return { content: [{ type: "text", text: `Error: ${params.action} can only be called during implement/code-review.` }], details: undefined };
+        }
+
+        if (params.action === "tests_failed") {
+          if (!satelliteTddState || satelliteTddState.state !== "test-written") {
+            return { content: [{ type: "text", text: "Error: No test written yet, or tests have not failed yet." }], details: undefined };
+          }
+          satelliteTddState = { ...satelliteTddState, state: "impl-allowed" };
+          return {
+            content: [{ type: "text", text: "Tests failed (RED ✓). Production code writes are now allowed." }],
+            details: undefined,
+          };
+        }
+
+        return { content: [{ type: "text", text: "Tests passed (GREEN ✓)." }], details: undefined };
+      },
     });
 
     return; // Skip all primary session setup
@@ -204,10 +223,6 @@ export default function megapowers(pi: ExtensionAPI): void {
       }
     }
 
-    if (toolName === "bash") {
-      const command = (event.input as any)?.command;
-      if (command) processBashResult(ctx.cwd, command, event.isError);
-    }
   });
 
   // --- Agent completion: offer phase transitions ---
@@ -270,12 +285,14 @@ export default function megapowers(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "megapowers_signal",
     label: "Megapowers Signal",
-    description: "Signal a megapowers state transition. Actions: task_done (mark current implement task complete), review_approve (approve plan in review phase), phase_next (advance to next workflow phase).",
+    description: "Signal a megapowers state transition. Actions: task_done (mark current implement task complete), review_approve (approve plan in review phase), phase_next (advance to next workflow phase), tests_failed (mark RED after a failing test run), tests_passed (acknowledge GREEN after a passing test run).",
     parameters: Type.Object({
       action: Type.Union([
         Type.Literal("task_done"),
         Type.Literal("review_approve"),
         Type.Literal("phase_next"),
+        Type.Literal("tests_failed"),
+        Type.Literal("tests_passed"),
       ]),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {

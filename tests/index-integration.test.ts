@@ -30,6 +30,19 @@ describe("index.ts architectural invariants", () => {
     expect(source).not.toContain('@mariozechner/pi-coding-agent/tools');
   });
 
+  describe("satellite TDD flow invariants", () => {
+    it("does not include satellite bash sniffing for RED detection", () => {
+      const source = readFileSync(join(__dirname, "../extensions/megapowers/index.ts"), "utf-8");
+      expect(source).not.toContain("After bash, track test runner results for TDD RED detection (in-memory)");
+    });
+
+    it("registers megapowers_signal in satellite mode", () => {
+      const source = readFileSync(join(__dirname, "../extensions/megapowers/index.ts"), "utf-8");
+      const hasSatelliteSignalTool = /if \(satellite\) \{[\s\S]*?pi\.registerTool\(\{[\s\S]*?name: "megapowers_signal"[\s\S]*?\}\);[\s\S]*?return; \/\/ Skip all primary session setup/.test(source);
+      expect(hasSatelliteSignalTool).toBe(true);
+    });
+  });
+
   describe("mega off/on state management", () => {
     let tmp: string;
 

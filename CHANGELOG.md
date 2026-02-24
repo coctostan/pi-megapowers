@@ -3,6 +3,19 @@
 ## [Unreleased]
 
 ### Added
+- **`megapowers_signal` actions: `tests_failed` / `tests_passed`** — Explicit LLM-driven TDD RED/GREEN signals replace implicit bash command sniffing. The LLM runs tests any way it likes (compound commands, piped, make targets), reads the output, and calls the appropriate signal. `tests_failed` transitions `tddTaskState` from `test-written` to `impl-allowed`; `tests_passed` is a no-op acknowledgment. Both valid in `implement` and `code-review` phases. Satellite sessions get a parallel `megapowers_signal` tool using in-memory `satelliteTddState`.
+
+### Removed
+- **`isTestRunnerCommand()` and `TEST_RUNNER_PATTERNS`** — Deleted from `write-policy.ts`. Bash command sniffing no longer used for TDD state transitions.
+- **`processBashResult()`** — Deleted from `tool-overrides.ts`. Replaced by explicit `tests_failed` signal.
+- **Satellite bash sniffing block** — Inline `isTestRunnerCommand` check on bash `tool_result` in `index.ts` removed. Satellite now uses `megapowers_signal` tool.
+
+### Fixed
+- **#020**: TDD guard rejected compound bash commands (`&&`, `|`, `;`) — sniffing replaced with explicit `tests_failed` signal; any test command now works.
+
+---
+
+### Added
 - **Custom tools: `megapowers_signal` and `megapowers_save_artifact`** — LLM calls structured tools for state transitions and artifact persistence instead of producing regex-matchable prose
 - **Disk-first state I/O** (`state-io.ts`) — `readState()` / `writeState()` with atomic temp-file-then-rename. No module-level state variable in `index.ts`
 - **Thin state schema** — `state.json` stores only coordination data (`activeIssue`, `phase`, `completedTasks[]`, etc.). Task lists and acceptance criteria derived on demand from artifact files

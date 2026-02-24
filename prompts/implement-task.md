@@ -44,12 +44,14 @@ Either way, signal task completion when done so megapowers can inspect and advan
 1. Write the test from the plan
 2. Run it
 3. Confirm it fails **for the right reason** (missing feature, not typo/import error)
-4. If it passes, the test is wrong — fix it before continuing
+4. Call `megapowers_signal({ action: "tests_failed" })` to unlock production code writes
+5. If it passes, the test is wrong — fix it before continuing
 
 ### GREEN — Write minimal code to pass
 1. Write the smallest amount of code that makes the test pass
 2. Run the test — confirm it passes
-3. Run **all** tests — confirm nothing else broke
+3. Call `megapowers_signal({ action: "tests_passed" })` to acknowledge green tests
+4. Run **all** tests — confirm nothing else broke
 
 ### REFACTOR — Clean up
 1. Remove duplication, improve names, extract helpers

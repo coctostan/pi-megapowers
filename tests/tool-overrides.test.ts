@@ -2,11 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import {
-  evaluateWriteOverride,
-  recordTestFileWritten,
-  processBashResult,
-} from "../extensions/megapowers/tool-overrides.js";
+import { evaluateWriteOverride, recordTestFileWritten } from "../extensions/megapowers/tool-overrides.js";
 import { readState, writeState } from "../extensions/megapowers/state-io.js";
 import { createInitialState, type MegapowersState } from "../extensions/megapowers/state-machine.js";
 
@@ -156,131 +152,17 @@ describe("recordTestFileWritten", () => {
 });
 
 // =============================================================================
-// processBashResult — uses isError boolean (NOT regex on output text)
-// This is the key fix: createBashTool throws on non-zero exit code,
-// so the override uses try/catch. isError=true means tests failed (RED).
+// exports
 // =============================================================================
 
-describe("processBashResult", () => {
-  let tmp: string;
-
-  beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), "bash-override-test-"));
+describe("tool-overrides exports", () => {
+  it("does not export processBashResult", async () => {
+    const mod = await import("../extensions/megapowers/tool-overrides.js");
+    expect((mod as any).processBashResult).toBeUndefined();
   });
 
-  afterEach(() => {
-    rmSync(tmp, { recursive: true, force: true });
-  });
-
-  it("transitions test-written → impl-allowed when test command fails (isError=true)", () => {
-    // createBashTool throws on non-zero exit → our override catches it → isError=true
-    setState(tmp, {
-      phase: "implement",
-      megaEnabled: true,
-      tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
-    });
-    processBashResult(tmp, "bun test", true); // isError=true: bash threw (non-zero exit)
-    expect(readState(tmp).tddTaskState?.state).toBe("impl-allowed");
-  });
-
-  it("does NOT transition when test command succeeds (isError=false — tests passed, not failed)", () => {
-    // Tests passing means we're still in test-written: need tests to FAIL before impl
-    setState(tmp, {
-      phase: "implement",
-      megaEnabled: true,
-      tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
-    });
-    processBashResult(tmp, "bun test", false); // isError=false: bash resolved (zero exit)
-    expect(readState(tmp).tddTaskState?.state).toBe("test-written"); // unchanged
-  });
-
-  it("does NOT use regex to detect exit code from output text", () => {
-    // Verify the function ignores exit code text in command output
-    // The isError flag is what matters, not text like "exit code 1"
-    setState(tmp, {
-      phase: "implement",
-      megaEnabled: true,
-      tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
-    });
-    // isError=false (zero exit) even though it contains "exit code 1" in command string
-    processBashResult(tmp, "echo 'exit code 1'", false);
-    expect(readState(tmp).tddTaskState?.state).toBe("test-written"); // not changed
-  });
-
-  it("ignores non-test-runner commands", () => {
-    setState(tmp, {
-      phase: "implement",
-      megaEnabled: true,
-      tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
-    });
-    processBashResult(tmp, "ls -la", true); // isError=true but not a test command
-    expect(readState(tmp).tddTaskState?.state).toBe("test-written"); // unchanged
-  });
-
-  it("ignores when phase is not implement or code-review", () => {
-    setState(tmp, { phase: "spec", megaEnabled: true, tddTaskState: null });
-    processBashResult(tmp, "bun test", true);
-    expect(readState(tmp).tddTaskState).toBeNull();
-  });
-
-  it("ignores when megaEnabled is false", () => {
-    setState(tmp, {
-      phase: "implement",
-      megaEnabled: false,
-      tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
-    });
-    processBashResult(tmp, "bun test", true);
-    expect(readState(tmp).tddTaskState?.state).toBe("test-written"); // unchanged
-  });
-
-  it("ignores when tddTaskState is not test-written", () => {
-    setState(tmp, {
-      phase: "implement",
-      megaEnabled: true,
-      tddTaskState: { taskIndex: 1, state: "no-test", skipped: false },
-    });
-    processBashResult(tmp, "bun test", true);
-    expect(readState(tmp).tddTaskState?.state).toBe("no-test"); // unchanged
-  });
-
-  it("ignores when tddTaskState is null", () => {
-    setState(tmp, {
-      phase: "implement",
-      megaEnabled: true,
-      tddTaskState: null,
-    });
-    processBashResult(tmp, "bun test", true);
-    expect(readState(tmp).tddTaskState).toBeNull();
-  });
-
-  it("works for npm test command", () => {
-    setState(tmp, {
-      phase: "implement",
-      megaEnabled: true,
-      tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
-    });
-    processBashResult(tmp, "npm test", true);
-    expect(readState(tmp).tddTaskState?.state).toBe("impl-allowed");
-  });
-
-  it("works during code-review phase", () => {
-    setState(tmp, {
-      phase: "code-review",
-      megaEnabled: true,
-      tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
-    });
-    processBashResult(tmp, "bun test", true);
-    expect(readState(tmp).tddTaskState?.state).toBe("impl-allowed");
-  });
-
-  it("ignores compound commands (chained with ;, &, |)", () => {
-    setState(tmp, {
-      phase: "implement",
-      megaEnabled: true,
-      tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
-    });
-    // Compound commands are not considered test runs (security + reliability)
-    processBashResult(tmp, "bun test && echo done", true);
-    expect(readState(tmp).tddTaskState?.state).toBe("test-written"); // unchanged
+  it("write-policy does not export isTestRunnerCommand", async () => {
+    const mod = await import("../extensions/megapowers/write-policy.js");
+    expect((mod as any).isTestRunnerCommand).toBeUndefined();
   });
 });
