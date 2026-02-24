@@ -2,7 +2,7 @@
   "version": 1,
   "activeIssue": "032-subagent-implementation-reliability",
   "workflow": "feature",
-  "phase": "verify",
+  "phase": "done",
   "phaseHistory": [
     {
       "from": "brainstorm",
@@ -88,6 +88,16 @@
       "from": "implement",
       "to": "verify",
       "timestamp": 1771955251553
+    },
+    {
+      "from": "verify",
+      "to": "code-review",
+      "timestamp": 1771955516100
+    },
+    {
+      "from": "code-review",
+      "to": "done",
+      "timestamp": 1771956843840
     }
   ],
   "reviewApproved": true,
@@ -109,9 +119,13 @@
     14,
     15
   ],
-  "tddTaskState": null,
+  "tddTaskState": {
+    "taskIndex": 15,
+    "state": "impl-allowed",
+    "skipped": false
+  },
   "taskJJChanges": {},
   "jjChangeId": null,
-  "doneMode": null,
+  "doneMode": "capture-learnings",
   "megaEnabled": true
 }

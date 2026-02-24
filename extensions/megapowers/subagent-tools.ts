@@ -56,7 +56,15 @@ export async function handleSubagentDispatch(
     }
   }
 
+  if (input.timeoutMs !== undefined && (!Number.isFinite(input.timeoutMs) || input.timeoutMs <= 0)) {
+    return { error: "timeoutMs must be a positive number of milliseconds." };
+  }
+
   const agent = resolveAgent(input.agent, cwd);
+  if (input.agent && !agent) {
+    return { error: `Agent '${input.agent}' not found. Check .megapowers/agents, ~/.megapowers/agents, or builtin agents.` };
+  }
+
   const id = generateSubagentId(input.taskIndex);
 
   const saDir = subagentDir(cwd, id);

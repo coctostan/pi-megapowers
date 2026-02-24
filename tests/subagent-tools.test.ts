@@ -48,6 +48,20 @@ describe("handleSubagentDispatch", () => {
     expect(result.error).toContain("jj");
   });
 
+  it("returns error when agent name is unknown", async () => {
+    const result = await handleSubagentDispatch(tmp, { task: "Do thing", agent: "unknown-agent-xyz" }, {
+      isJJRepo: async () => true,
+    });
+    expect(result.error).toContain("Agent 'unknown-agent-xyz' not found");
+  });
+
+  it("returns error for invalid timeoutMs", async () => {
+    const result = await handleSubagentDispatch(tmp, { task: "Do thing", timeoutMs: 0 }, {
+      isJJRepo: async () => true,
+    });
+    expect(result.error).toContain("timeoutMs");
+  });
+
   it("returns subagent ID on successful dispatch", async () => {
     const result = await handleSubagentDispatch(tmp, { task: "Build the parser" }, {
       isJJRepo: async () => true,

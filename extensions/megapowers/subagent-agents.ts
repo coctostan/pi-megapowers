@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
 export const BUILTIN_AGENTS_DIR = join(thisDir, "..", "..", "agents");
+const SAFE_AGENT_NAME = /^[A-Za-z0-9_-]+$/;
 
 export interface AgentDef {
   name: string;
@@ -85,6 +86,7 @@ export function resolveAgent(
   homeDirectory?: string,
 ): AgentDef | null {
   const agentName = name ?? "worker";
+  if (!SAFE_AGENT_NAME.test(agentName)) return null;
   const filename = `${agentName}.md`;
 
   const searchDirs = [

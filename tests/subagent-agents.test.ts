@@ -189,6 +189,12 @@ describe("resolveAgent", () => {
     expect(agent).toBeNull();
   });
 
+  it("rejects unsafe agent names with path traversal", () => {
+    expect(resolveAgent("../worker", tmp)).toBeNull();
+    expect(resolveAgent("..\\worker", tmp)).toBeNull();
+    expect(resolveAgent("nested/worker", tmp)).toBeNull();
+  });
+
   it("project agent takes priority over builtin", () => {
     const projectAgentsDir = join(tmp, ".megapowers", "agents");
     mkdirSync(projectAgentsDir, { recursive: true });
