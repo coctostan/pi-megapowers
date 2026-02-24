@@ -2,7 +2,7 @@
   "version": 1,
   "activeIssue": "032-subagent-implementation-reliability",
   "workflow": "feature",
-  "phase": "plan",
+  "phase": "review",
   "phaseHistory": [
     {
       "from": "brainstorm",
@@ -23,6 +23,11 @@
       "from": "review",
       "to": "plan",
       "timestamp": 1771945283971
+    },
+    {
+      "from": "plan",
+      "to": "review",
+      "timestamp": 1771945949049
     }
   ],
   "reviewApproved": false,

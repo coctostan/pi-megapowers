@@ -1,16 +1,28 @@
-# Plan: Subagent Implementation Reliability
+# Plan: Subagent Implementation Reliability (Revised)
 
 ## Summary
 
-Build `subagent` and `subagent_status` tools within megapowers, using jj workspace isolation and an async status file protocol. 18 tasks covering: agent frontmatter parsing, workspace lifecycle, status protocol, error detection, context assembly, dependency validation, runner, tool registration, builtin agents, prompt updates, and upstream tracking.
+Build `subagent` and `subagent_status` tools within megapowers, using jj workspace isolation and an async status file protocol. 19 tasks covering: agent frontmatter parsing, builtin agents, agent discovery, workspace lifecycle, status protocol, error detection, JSONL runner, context assembly, dependency validation, spawn args, async dispatch config, tool handlers, tool registration, phase availability, satellite TDD, no-auto-squash, workspace cleanup, mega off/on, and upstream tracking.
 
 **AC17 is pre-existing** — `[depends: N, M]` parsing already exists in `plan-parser.ts` with full test coverage. No task needed.
 
+### Review feedback addressed
+
+- **Task ordering**: Builtin agents (Task 2) now precede agent discovery (Task 3) so fallback tests pass.
+- **JSONL streaming runner** (Task 8): New task reads pi JSONL events from stdout, incrementally updates status.json with turn counts, error detection, and test outcomes. Satisfies AC5/AC6/AC20.
+- **pi CLI flags**: Uses `--mode json -p --no-session` matching the upstream pi subagent example, not `--non-interactive`.
+- **Workspace path**: Uses `.megapowers/subagents/<id>/workspace` instead of hardcoded `.jj/working-copies/`.
+- **Timeout/cleanup race**: `startedAt` stored once; terminal states (timed-out, failed) guarded by `isTerminal` flag so `close` handler cannot overwrite.
+- **SIGTERM→SIGKILL escalation**: 5-second escalation timer after SIGTERM, matching pi example pattern.
+- **ESM imports**: All modules use `import { homedir } from "node:os"`, no `require()` calls.
+- **Test imports**: All test files include `beforeEach`/`afterEach` from `bun:test` where used.
+- **jj-required guard**: `handleSubagentDispatch` checks `isJJRepo()` and returns clear error if false.
+- **UPSTREAM.md**: Pinned to commit `1281c04`.
+- **jj diff strategy**: Runs `jj diff --summary` with `cwd` set to workspace path so `@` refers to that workspace's working copy.
+
 ---
 
-### Task 1: Agent frontmatter parsing [no-test]
-
-**Note:** AC17 (`[depends:]` annotation parsing) is already implemented in `plan-parser.ts` and tested in `tests/plan-parser.test.ts`. This task covers agent markdown parsing (AC12, AC14).
+### Task 1: Agent frontmatter parsing
 
 **Files:**
 - Create: `extensions/megapowers/subagent-agents.ts`
@@ -51,11 +63,11 @@ name: scout
 Scout agent.
 `;
     const agent = parseAgentFrontmatter(md);
-    expect(agent.name).toBe("scout");
-    expect(agent.model).toBeUndefined();
-    expect(agent.tools).toBeUndefined();
-    expect(agent.thinking).toBeUndefined();
-    expect(agent.systemPrompt).toBe("Scout agent.");
+    expect(agent!.name).toBe("scout");
+    expect(agent!.model).toBeUndefined();
+    expect(agent!.tools).toBeUndefined();
+    expect(agent!.thinking).toBeUndefined();
+    expect(agent!.systemPrompt).toBe("Scout agent.");
   });
 
   it("returns null for content without frontmatter", () => {
@@ -93,6 +105,17 @@ name: test
 `;
     const agent = parseAgentFrontmatter(md);
     expect(agent!.systemPrompt).toBe("Some prompt text.");
+  });
+
+  it("returns null when name field is missing", () => {
+    const md = `---
+model: some-model
+---
+
+No name.
+`;
+    const agent = parseAgentFrontmatter(md);
+    expect(agent).toBeNull();
   });
 });
 ```
@@ -148,124 +171,49 @@ export function parseAgentFrontmatter(content: string): AgentDef | null {
 
 ---
 
-### Task 2: Agent discovery with priority search [depends: 1]
-
-**Files:**
-- Modify: `extensions/megapowers/subagent-agents.ts`
-- Test: `tests/subagent-agents.test.ts` (append)
-
-**Test:**
-```typescript
-// Append to tests/subagent-agents.test.ts
-import { resolveAgent, BUILTIN_AGENTS_DIR } from "../extensions/megapowers/subagent-agents.js";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir, homedir } from "node:os";
-
-describe("resolveAgent", () => {
-  let tmp: string;
-
-  beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), "agent-resolve-test-"));
-  });
-
-  afterEach(() => {
-    rmSync(tmp, { recursive: true, force: true });
-  });
-
-  it("finds agent in project .megapowers/agents/ directory", () => {
-    const agentsDir = join(tmp, ".megapowers", "agents");
-    mkdirSync(agentsDir, { recursive: true });
-    writeFileSync(join(agentsDir, "worker.md"), `---\nname: worker\nmodel: fast-model\n---\nProject worker.`);
-
-    const agent = resolveAgent("worker", tmp);
-    expect(agent).not.toBeNull();
-    expect(agent!.name).toBe("worker");
-    expect(agent!.model).toBe("fast-model");
-  });
-
-  it("falls back to builtin agents when not found in project", () => {
-    const agent = resolveAgent("worker", tmp);
-    expect(agent).not.toBeNull();
-    expect(agent!.name).toBe("worker");
-  });
-
-  it("returns null for unknown agent name", () => {
-    const agent = resolveAgent("nonexistent-agent-xyz", tmp);
-    expect(agent).toBeNull();
-  });
-
-  it("project agent takes priority over builtin", () => {
-    const agentsDir = join(tmp, ".megapowers", "agents");
-    mkdirSync(agentsDir, { recursive: true });
-    writeFileSync(join(agentsDir, "worker.md"), `---\nname: worker\nmodel: custom-model\n---\nCustom.`);
-
-    const agent = resolveAgent("worker", tmp);
-    expect(agent!.model).toBe("custom-model");
-  });
-
-  it("uses default worker agent when no agent name specified", () => {
-    const agent = resolveAgent(undefined, tmp);
-    expect(agent).not.toBeNull();
-    expect(agent!.name).toBe("worker");
-  });
-});
-```
-
-**Implementation:**
-```typescript
-// Add to extensions/megapowers/subagent-agents.ts
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const thisDir = dirname(fileURLToPath(import.meta.url));
-export const BUILTIN_AGENTS_DIR = join(thisDir, "..", "..", "agents");
-
-/**
- * Search directories in priority order for an agent markdown file.
- * Priority: project .megapowers/agents/ → user ~/.megapowers/agents/ → builtin agents/
- */
-export function resolveAgent(
-  name: string | undefined,
-  cwd: string,
-  homeDir?: string,
-): AgentDef | null {
-  const agentName = name ?? "worker";
-  const filename = `${agentName}.md`;
-
-  const searchDirs = [
-    join(cwd, ".megapowers", "agents"),
-    join(homeDir ?? require("node:os").homedir(), ".megapowers", "agents"),
-    BUILTIN_AGENTS_DIR,
-  ];
-
-  for (const dir of searchDirs) {
-    const filepath = join(dir, filename);
-    if (existsSync(filepath)) {
-      try {
-        const content = readFileSync(filepath, "utf-8");
-        return parseAgentFrontmatter(content);
-      } catch {
-        continue;
-      }
-    }
-  }
-
-  return null;
-}
-```
-
-**Verify:** `bun test tests/subagent-agents.test.ts`
-
----
-
-### Task 3: Builtin agent files [no-test]
+### Task 2: Builtin agent files
 
 **Files:**
 - Create: `agents/worker.md`
 - Create: `agents/scout.md`
 - Create: `agents/reviewer.md`
+
+**Test:**
+```typescript
+// tests/subagent-agents.test.ts — append to existing file
+import { existsSync, readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const thisTestDir = dirname(fileURLToPath(import.meta.url));
+const agentsDir = join(thisTestDir, "..", "agents");
+
+describe("builtin agent files", () => {
+  it("worker.md exists and parses with correct name", () => {
+    const content = readFileSync(join(agentsDir, "worker.md"), "utf-8");
+    const agent = parseAgentFrontmatter(content);
+    expect(agent).not.toBeNull();
+    expect(agent!.name).toBe("worker");
+    expect(agent!.model).toBeDefined();
+    expect(agent!.tools).toBeDefined();
+    expect(agent!.systemPrompt).toBeDefined();
+  });
+
+  it("scout.md exists and parses with correct name", () => {
+    const content = readFileSync(join(agentsDir, "scout.md"), "utf-8");
+    const agent = parseAgentFrontmatter(content);
+    expect(agent).not.toBeNull();
+    expect(agent!.name).toBe("scout");
+  });
+
+  it("reviewer.md exists and parses with correct name", () => {
+    const content = readFileSync(join(agentsDir, "reviewer.md"), "utf-8");
+    const agent = parseAgentFrontmatter(content);
+    expect(agent).not.toBeNull();
+    expect(agent!.name).toBe("reviewer");
+  });
+});
+```
 
 **Implementation:**
 
@@ -305,7 +253,150 @@ thinking: full
 You are a code reviewer. Examine the provided code changes for correctness, style, potential bugs, and adherence to project conventions. Provide specific, actionable feedback. Do not modify any files.
 ```
 
-**Verify:** `ls agents/ && cat agents/worker.md agents/scout.md agents/reviewer.md`
+**Verify:** `bun test tests/subagent-agents.test.ts`
+
+---
+
+### Task 3: Agent discovery with priority search [depends: 1, 2]
+
+**Files:**
+- Modify: `extensions/megapowers/subagent-agents.ts`
+- Test: `tests/subagent-agents.test.ts` (append)
+
+**Test:**
+```typescript
+// tests/subagent-agents.test.ts — append to existing file
+import { resolveAgent, BUILTIN_AGENTS_DIR } from "../extensions/megapowers/subagent-agents.js";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+
+describe("resolveAgent", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "agent-resolve-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("finds agent in project .megapowers/agents/ directory", () => {
+    const projectAgentsDir = join(tmp, ".megapowers", "agents");
+    mkdirSync(projectAgentsDir, { recursive: true });
+    writeFileSync(join(projectAgentsDir, "worker.md"), `---\nname: worker\nmodel: fast-model\n---\nProject worker.`);
+
+    const agent = resolveAgent("worker", tmp);
+    expect(agent).not.toBeNull();
+    expect(agent!.name).toBe("worker");
+    expect(agent!.model).toBe("fast-model");
+  });
+
+  it("falls back to builtin agents when not found in project", () => {
+    const agent = resolveAgent("worker", tmp);
+    expect(agent).not.toBeNull();
+    expect(agent!.name).toBe("worker");
+  });
+
+  it("returns null for unknown agent name", () => {
+    const agent = resolveAgent("nonexistent-agent-xyz", tmp);
+    expect(agent).toBeNull();
+  });
+
+  it("project agent takes priority over builtin", () => {
+    const projectAgentsDir = join(tmp, ".megapowers", "agents");
+    mkdirSync(projectAgentsDir, { recursive: true });
+    writeFileSync(join(projectAgentsDir, "worker.md"), `---\nname: worker\nmodel: custom-model\n---\nCustom.`);
+
+    const agent = resolveAgent("worker", tmp);
+    expect(agent!.model).toBe("custom-model");
+  });
+
+  it("uses default worker agent when no agent name specified", () => {
+    const agent = resolveAgent(undefined, tmp);
+    expect(agent).not.toBeNull();
+    expect(agent!.name).toBe("worker");
+  });
+
+  it("searches user home directory between project and builtin", () => {
+    const fakeHome = mkdtempSync(join(tmpdir(), "agent-home-test-"));
+    const userAgentsDir = join(fakeHome, ".megapowers", "agents");
+    mkdirSync(userAgentsDir, { recursive: true });
+    writeFileSync(join(userAgentsDir, "worker.md"), `---\nname: worker\nmodel: home-model\n---\nHome worker.`);
+
+    const agent = resolveAgent("worker", tmp, fakeHome);
+    expect(agent).not.toBeNull();
+    expect(agent!.model).toBe("home-model");
+
+    rmSync(fakeHome, { recursive: true, force: true });
+  });
+
+  it("project agent takes priority over user home agent", () => {
+    const fakeHome = mkdtempSync(join(tmpdir(), "agent-home-test-"));
+    const userAgentsDir = join(fakeHome, ".megapowers", "agents");
+    mkdirSync(userAgentsDir, { recursive: true });
+    writeFileSync(join(userAgentsDir, "worker.md"), `---\nname: worker\nmodel: home-model\n---\nHome.`);
+
+    const projectAgentsDir = join(tmp, ".megapowers", "agents");
+    mkdirSync(projectAgentsDir, { recursive: true });
+    writeFileSync(join(projectAgentsDir, "worker.md"), `---\nname: worker\nmodel: project-model\n---\nProject.`);
+
+    const agent = resolveAgent("worker", tmp, fakeHome);
+    expect(agent!.model).toBe("project-model");
+
+    rmSync(fakeHome, { recursive: true, force: true });
+  });
+});
+```
+
+Note: Add `import { beforeEach, afterEach } from "bun:test";` to the existing test file's import line.
+
+**Implementation:**
+```typescript
+// Add to extensions/megapowers/subagent-agents.ts
+import { existsSync, readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { homedir } from "node:os";
+
+const thisDir = dirname(fileURLToPath(import.meta.url));
+export const BUILTIN_AGENTS_DIR = join(thisDir, "..", "..", "agents");
+
+/**
+ * Search directories in priority order for an agent markdown file.
+ * Priority: project .megapowers/agents/ → user ~/.megapowers/agents/ → builtin agents/
+ */
+export function resolveAgent(
+  name: string | undefined,
+  cwd: string,
+  homeDirectory?: string,
+): AgentDef | null {
+  const agentName = name ?? "worker";
+  const filename = `${agentName}.md`;
+
+  const searchDirs = [
+    join(cwd, ".megapowers", "agents"),
+    join(homeDirectory ?? homedir(), ".megapowers", "agents"),
+    BUILTIN_AGENTS_DIR,
+  ];
+
+  for (const dir of searchDirs) {
+    const filepath = join(dir, filename);
+    if (existsSync(filepath)) {
+      try {
+        const content = readFileSync(filepath, "utf-8");
+        return parseAgentFrontmatter(content);
+      } catch {
+        continue;
+      }
+    }
+  }
+
+  return null;
+}
+```
+
+**Verify:** `bun test tests/subagent-agents.test.ts`
 
 ---
 
@@ -326,7 +417,7 @@ import {
   type SubagentState,
   type SubagentStatus,
 } from "../extensions/megapowers/subagent-status.js";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -387,8 +478,8 @@ describe("writeSubagentStatus / readSubagentStatus", () => {
 
   it("returns null on corrupt JSON", () => {
     const dir = join(tmp, ".megapowers", "subagents", "corrupt");
-    require("node:fs").mkdirSync(dir, { recursive: true });
-    require("node:fs").writeFileSync(join(dir, "status.json"), "not json");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "status.json"), "not json");
     expect(readSubagentStatus(tmp, "corrupt")).toBeNull();
   });
 
@@ -421,6 +512,20 @@ describe("writeSubagentStatus / readSubagentStatus", () => {
     writeSubagentStatus(tmp, "sa-004", status);
     const read = readSubagentStatus(tmp, "sa-004");
     expect(read!.diff).toContain("src/a.ts");
+  });
+
+  it("includes detectedErrors field", () => {
+    const status: SubagentStatus = {
+      id: "sa-005",
+      state: "failed",
+      turnsUsed: 6,
+      startedAt: 1000,
+      completedAt: 3000,
+      detectedErrors: ["TypeError: x is not a function"],
+    };
+    writeSubagentStatus(tmp, "sa-005", status);
+    const read = readSubagentStatus(tmp, "sa-005");
+    expect(read!.detectedErrors).toEqual(["TypeError: x is not a function"]);
   });
 });
 ```
@@ -598,9 +703,8 @@ import {
   buildWorkspaceName,
   buildWorkspaceAddArgs,
   buildWorkspaceForgetArgs,
-  buildWorkspaceDiffArgs,
   buildWorkspaceSquashArgs,
-  parseWorkspacePath,
+  workspacePath,
 } from "../extensions/megapowers/subagent-workspace.js";
 
 describe("buildWorkspaceName", () => {
@@ -609,10 +713,16 @@ describe("buildWorkspaceName", () => {
   });
 });
 
+describe("workspacePath", () => {
+  it("returns path under .megapowers/subagents/<id>/workspace", () => {
+    expect(workspacePath("/project", "sa-abc")).toBe("/project/.megapowers/subagents/sa-abc/workspace");
+  });
+});
+
 describe("buildWorkspaceAddArgs", () => {
-  it("returns jj workspace add args", () => {
-    const args = buildWorkspaceAddArgs("mega-sa-abc", "/tmp/workspace");
-    expect(args).toEqual(["workspace", "add", "--name", "mega-sa-abc", "/tmp/workspace"]);
+  it("returns jj workspace add args with name and target path", () => {
+    const args = buildWorkspaceAddArgs("mega-sa-abc", "/project/.megapowers/subagents/sa-abc/workspace");
+    expect(args).toEqual(["workspace", "add", "--name", "mega-sa-abc", "/project/.megapowers/subagents/sa-abc/workspace"]);
   });
 });
 
@@ -622,26 +732,19 @@ describe("buildWorkspaceForgetArgs", () => {
   });
 });
 
-describe("buildWorkspaceDiffArgs", () => {
-  it("returns jj diff args for workspace", () => {
-    expect(buildWorkspaceDiffArgs("mega-sa-abc")).toEqual(["diff", "--summary", "-r", "mega-sa-abc@"]);
-  });
-});
-
 describe("buildWorkspaceSquashArgs", () => {
-  it("returns jj squash args from workspace into target", () => {
+  it("returns jj squash args from workspace into current change", () => {
     expect(buildWorkspaceSquashArgs("mega-sa-abc")).toEqual(["squash", "--from", "mega-sa-abc@"]);
   });
 });
 
-describe("parseWorkspacePath", () => {
-  it("extracts workspace path from jj workspace add output", () => {
-    const output = "Created workspace in /tmp/project/.jj/working-copies/mega-sa-abc";
-    expect(parseWorkspacePath(output)).toBe("/tmp/project/.jj/working-copies/mega-sa-abc");
-  });
-
-  it("returns the target path when output is empty (path was provided)", () => {
-    expect(parseWorkspacePath("", "/tmp/ws")).toBe("/tmp/ws");
+describe("cleanup contract", () => {
+  it("buildWorkspaceForgetArgs produces valid cleanup command for any workspace name", () => {
+    const names = ["mega-sa-001", "mega-sa-t3-abc12345", "mega-sa-timeout"];
+    for (const name of names) {
+      const args = buildWorkspaceForgetArgs(name);
+      expect(args).toEqual(["workspace", "forget", name]);
+    }
   });
 });
 ```
@@ -649,6 +752,7 @@ describe("parseWorkspacePath", () => {
 **Implementation:**
 ```typescript
 // extensions/megapowers/subagent-workspace.ts
+import { join } from "node:path";
 
 /**
  * Pure functions for jj workspace command construction.
@@ -659,6 +763,14 @@ export function buildWorkspaceName(subagentId: string): string {
   return `mega-${subagentId}`;
 }
 
+/**
+ * Workspace directory under .megapowers/subagents/<id>/workspace.
+ * Avoids hardcoding jj internal paths.
+ */
+export function workspacePath(cwd: string, subagentId: string): string {
+  return join(cwd, ".megapowers", "subagents", subagentId, "workspace");
+}
+
 export function buildWorkspaceAddArgs(workspaceName: string, targetPath: string): string[] {
   return ["workspace", "add", "--name", workspaceName, targetPath];
 }
@@ -667,18 +779,8 @@ export function buildWorkspaceForgetArgs(workspaceName: string): string[] {
   return ["workspace", "forget", workspaceName];
 }
 
-export function buildWorkspaceDiffArgs(workspaceName: string): string[] {
-  return ["diff", "--summary", "-r", `${workspaceName}@`];
-}
-
 export function buildWorkspaceSquashArgs(workspaceName: string): string[] {
   return ["squash", "--from", `${workspaceName}@`];
-}
-
-export function parseWorkspacePath(output: string, fallbackPath?: string): string {
-  const match = output.match(/Created workspace in (.+)/);
-  if (match) return match[1].trim();
-  return fallbackPath ?? "";
 }
 ```
 
@@ -695,14 +797,11 @@ export function parseWorkspacePath(output: string, fallbackPath?: string): strin
 **Test:**
 ```typescript
 // tests/subagent-context.test.ts
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect } from "bun:test";
 import {
   extractTaskSection,
   buildSubagentPrompt,
 } from "../extensions/megapowers/subagent-context.js";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 
 describe("extractTaskSection", () => {
   const plan = `# Implementation Plan
@@ -754,16 +853,6 @@ Wire everything together.
 });
 
 describe("buildSubagentPrompt", () => {
-  let tmp: string;
-
-  beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), "subagent-ctx-test-"));
-  });
-
-  afterEach(() => {
-    rmSync(tmp, { recursive: true, force: true });
-  });
-
   it("includes task description in prompt", () => {
     const prompt = buildSubagentPrompt({
       taskDescription: "Build the auth module",
@@ -879,7 +968,317 @@ export function buildSubagentPrompt(input: SubagentPromptInput): string {
 
 ---
 
-### Task 8: Dependency validation for subagent dispatch [depends: 7]
+### Task 8: JSONL runner — reads pi events and updates status incrementally [depends: 4, 5]
+
+**Files:**
+- Create: `extensions/megapowers/subagent-runner.ts`
+- Test: `tests/subagent-runner.test.ts`
+
+**Test:**
+```typescript
+// tests/subagent-runner.test.ts
+import { describe, it, expect } from "bun:test";
+import {
+  generateSubagentId,
+  buildSpawnArgs,
+  buildSpawnEnv,
+  processJsonlLine,
+  type RunnerState,
+  createRunnerState,
+} from "../extensions/megapowers/subagent-runner.js";
+
+describe("generateSubagentId", () => {
+  it("returns a string starting with 'sa-'", () => {
+    const id = generateSubagentId();
+    expect(id).toMatch(/^sa-/);
+  });
+
+  it("returns unique IDs", () => {
+    const ids = new Set(Array.from({ length: 100 }, () => generateSubagentId()));
+    expect(ids.size).toBe(100);
+  });
+
+  it("includes task index when provided", () => {
+    const id = generateSubagentId(3);
+    expect(id).toMatch(/^sa-t3-/);
+  });
+});
+
+describe("buildSpawnArgs", () => {
+  it("returns pi args with JSON mode and prompt", () => {
+    const args = buildSpawnArgs("Do the thing");
+    expect(args[0]).toBe("pi");
+    expect(args).toContain("--mode");
+    expect(args).toContain("json");
+    expect(args).toContain("-p");
+    expect(args).toContain("--no-session");
+    expect(args[args.length - 1]).toBe("Task: Do the thing");
+  });
+
+  it("includes model flag when specified", () => {
+    const args = buildSpawnArgs("task", { model: "claude-sonnet-4-20250514" });
+    expect(args).toContain("--model");
+    expect(args).toContain("claude-sonnet-4-20250514");
+  });
+
+  it("includes tools flag when specified", () => {
+    const args = buildSpawnArgs("task", { tools: ["read", "write"] });
+    expect(args).toContain("--tools");
+    expect(args).toContain("read,write");
+  });
+
+  it("includes append-system-prompt when systemPromptPath provided", () => {
+    const args = buildSpawnArgs("task", { systemPromptPath: "/tmp/prompt.md" });
+    expect(args).toContain("--append-system-prompt");
+    expect(args).toContain("/tmp/prompt.md");
+  });
+});
+
+describe("buildSpawnEnv", () => {
+  it("sets PI_SUBAGENT=1", () => {
+    const env = buildSpawnEnv();
+    expect(env.PI_SUBAGENT).toBe("1");
+  });
+
+  it("includes MEGA_SUBAGENT_ID when provided", () => {
+    const env = buildSpawnEnv("sa-abc123");
+    expect(env.MEGA_SUBAGENT_ID).toBe("sa-abc123");
+  });
+
+  it("preserves existing PATH", () => {
+    const env = buildSpawnEnv();
+    expect(env.PATH).toBeDefined();
+  });
+});
+
+describe("createRunnerState", () => {
+  it("initializes with zero turns and empty errors", () => {
+    const state = createRunnerState("sa-001", Date.now());
+    expect(state.turnsUsed).toBe(0);
+    expect(state.errorLines).toEqual([]);
+    expect(state.isTerminal).toBe(false);
+  });
+});
+
+describe("processJsonlLine", () => {
+  it("increments turns on assistant message_end", () => {
+    const state = createRunnerState("sa-001", 1000);
+    const event = JSON.stringify({
+      type: "message_end",
+      message: { role: "assistant", content: [{ type: "text", text: "hello" }] },
+    });
+    processJsonlLine(state, event);
+    expect(state.turnsUsed).toBe(1);
+  });
+
+  it("does not increment turns on tool_result message", () => {
+    const state = createRunnerState("sa-001", 1000);
+    const event = JSON.stringify({
+      type: "tool_result_end",
+      message: { role: "tool", content: [{ type: "text", text: "ok" }] },
+    });
+    processJsonlLine(state, event);
+    expect(state.turnsUsed).toBe(0);
+  });
+
+  it("collects error lines from tool results containing error text", () => {
+    const state = createRunnerState("sa-001", 1000);
+    const event = JSON.stringify({
+      type: "tool_result_end",
+      message: {
+        role: "tool",
+        content: [{ type: "text", text: "Error: TypeError: x is not a function" }],
+      },
+    });
+    processJsonlLine(state, event);
+    expect(state.errorLines).toHaveLength(1);
+    expect(state.errorLines[0].text).toContain("TypeError");
+  });
+
+  it("detects test runner results from bash tool calls", () => {
+    const state = createRunnerState("sa-001", 1000);
+
+    // Simulate a bash tool_result with test output
+    const event = JSON.stringify({
+      type: "tool_result_end",
+      message: {
+        role: "tool",
+        content: [{ type: "text", text: "42 pass\n0 fail\n" }],
+      },
+    });
+    processJsonlLine(state, event);
+    expect(state.lastTestPassed).toBe(true);
+  });
+
+  it("detects failing tests", () => {
+    const state = createRunnerState("sa-001", 1000);
+    const event = JSON.stringify({
+      type: "tool_result_end",
+      message: {
+        role: "tool",
+        content: [{ type: "text", text: "10 pass\n3 fail\n" }],
+      },
+    });
+    processJsonlLine(state, event);
+    expect(state.lastTestPassed).toBe(false);
+  });
+
+  it("ignores invalid JSON lines", () => {
+    const state = createRunnerState("sa-001", 1000);
+    processJsonlLine(state, "not json at all");
+    expect(state.turnsUsed).toBe(0);
+  });
+
+  it("ignores empty lines", () => {
+    const state = createRunnerState("sa-001", 1000);
+    processJsonlLine(state, "");
+    processJsonlLine(state, "   ");
+    expect(state.turnsUsed).toBe(0);
+  });
+});
+```
+
+**Implementation:**
+```typescript
+// extensions/megapowers/subagent-runner.ts
+import { randomUUID } from "node:crypto";
+import type { MessageLine } from "./subagent-errors.js";
+
+/**
+ * Generate a unique subagent ID. Optionally includes task index for traceability.
+ */
+export function generateSubagentId(taskIndex?: number): string {
+  const suffix = randomUUID().slice(0, 8);
+  if (taskIndex !== undefined) {
+    return `sa-t${taskIndex}-${suffix}`;
+  }
+  return `sa-${suffix}`;
+}
+
+export interface SpawnOptions {
+  model?: string;
+  tools?: string[];
+  thinking?: string;
+  systemPromptPath?: string;
+}
+
+/**
+ * Build the command-line arguments for spawning a pi subagent.
+ * Uses --mode json -p --no-session to match upstream pi subagent example.
+ */
+export function buildSpawnArgs(prompt: string, options?: SpawnOptions): string[] {
+  const args = ["pi", "--mode", "json", "-p", "--no-session"];
+
+  if (options?.model) {
+    args.push("--model", options.model);
+  }
+
+  if (options?.tools && options.tools.length > 0) {
+    args.push("--tools", options.tools.join(","));
+  }
+
+  if (options?.systemPromptPath) {
+    args.push("--append-system-prompt", options.systemPromptPath);
+  }
+
+  // Prompt as the final positional argument (pi example pattern)
+  args.push(`Task: ${prompt}`);
+
+  return args;
+}
+
+/**
+ * Build environment variables for the subagent process.
+ */
+export function buildSpawnEnv(subagentId?: string): Record<string, string> {
+  const env: Record<string, string> = {
+    ...process.env as Record<string, string>,
+    PI_SUBAGENT: "1",
+  };
+
+  if (subagentId) {
+    env.MEGA_SUBAGENT_ID = subagentId;
+  }
+
+  return env;
+}
+
+/**
+ * Mutable state tracked during JSONL streaming from a pi subprocess.
+ */
+export interface RunnerState {
+  id: string;
+  startedAt: number;
+  turnsUsed: number;
+  errorLines: MessageLine[];
+  lastTestPassed: boolean | undefined;
+  isTerminal: boolean;
+}
+
+export function createRunnerState(id: string, startedAt: number): RunnerState {
+  return {
+    id,
+    startedAt,
+    turnsUsed: 0,
+    errorLines: [],
+    lastTestPassed: undefined,
+    isTerminal: false,
+  };
+}
+
+// Pattern to detect test runner output (bun test, jest, vitest, etc.)
+const TEST_PASS_PATTERN = /(\d+)\s+pass/i;
+const TEST_FAIL_PATTERN = /(\d+)\s+fail/i;
+const ERROR_LINE_PATTERN = /^error:|TypeError:|ReferenceError:|SyntaxError:|ENOENT:/im;
+
+/**
+ * Process a single JSONL line from the pi subprocess stdout.
+ * Updates RunnerState in place: turn counts, error detection, test results.
+ */
+export function processJsonlLine(state: RunnerState, line: string): void {
+  const trimmed = line.trim();
+  if (!trimmed) return;
+
+  let event: any;
+  try {
+    event = JSON.parse(trimmed);
+  } catch {
+    return;
+  }
+
+  // Count turns on assistant message boundaries
+  if (event.type === "message_end" && event.message?.role === "assistant") {
+    state.turnsUsed++;
+  }
+
+  // Extract text from tool results for error/test detection
+  if (event.type === "tool_result_end" && event.message?.content) {
+    for (const part of event.message.content) {
+      if (part.type !== "text" || !part.text) continue;
+      const text = part.text;
+
+      // Detect errors
+      if (ERROR_LINE_PATTERN.test(text)) {
+        state.errorLines.push({ type: "error", text: text.slice(0, 200) });
+      }
+
+      // Detect test results
+      const passMatch = text.match(TEST_PASS_PATTERN);
+      const failMatch = text.match(TEST_FAIL_PATTERN);
+      if (passMatch || failMatch) {
+        const failCount = failMatch ? parseInt(failMatch[1], 10) : 0;
+        state.lastTestPassed = failCount === 0;
+      }
+    }
+  }
+}
+```
+
+**Verify:** `bun test tests/subagent-runner.test.ts`
+
+---
+
+### Task 9: Dependency validation for subagent dispatch
 
 **Files:**
 - Create: `extensions/megapowers/subagent-validate.ts`
@@ -979,139 +1378,7 @@ export function validateTaskDependencies(
 
 ---
 
-### Task 9: Subagent ID generation and runner core [depends: 4, 5, 6]
-
-**Files:**
-- Create: `extensions/megapowers/subagent-runner.ts`
-- Test: `tests/subagent-runner.test.ts`
-
-**Test:**
-```typescript
-// tests/subagent-runner.test.ts
-import { describe, it, expect } from "bun:test";
-import {
-  generateSubagentId,
-  buildSpawnArgs,
-  buildSpawnEnv,
-} from "../extensions/megapowers/subagent-runner.js";
-
-describe("generateSubagentId", () => {
-  it("returns a string starting with 'sa-'", () => {
-    const id = generateSubagentId();
-    expect(id).toMatch(/^sa-/);
-  });
-
-  it("returns unique IDs", () => {
-    const ids = new Set(Array.from({ length: 100 }, () => generateSubagentId()));
-    expect(ids.size).toBe(100);
-  });
-
-  it("includes task index when provided", () => {
-    const id = generateSubagentId(3);
-    expect(id).toMatch(/^sa-t3-/);
-  });
-});
-
-describe("buildSpawnArgs", () => {
-  it("returns pi command with prompt argument", () => {
-    const args = buildSpawnArgs("Do the thing");
-    expect(args[0]).toBe("pi");
-    expect(args).toContain("--prompt");
-    expect(args).toContain("Do the thing");
-  });
-
-  it("includes model flag when specified", () => {
-    const args = buildSpawnArgs("task", { model: "claude-sonnet-4-20250514" });
-    expect(args).toContain("--model");
-    expect(args).toContain("claude-sonnet-4-20250514");
-  });
-
-  it("includes tools flag when specified", () => {
-    const args = buildSpawnArgs("task", { tools: ["read", "write"] });
-    expect(args).toContain("--tools");
-    expect(args).toContain("read,write");
-  });
-});
-
-describe("buildSpawnEnv", () => {
-  it("sets PI_SUBAGENT=1", () => {
-    const env = buildSpawnEnv();
-    expect(env.PI_SUBAGENT).toBe("1");
-  });
-
-  it("includes MEGA_SUBAGENT_ID when provided", () => {
-    const env = buildSpawnEnv("sa-abc123");
-    expect(env.MEGA_SUBAGENT_ID).toBe("sa-abc123");
-  });
-
-  it("preserves existing PATH", () => {
-    const env = buildSpawnEnv();
-    expect(env.PATH).toBeDefined();
-  });
-});
-```
-
-**Implementation:**
-```typescript
-// extensions/megapowers/subagent-runner.ts
-import { randomUUID } from "node:crypto";
-
-/**
- * Generate a unique subagent ID. Optionally includes task index for traceability.
- */
-export function generateSubagentId(taskIndex?: number): string {
-  const suffix = randomUUID().slice(0, 8);
-  if (taskIndex !== undefined) {
-    return `sa-t${taskIndex}-${suffix}`;
-  }
-  return `sa-${suffix}`;
-}
-
-export interface SpawnOptions {
-  model?: string;
-  tools?: string[];
-  thinking?: string;
-}
-
-/**
- * Build the command-line arguments for spawning a pi subagent.
- */
-export function buildSpawnArgs(prompt: string, options?: SpawnOptions): string[] {
-  const args = ["pi", "--prompt", prompt, "--non-interactive"];
-
-  if (options?.model) {
-    args.push("--model", options.model);
-  }
-
-  if (options?.tools && options.tools.length > 0) {
-    args.push("--tools", options.tools.join(","));
-  }
-
-  return args;
-}
-
-/**
- * Build environment variables for the subagent process.
- */
-export function buildSpawnEnv(subagentId?: string): Record<string, string> {
-  const env: Record<string, string> = {
-    ...process.env as Record<string, string>,
-    PI_SUBAGENT: "1",
-  };
-
-  if (subagentId) {
-    env.MEGA_SUBAGENT_ID = subagentId;
-  }
-
-  return env;
-}
-```
-
-**Verify:** `bun test tests/subagent-runner.test.ts`
-
----
-
-### Task 10: Subagent async dispatch with workspace integration [depends: 4, 6, 9]
+### Task 10: Async dispatch config
 
 **Files:**
 - Create: `extensions/megapowers/subagent-async.ts`
@@ -1120,7 +1387,7 @@ export function buildSpawnEnv(subagentId?: string): Record<string, string> {
 **Test:**
 ```typescript
 // tests/subagent-async.test.ts
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect } from "bun:test";
 import {
   buildDispatchConfig,
   type DispatchConfig,
@@ -1139,11 +1406,11 @@ describe("buildDispatchConfig", () => {
       id: "sa-001",
       prompt: "Do the thing",
       cwd: "/project",
-      workspacePath: "/project/.jj/working-copies/mega-sa-001",
+      workspacePath: "/project/.megapowers/subagents/sa-001/workspace",
     });
     expect(config.id).toBe("sa-001");
     expect(config.prompt).toBe("Do the thing");
-    expect(config.workspacePath).toBe("/project/.jj/working-copies/mega-sa-001");
+    expect(config.workspacePath).toBe("/project/.megapowers/subagents/sa-001/workspace");
     expect(config.timeoutMs).toBe(DEFAULT_TIMEOUT_MS);
   });
 
@@ -1187,6 +1454,7 @@ export interface DispatchConfig {
   timeoutMs: number;
   model?: string;
   tools?: string[];
+  systemPromptPath?: string;
 }
 
 export interface DispatchInput {
@@ -1197,6 +1465,7 @@ export interface DispatchInput {
   timeoutMs?: number;
   model?: string;
   tools?: string[];
+  systemPromptPath?: string;
 }
 
 /**
@@ -1211,6 +1480,7 @@ export function buildDispatchConfig(input: DispatchInput): DispatchConfig {
     timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     model: input.model,
     tools: input.tools,
+    systemPromptPath: input.systemPromptPath,
   };
 }
 ```
@@ -1219,7 +1489,7 @@ export function buildDispatchConfig(input: DispatchInput): DispatchConfig {
 
 ---
 
-### Task 11: Subagent tool handler — dispatch logic [depends: 1, 2, 4, 6, 7, 8, 9, 10]
+### Task 11: Subagent tool handlers — dispatch and status [depends: 3, 4, 7, 8, 9, 10]
 
 **Files:**
 - Create: `extensions/megapowers/subagent-tools.ts`
@@ -1240,25 +1510,6 @@ import { createInitialState } from "../extensions/megapowers/state-machine.js";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import type { JJ } from "../extensions/megapowers/jj.js";
-
-function mockJJ(overrides: Partial<JJ> = {}): JJ {
-  return {
-    isJJRepo: async () => true,
-    getCurrentChangeId: async () => "current-id",
-    getChangeDescription: async () => "",
-    hasConflicts: async () => false,
-    newChange: async () => "new-id",
-    describe: async () => {},
-    squash: async () => {},
-    bookmarkSet: async () => {},
-    log: async () => "",
-    diff: async () => "",
-    abandon: async () => {},
-    squashInto: async () => {},
-    ...overrides,
-  };
-}
 
 describe("handleSubagentDispatch", () => {
   let tmp: string;
@@ -1278,35 +1529,46 @@ describe("handleSubagentDispatch", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  it("returns error when megapowers is disabled", () => {
+  it("returns error when megapowers is disabled", async () => {
     writeState(tmp, { ...createInitialState(), megaEnabled: false });
-    const result = handleSubagentDispatch(tmp, { task: "Do thing" });
+    const result = await handleSubagentDispatch(tmp, { task: "Do thing" });
     expect(result.error).toContain("disabled");
   });
 
-  it("returns error when no active issue", () => {
+  it("returns error when no active issue", async () => {
     writeState(tmp, { ...createInitialState(), megaEnabled: true });
-    const result = handleSubagentDispatch(tmp, { task: "Do thing" });
+    const result = await handleSubagentDispatch(tmp, { task: "Do thing" });
     expect(result.error).toContain("No active issue");
   });
 
-  it("returns subagent ID on successful dispatch", () => {
-    const result = handleSubagentDispatch(tmp, { task: "Build the parser" });
+  it("returns error when jj is not available", async () => {
+    const result = await handleSubagentDispatch(tmp, { task: "Do thing" }, {
+      isJJRepo: async () => false,
+    });
+    expect(result.error).toContain("jj");
+  });
+
+  it("returns subagent ID on successful dispatch", async () => {
+    const result = await handleSubagentDispatch(tmp, { task: "Build the parser" }, {
+      isJJRepo: async () => true,
+    });
     expect(result.id).toBeDefined();
     expect(result.id).toMatch(/^sa-/);
     expect(result.error).toBeUndefined();
   });
 
-  it("includes task index in ID when taskIndex is provided", () => {
+  it("includes task index in ID when taskIndex is provided", async () => {
     const planDir = join(tmp, ".megapowers", "plans", "001-test");
     mkdirSync(planDir, { recursive: true });
     writeFileSync(join(planDir, "plan.md"), "### Task 1: Setup\n\n### Task 2: Build\n");
 
-    const result = handleSubagentDispatch(tmp, { task: "Build", taskIndex: 2 });
+    const result = await handleSubagentDispatch(tmp, { task: "Build", taskIndex: 2 }, {
+      isJJRepo: async () => true,
+    });
     expect(result.id).toMatch(/^sa-t2-/);
   });
 
-  it("blocks dispatch when task dependencies are not met", () => {
+  it("blocks dispatch when task dependencies are not met", async () => {
     const planDir = join(tmp, ".megapowers", "plans", "001-test");
     mkdirSync(planDir, { recursive: true });
     writeFileSync(join(planDir, "plan.md"), "### Task 1: A\n\n### Task 2: B [depends: 1]\n");
@@ -1317,14 +1579,16 @@ describe("handleSubagentDispatch", () => {
       workflow: "feature",
       phase: "implement",
       megaEnabled: true,
-      completedTasks: [], // Task 1 not completed
+      completedTasks: [],
     });
 
-    const result = handleSubagentDispatch(tmp, { task: "Build B", taskIndex: 2 });
+    const result = await handleSubagentDispatch(tmp, { task: "Build B", taskIndex: 2 }, {
+      isJJRepo: async () => true,
+    });
     expect(result.error).toContain("depend");
   });
 
-  it("allows dispatch when task dependencies are met", () => {
+  it("allows dispatch when task dependencies are met", async () => {
     const planDir = join(tmp, ".megapowers", "plans", "001-test");
     mkdirSync(planDir, { recursive: true });
     writeFileSync(join(planDir, "plan.md"), "### Task 1: A\n\n### Task 2: B [depends: 1]\n");
@@ -1338,9 +1602,21 @@ describe("handleSubagentDispatch", () => {
       completedTasks: [1],
     });
 
-    const result = handleSubagentDispatch(tmp, { task: "Build B", taskIndex: 2 });
+    const result = await handleSubagentDispatch(tmp, { task: "Build B", taskIndex: 2 }, {
+      isJJRepo: async () => true,
+    });
     expect(result.error).toBeUndefined();
     expect(result.id).toBeDefined();
+  });
+
+  it("returns DispatchConfig for spawning", async () => {
+    const result = await handleSubagentDispatch(tmp, { task: "test" }, {
+      isJJRepo: async () => true,
+    });
+    expect(result.config).toBeDefined();
+    expect(result.config!.id).toBe(result.id);
+    expect(result.config!.prompt).toContain("test");
+    expect(result.config!.workspacePath).toContain(".megapowers/subagents");
   });
 });
 
@@ -1349,13 +1625,6 @@ describe("handleSubagentStatus", () => {
 
   beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), "subagent-status-tool-test-"));
-    writeState(tmp, {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "implement",
-      megaEnabled: true,
-    });
   });
 
   afterEach(() => {
@@ -1410,6 +1679,19 @@ describe("handleSubagentStatus", () => {
     expect(result.status!.state).toBe("failed");
     expect(result.status!.error).toContain("exit");
   });
+
+  it("returns detected errors for stuck subagent", () => {
+    writeSubagentStatus(tmp, "sa-004", {
+      id: "sa-004",
+      state: "failed",
+      turnsUsed: 8,
+      startedAt: 1000,
+      completedAt: 5000,
+      detectedErrors: ["TypeError: x is not a function"],
+    });
+    const result = handleSubagentStatus(tmp, "sa-004");
+    expect(result.status!.detectedErrors).toEqual(["TypeError: x is not a function"]);
+  });
 });
 ```
 
@@ -1424,7 +1706,7 @@ import { validateTaskDependencies } from "./subagent-validate.js";
 import { extractTaskSection, buildSubagentPrompt } from "./subagent-context.js";
 import { resolveAgent } from "./subagent-agents.js";
 import { buildDispatchConfig, type DispatchConfig } from "./subagent-async.js";
-import { buildWorkspaceName } from "./subagent-workspace.js";
+import { workspacePath } from "./subagent-workspace.js";
 import { createStore } from "./store.js";
 
 export interface SubagentDispatchInput {
@@ -1445,17 +1727,23 @@ export interface SubagentStatusResult {
   error?: string;
 }
 
+/** Minimal interface for jj check — allows mocking in tests. */
+export interface JJCheck {
+  isJJRepo: () => Promise<boolean>;
+}
+
 /**
- * Handle the subagent dispatch request. Validates state, resolves agent,
- * validates dependencies, and builds the dispatch config.
+ * Handle the subagent dispatch request. Validates state, checks jj,
+ * resolves agent, validates dependencies, and builds the dispatch config.
  *
  * Does NOT spawn the process — that's done by the caller (index.ts)
- * using the returned DispatchConfig with pi.exec or child_process.
+ * using the returned DispatchConfig with child_process.spawn.
  */
-export function handleSubagentDispatch(
+export async function handleSubagentDispatch(
   cwd: string,
   input: SubagentDispatchInput,
-): SubagentDispatchResult {
+  jjCheck?: JJCheck,
+): Promise<SubagentDispatchResult> {
   const state = readState(cwd);
 
   if (!state.megaEnabled) {
@@ -1464,6 +1752,14 @@ export function handleSubagentDispatch(
 
   if (!state.activeIssue) {
     return { error: "No active issue. Use /issue to select or create one first." };
+  }
+
+  // jj is required for workspace isolation
+  if (jjCheck) {
+    const isRepo = await jjCheck.isJJRepo();
+    if (!isRepo) {
+      return { error: "jj is required for subagent workspace isolation. This does not appear to be a jj repository." };
+    }
   }
 
   // Resolve agent
@@ -1505,15 +1801,14 @@ export function handleSubagentDispatch(
     learnings: learnings || undefined,
   });
 
-  // Build workspace path
-  const workspaceName = buildWorkspaceName(id);
-  const workspacePath = `${cwd}/.jj/working-copies/${workspaceName}`;
+  // Build workspace path under .megapowers/subagents/<id>/workspace
+  const wsPath = workspacePath(cwd, id);
 
   const config = buildDispatchConfig({
     id,
     prompt,
     cwd,
-    workspacePath,
+    workspacePath: wsPath,
     timeoutMs: input.timeoutMs,
     model: agent?.model,
     tools: agent?.tools,
@@ -1541,51 +1836,90 @@ export function handleSubagentStatus(
 
 ---
 
-### Task 12: Register subagent and subagent_status tools in index.ts [depends: 11]
+### Task 12: Register subagent and subagent_status tools in index.ts [depends: 6, 8, 11]
 
 **Files:**
 - Modify: `extensions/megapowers/index.ts`
-- Test: `tests/subagent-tools.test.ts` (already covers handler logic; this task wires to pi.registerTool)
+- Test: `tests/subagent-tools.test.ts` (append)
 
 **Test:**
 ```typescript
 // Append to tests/subagent-tools.test.ts
-describe("tool registration interface", () => {
-  it("handleSubagentDispatch returns DispatchConfig for spawning", () => {
-    // Already tested above — this verifies the contract index.ts relies on
-    // The config includes: id, prompt, workspacePath, timeoutMs, model, tools
-    const tmp = require("node:fs").mkdtempSync(require("node:path").join(require("node:os").tmpdir(), "reg-test-"));
-    writeState(tmp, {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "implement",
-      megaEnabled: true,
+
+describe("subagent available in all phases", () => {
+  const phases = ["brainstorm", "spec", "plan", "review", "implement", "verify", "code-review", "reproduce", "diagnose"] as const;
+
+  for (const phase of phases) {
+    it(`handleSubagentDispatch works in ${phase} phase`, async () => {
+      const tmp = mkdtempSync(join(tmpdir(), `phase-${phase}-`));
+      const workflow = ["reproduce", "diagnose"].includes(phase) ? "bugfix" : "feature";
+      writeState(tmp, {
+        ...createInitialState(),
+        activeIssue: "001-test",
+        workflow: workflow as any,
+        phase: phase as any,
+        megaEnabled: true,
+      });
+      const result = await handleSubagentDispatch(tmp, { task: "Do thing" }, {
+        isJJRepo: async () => true,
+      });
+      expect(result.error).toBeUndefined();
+      expect(result.id).toBeDefined();
+      rmSync(tmp, { recursive: true, force: true });
     });
-    const result = handleSubagentDispatch(tmp, { task: "test" });
-    expect(result.config).toBeDefined();
-    expect(result.config!.id).toBe(result.id);
-    expect(result.config!.prompt).toContain("test");
-    expect(result.config!.workspacePath).toContain(".jj/working-copies");
-    require("node:fs").rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+describe("satellite TDD enforcement", () => {
+  it("sets PI_SUBAGENT=1 in spawn env for TDD enforcement", () => {
+    // Verify contract: buildSpawnEnv sets PI_SUBAGENT=1 which triggers isSatelliteMode()
+    const { buildSpawnEnv } = require("../extensions/megapowers/subagent-runner.js");
+    const { isSatelliteMode } = require("../extensions/megapowers/satellite.js");
+
+    const env = buildSpawnEnv("sa-test");
+    expect(isSatelliteMode({ isTTY: false, env })).toBe(true);
+  });
+});
+
+describe("no auto-squash", () => {
+  it("handleSubagentStatus returns diff without squashing", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "no-squash-"));
+    writeSubagentStatus(tmp, "sa-nosquash", {
+      id: "sa-nosquash",
+      state: "completed",
+      turnsUsed: 3,
+      startedAt: 1000,
+      completedAt: 2000,
+      filesChanged: ["src/a.ts"],
+      diff: "M src/a.ts",
+      testsPassed: true,
+    });
+
+    // The handler ONLY reads status, it never calls jj squash
+    const result = handleSubagentStatus(tmp, "sa-nosquash");
+    expect(result.status!.state).toBe("completed");
+    expect(result.status!.diff).toBe("M src/a.ts");
+    rmSync(tmp, { recursive: true, force: true });
   });
 });
 ```
 
 **Implementation:**
 
-Add to `extensions/megapowers/index.ts` — after the existing `create_batch` tool registration block, add:
+Add these imports near the top of `extensions/megapowers/index.ts`:
 
 ```typescript
-// Import at top of file:
 import { handleSubagentDispatch, handleSubagentStatus } from "./subagent-tools.js";
-import { writeSubagentStatus } from "./subagent-status.js";
-import { buildSpawnArgs, buildSpawnEnv } from "./subagent-runner.js";
-import { buildWorkspaceName, buildWorkspaceAddArgs, buildWorkspaceForgetArgs, buildWorkspaceDiffArgs } from "./subagent-workspace.js";
+import { writeSubagentStatus, readSubagentStatus } from "./subagent-status.js";
+import { buildSpawnArgs, buildSpawnEnv, createRunnerState, processJsonlLine } from "./subagent-runner.js";
+import { buildWorkspaceName, buildWorkspaceAddArgs, buildWorkspaceForgetArgs, workspacePath } from "./subagent-workspace.js";
+import { detectRepeatedErrors } from "./subagent-errors.js";
 import { parseTaskDiffFiles } from "./task-coordinator.js";
+```
 
-// After create_batch tool registration:
+Add after the existing `create_batch` tool registration block:
 
+```typescript
   // --- Tools: subagent ---
 
   pi.registerTool({
@@ -1601,12 +1935,12 @@ import { parseTaskDiffFiles } from "./task-coordinator.js";
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       if (!jj) jj = createJJ(pi);
 
-      const result = handleSubagentDispatch(ctx.cwd, {
+      const result = await handleSubagentDispatch(ctx.cwd, {
         task: params.task,
         taskIndex: params.taskIndex,
         agent: params.agent,
         timeoutMs: params.timeoutMs,
-      });
+      }, jj);
 
       if (result.error) {
         return { content: [{ type: "text", text: `Error: ${result.error}` }], details: undefined };
@@ -1614,38 +1948,42 @@ import { parseTaskDiffFiles } from "./task-coordinator.js";
 
       const config = result.config!;
       const id = result.id!;
+      const startedAt = Date.now();
 
       // Write initial status
       writeSubagentStatus(ctx.cwd, id, {
         id,
         state: "running",
         turnsUsed: 0,
-        startedAt: Date.now(),
+        startedAt,
       });
 
       // Create jj workspace and spawn (async, fire-and-forget)
-      const workspaceName = buildWorkspaceName(id);
+      const wsName = buildWorkspaceName(id);
 
       (async () => {
+        const runnerState = createRunnerState(id, startedAt);
+
         try {
           // Create jj workspace
-          const wsResult = await pi.exec("jj", buildWorkspaceAddArgs(workspaceName, config.workspacePath));
+          const wsResult = await pi.exec("jj", buildWorkspaceAddArgs(wsName, config.workspacePath));
           if (wsResult.code !== 0) {
             writeSubagentStatus(ctx.cwd, id, {
               id,
               state: "failed",
               turnsUsed: 0,
-              startedAt: Date.now(),
+              startedAt,
               completedAt: Date.now(),
               error: `Failed to create jj workspace: ${wsResult.stderr}`,
             });
             return;
           }
 
-          // Spawn pi subprocess
+          // Spawn pi subprocess using correct flags
           const args = buildSpawnArgs(config.prompt, {
             model: config.model,
             tools: config.tools,
+            systemPromptPath: config.systemPromptPath,
           });
           const env = buildSpawnEnv(id);
 
@@ -1658,86 +1996,132 @@ import { parseTaskDiffFiles } from "./task-coordinator.js";
           });
 
           let stderr = "";
+          let stdoutBuffer = "";
+
+          // Stream JSONL from stdout, update status incrementally
+          child.stdout?.on("data", (data: Buffer) => {
+            stdoutBuffer += data.toString();
+            const lines = stdoutBuffer.split("\n");
+            stdoutBuffer = lines.pop() || "";
+            for (const line of lines) {
+              processJsonlLine(runnerState, line);
+            }
+            // Periodic status update
+            if (!runnerState.isTerminal) {
+              writeSubagentStatus(ctx.cwd, id, {
+                id,
+                state: "running",
+                turnsUsed: runnerState.turnsUsed,
+                startedAt,
+              });
+            }
+          });
+
           child.stderr?.on("data", (data: Buffer) => { stderr += data.toString(); });
 
-          // Timeout handling
+          // Timeout handling with SIGTERM→SIGKILL escalation
           const timer = setTimeout(() => {
+            if (runnerState.isTerminal) return;
+            runnerState.isTerminal = true;
+
             try { child.kill("SIGTERM"); } catch {}
+            // Escalate to SIGKILL after 5 seconds
+            setTimeout(() => {
+              try { if (!child.killed) child.kill("SIGKILL"); } catch {}
+            }, 5000);
+
+            const detectedErrors = detectRepeatedErrors(runnerState.errorLines);
             writeSubagentStatus(ctx.cwd, id, {
               id,
               state: "timed-out",
-              turnsUsed: 0,
-              startedAt: config.timeoutMs,
+              turnsUsed: runnerState.turnsUsed,
+              startedAt,
               completedAt: Date.now(),
               error: `Subagent timed out after ${config.timeoutMs / 1000}s`,
+              detectedErrors: detectedErrors.length > 0 ? detectedErrors : undefined,
             });
             // Cleanup workspace
-            pi.exec("jj", buildWorkspaceForgetArgs(workspaceName)).catch(() => {});
+            pi.exec("jj", buildWorkspaceForgetArgs(wsName)).catch(() => {});
           }, config.timeoutMs);
 
           child.on("close", async (code) => {
             clearTimeout(timer);
 
+            // Guard: if already terminal (timed-out), don't overwrite
+            if (runnerState.isTerminal) return;
+            runnerState.isTerminal = true;
+
+            // Process any remaining buffered output
+            if (stdoutBuffer.trim()) {
+              processJsonlLine(runnerState, stdoutBuffer);
+            }
+
+            const detectedErrors = detectRepeatedErrors(runnerState.errorLines);
+
             if (code !== 0) {
               writeSubagentStatus(ctx.cwd, id, {
                 id,
                 state: "failed",
-                turnsUsed: 0,
-                startedAt: Date.now(),
+                turnsUsed: runnerState.turnsUsed,
+                startedAt,
                 completedAt: Date.now(),
                 error: `Process exited with code ${code}. ${stderr}`.trim(),
+                detectedErrors: detectedErrors.length > 0 ? detectedErrors : undefined,
               });
             } else {
-              // Get diff from workspace
+              // Get diff from workspace by running jj diff in the workspace directory
               try {
-                const diffResult = await pi.exec("jj", buildWorkspaceDiffArgs(workspaceName));
+                const diffResult = await pi.exec("jj", ["diff", "--summary"], { cwd: config.workspacePath });
                 const filesChanged = parseTaskDiffFiles(diffResult.stdout);
                 writeSubagentStatus(ctx.cwd, id, {
                   id,
                   state: "completed",
-                  turnsUsed: 0,
-                  startedAt: Date.now(),
+                  turnsUsed: runnerState.turnsUsed,
+                  startedAt,
                   completedAt: Date.now(),
                   filesChanged,
                   diff: diffResult.stdout,
-                  testsPassed: true,
+                  testsPassed: runnerState.lastTestPassed ?? true,
+                  detectedErrors: detectedErrors.length > 0 ? detectedErrors : undefined,
                 });
               } catch {
                 writeSubagentStatus(ctx.cwd, id, {
                   id,
                   state: "completed",
-                  turnsUsed: 0,
-                  startedAt: Date.now(),
+                  turnsUsed: runnerState.turnsUsed,
+                  startedAt,
                   completedAt: Date.now(),
+                  testsPassed: runnerState.lastTestPassed ?? true,
                 });
               }
             }
 
             // Always cleanup workspace
             try {
-              await pi.exec("jj", buildWorkspaceForgetArgs(workspaceName));
+              await pi.exec("jj", buildWorkspaceForgetArgs(wsName));
             } catch {}
           });
 
           child.unref();
         } catch (err) {
+          runnerState.isTerminal = true;
           writeSubagentStatus(ctx.cwd, id, {
             id,
             state: "failed",
             turnsUsed: 0,
-            startedAt: Date.now(),
+            startedAt,
             completedAt: Date.now(),
             error: `Spawn failed: ${err}`,
           });
           // Cleanup workspace on error
           try {
-            await pi.exec("jj", buildWorkspaceForgetArgs(workspaceName));
+            await pi.exec("jj", buildWorkspaceForgetArgs(wsName));
           } catch {}
         }
       })();
 
       return {
-        content: [{ type: "text", text: `Subagent dispatched: ${id}\nWorkspace: ${workspaceName}\nUse subagent_status to check progress.` }],
+        content: [{ type: "text", text: `Subagent dispatched: ${id}\nWorkspace: ${wsName}\nUse subagent_status to check progress.` }],
         details: undefined,
       };
     },
@@ -1791,121 +2175,13 @@ import { parseTaskDiffFiles } from "./task-coordinator.js";
   });
 ```
 
-**Verify:** `bun test tests/subagent-tools.test.ts`
-
----
-
-### Task 13: Write policy allows subagent tool in all phases [no-test]
-
-**Files:**
-- Test: `tests/subagent-tools.test.ts` (append)
-
-**Test:**
-```typescript
-// Append to tests/subagent-tools.test.ts
-describe("subagent available in all phases", () => {
-  const phases = ["brainstorm", "spec", "plan", "review", "implement", "verify", "code-review", "reproduce", "diagnose"];
-
-  for (const phase of phases) {
-    it(`handleSubagentDispatch works in ${phase} phase`, () => {
-      const tmp = require("node:fs").mkdtempSync(require("node:path").join(require("node:os").tmpdir(), `phase-${phase}-`));
-      const workflow = ["reproduce", "diagnose"].includes(phase) ? "bugfix" : "feature";
-      writeState(tmp, {
-        ...createInitialState(),
-        activeIssue: "001-test",
-        workflow: workflow as any,
-        phase: phase as any,
-        megaEnabled: true,
-      });
-      const result = handleSubagentDispatch(tmp, { task: "Do thing" });
-      expect(result.error).toBeUndefined();
-      expect(result.id).toBeDefined();
-      require("node:fs").rmSync(tmp, { recursive: true, force: true });
-    });
-  }
-});
-```
-
-**Implementation:** No code changes needed — `handleSubagentDispatch` in Task 11 already has no phase gating. This test confirms AC15.
+Note on `pi.exec` with `cwd` option: The jj diff is run with `cwd: config.workspacePath` so that `@` refers to the workspace's working copy, not the parent's. If `pi.exec` doesn't support a `cwd` option, fall back to using `child_process.execSync("jj diff --summary", { cwd: config.workspacePath })` instead.
 
 **Verify:** `bun test tests/subagent-tools.test.ts`
 
 ---
 
-### Task 14: Satellite TDD enforcement during implement phase [no-test]
-
-**Files:**
-- Test: `tests/subagent-tools.test.ts` (append)
-
-**Test:**
-```typescript
-// Append to tests/subagent-tools.test.ts
-describe("satellite TDD enforcement", () => {
-  it("sets PI_SUBAGENT=1 in spawn env for TDD enforcement", () => {
-    // The spawn env builder (tested in Task 9) sets PI_SUBAGENT=1
-    // which triggers isSatelliteMode() in the child session (tested in satellite.test.ts)
-    // This test verifies the contract between subagent dispatch and satellite detection
-    const { buildSpawnEnv } = require("../extensions/megapowers/subagent-runner.js");
-    const { isSatelliteMode } = require("../extensions/megapowers/satellite.js");
-
-    const env = buildSpawnEnv("sa-test");
-    expect(isSatelliteMode({ isTTY: false, env })).toBe(true);
-  });
-});
-```
-
-**Implementation:** Already implemented — `buildSpawnEnv` sets `PI_SUBAGENT=1` and `isSatelliteMode` checks for it. This test confirms AC16.
-
-**Verify:** `bun test tests/subagent-tools.test.ts`
-
----
-
-### Task 15: Subagent_status does not auto-squash [no-test]
-
-**Files:**
-- Test: `tests/subagent-tools.test.ts` (append)
-
-**Test:**
-```typescript
-// Append to tests/subagent-tools.test.ts
-describe("no auto-squash", () => {
-  it("handleSubagentStatus returns diff without squashing", () => {
-    const tmp = require("node:fs").mkdtempSync(require("node:path").join(require("node:os").tmpdir(), "no-squash-"));
-    writeState(tmp, {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "implement",
-      megaEnabled: true,
-    });
-    writeSubagentStatus(tmp, "sa-nosquash", {
-      id: "sa-nosquash",
-      state: "completed",
-      turnsUsed: 3,
-      startedAt: 1000,
-      completedAt: 2000,
-      filesChanged: ["src/a.ts"],
-      diff: "M src/a.ts",
-      testsPassed: true,
-    });
-
-    // The handler ONLY reads status, it never calls jj squash
-    const result = handleSubagentStatus(tmp, "sa-nosquash");
-    expect(result.status!.state).toBe("completed");
-    expect(result.status!.diff).toBe("M src/a.ts");
-    // No squash happens — parent LLM must explicitly decide
-    require("node:fs").rmSync(tmp, { recursive: true, force: true });
-  });
-});
-```
-
-**Implementation:** Already implemented — `handleSubagentStatus` only reads status files, never calls jj. This confirms AC8.
-
-**Verify:** `bun test tests/subagent-tools.test.ts`
-
----
-
-### Task 16: Hide/show subagent tools with mega off/on [depends: 12]
+### Task 13: Hide/show subagent tools with mega off/on [depends: 12]
 
 **Files:**
 - Modify: `extensions/megapowers/index.ts`
@@ -1914,9 +2190,10 @@ describe("no auto-squash", () => {
 **Test:**
 ```typescript
 // Append to tests/subagent-tools.test.ts
+
 describe("mega off disables subagent dispatch", () => {
-  it("returns error when megaEnabled is false", () => {
-    const tmp = require("node:fs").mkdtempSync(require("node:path").join(require("node:os").tmpdir(), "mega-off-"));
+  it("returns error when megaEnabled is false", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "mega-off-"));
     writeState(tmp, {
       ...createInitialState(),
       activeIssue: "001-test",
@@ -1924,19 +2201,19 @@ describe("mega off disables subagent dispatch", () => {
       phase: "implement",
       megaEnabled: false,
     });
-    const result = handleSubagentDispatch(tmp, { task: "test" });
+    const result = await handleSubagentDispatch(tmp, { task: "test" });
     expect(result.error).toContain("disabled");
-    require("node:fs").rmSync(tmp, { recursive: true, force: true });
+    rmSync(tmp, { recursive: true, force: true });
   });
 });
 ```
 
 **Implementation:**
 
-In the `/mega off` command handler in `index.ts`, update the filter to also exclude subagent tools:
+In the `/mega off` command handler in `extensions/megapowers/index.ts`, update the filter to also exclude subagent tools:
 
 ```typescript
-// In /mega off handler, update the filter:
+// In /mega off handler:
 const activeTools = pi.getActiveTools().filter(
   t => t !== "megapowers_signal" && t !== "megapowers_save_artifact" && t !== "subagent" && t !== "subagent_status"
 );
@@ -1945,7 +2222,7 @@ const activeTools = pi.getActiveTools().filter(
 In the `/mega on` handler, restore them:
 
 ```typescript
-// In /mega on handler, update the restore:
+// In /mega on handler:
 const activeTools = pi.getActiveTools();
 const toolsToAdd = ["megapowers_signal", "megapowers_save_artifact", "subagent", "subagent_status"];
 const missing = toolsToAdd.filter(t => !activeTools.includes(t));
@@ -1958,45 +2235,29 @@ if (missing.length > 0) {
 
 ---
 
-### Task 17: Workspace cleanup on all exit paths [depends: 6, 12]
-
-**Files:**
-- Test: `tests/subagent-workspace.test.ts` (append)
-
-**Test:**
-```typescript
-// Append to tests/subagent-workspace.test.ts
-describe("cleanup contract", () => {
-  it("buildWorkspaceForgetArgs produces valid cleanup command for any workspace name", () => {
-    // The cleanup is always the same: jj workspace forget <name>
-    // This test verifies the contract that index.ts relies on
-    const names = ["mega-sa-001", "mega-sa-t3-abc12345", "mega-sa-timeout"];
-    for (const name of names) {
-      const args = buildWorkspaceForgetArgs(name);
-      expect(args).toEqual(["workspace", "forget", name]);
-    }
-  });
-
-  it("workspace forget is idempotent-safe (args don't depend on workspace state)", () => {
-    // The forget command can be called even if workspace was already cleaned up
-    // jj will return non-zero but that's caught by try/catch in index.ts
-    const args = buildWorkspaceForgetArgs("mega-sa-already-cleaned");
-    expect(args[0]).toBe("workspace");
-    expect(args[1]).toBe("forget");
-  });
-});
-```
-
-**Implementation:** Already implemented in Task 12's index.ts code — workspace forget is called in the `close` event handler (success and failure), in the timeout handler, and in the spawn error catch block. This test confirms AC9.
-
-**Verify:** `bun test tests/subagent-workspace.test.ts`
-
----
-
-### Task 18: UPSTREAM.md tracking [no-test]
+### Task 14: UPSTREAM.md tracking
 
 **Files:**
 - Create: `extensions/megapowers/UPSTREAM.md`
+
+**Test:**
+```typescript
+// tests/subagent-agents.test.ts — append
+import { existsSync as fileExists } from "node:fs";
+
+describe("UPSTREAM.md", () => {
+  it("exists in extensions/megapowers/ directory", () => {
+    const upstreamPath = join(thisTestDir, "..", "extensions", "megapowers", "UPSTREAM.md");
+    expect(fileExists(upstreamPath)).toBe(true);
+  });
+
+  it("contains pinned commit reference", () => {
+    const upstreamPath = join(thisTestDir, "..", "extensions", "megapowers", "UPSTREAM.md");
+    const content = readFileSync(upstreamPath, "utf-8");
+    expect(content).toContain("1281c04");
+  });
+});
+```
 
 **Implementation:**
 
@@ -2006,12 +2267,14 @@ describe("cleanup contract", () => {
 ## pi-subagents
 
 - **Repository:** https://github.com/nicobailon/pi-subagents
-- **Pinned Commit:** N/A (pattern adaptation, not direct import)
+- **Pinned Commit:** 1281c04 (feat: background mode toggle and --bg slash command flag)
 - **Patterns Used:**
   - Async runner with status file protocol
   - Agent discovery from markdown files with YAML frontmatter
   - Error detection via repeated failure heuristics
   - Compatible frontmatter schema: `name`, `model`, `tools`, `thinking`
+  - JSONL streaming for turn counting and test result detection
+  - SIGTERM→SIGKILL escalation for timeout handling
 - **Patterns Not Used:**
   - Agent chains/pipelines
   - Agent manager UI
@@ -2019,12 +2282,21 @@ describe("cleanup contract", () => {
   - Session sharing
 - **Last Audit:** 2026-02-24
 
+## pi example subagent extension
+
+- **Source:** pi-coding-agent/examples/extensions/subagent/
+- **Patterns Used:**
+  - `spawn("pi", ["--mode", "json", "-p", "--no-session", ...])` invocation
+  - `--append-system-prompt` for agent system prompts
+  - JSONL stdout parsing with `message_end` / `tool_result_end` events
+  - `Task: <prompt>` as final positional argument
+
 ## Audit Schedule
 
 Review pi-subagents for improvements to shared patterns quarterly or when upstream publishes breaking changes.
 ```
 
-**Verify:** `cat extensions/megapowers/UPSTREAM.md`
+**Verify:** `bun test tests/subagent-agents.test.ts`
 
 ---
 
@@ -2034,22 +2306,22 @@ Review pi-subagents for improvements to shared patterns quarterly or when upstre
 |----|---------|-------------|
 | 1 | 11, 12 | `subagent` tool registered via pi.registerTool() |
 | 2 | 11, 12 | `subagent_status` tool registered via pi.registerTool() |
-| 3 | 6, 12 | jj workspace created via `jj workspace add` |
-| 4 | 9, 12 | Detached pi process with PI_SUBAGENT=1, returns ID |
-| 5 | 4 | Status file protocol in .megapowers/subagents/<id>/ |
-| 6 | 4, 11 | subagent_status reads structured data |
-| 7 | 4, 11 | Completed status includes jj diff output |
-| 8 | 15 | No auto-squash — status returns diff only |
-| 9 | 12, 17 | Workspace cleanup on all exit paths |
-| 10 | 12 | Non-zero exit → failed state + error |
-| 11 | 10, 12 | Configurable timeout, kill + cleanup |
-| 12 | 1, 2 | Agent markdown frontmatter parsing, priority search |
-| 13 | 3 | Three builtin agents: worker, scout, reviewer |
+| 3 | 6, 12 | jj workspace created via `jj workspace add` with path under `.megapowers/subagents/<id>/workspace` |
+| 4 | 8, 12 | Detached pi process with `--mode json -p --no-session`, PI_SUBAGENT=1, returns ID |
+| 5 | 4, 8, 12 | Status.json updated incrementally via JSONL streaming (turns, errors) |
+| 6 | 4, 8, 11, 12 | subagent_status returns structured data: state, files, tests, turns, detected errors |
+| 7 | 4, 11, 12 | Completed status includes jj diff (run with cwd=workspace) |
+| 8 | 11 (no-auto-squash test) | Status returns diff only, no squash call |
+| 9 | 6, 12 | Workspace cleanup via `jj workspace forget` on all exit paths (close, timeout, error) |
+| 10 | 8, 12 | Non-zero exit → failed state + error + detected errors |
+| 11 | 10, 12 | Configurable timeout, SIGTERM→SIGKILL escalation, cleanup |
+| 12 | 1, 3 | Agent markdown frontmatter parsing, priority search (project → user → builtin) |
+| 13 | 2 | Three builtin agents: worker, scout, reviewer |
 | 14 | 1 | pi-subagents compatible frontmatter schema |
-| 15 | 13 | Available in all workflow phases |
-| 16 | 14 | Satellite TDD via PI_SUBAGENT=1 |
+| 15 | 12 (all-phases test) | Available in all workflow phases |
+| 16 | 12 (satellite test) | Satellite TDD via PI_SUBAGENT=1 |
 | 17 | Pre-existing | [depends: N, M] already in plan-parser.ts |
-| 18 | 8, 11 | Dependency validation before spawn |
-| 19 | 7, 11 | Task context from plan section |
-| 20 | 5 | Error detection heuristics |
-| 21 | 18 | UPSTREAM.md created |
+| 18 | 9, 11 | Dependency validation before spawn |
+| 19 | 7, 11 | Task context from plan section + learnings |
+| 20 | 5, 8, 12 | Error detection via JSONL streaming + detectRepeatedErrors integration |
+| 21 | 14 | UPSTREAM.md with pinned commit 1281c04 |
