@@ -6,7 +6,9 @@ Build `subagent` and `subagent_status` tools within megapowers, using jj workspa
 
 **AC17 is pre-existing** — `[depends: N, M]` parsing already exists in `plan-parser.ts` with full test coverage. No task needed.
 
-### Review feedback addressed (rounds 1-3)
+**AC5 interpretation**: The spec says "spawned pi subprocess writes status.json". In this plan, the **parent/supervisor** writes and updates `status.json` by parsing the child's JSONL stdout stream. The child subprocess has no awareness of the status file. This is the correct architecture because: (a) the child runs with `--mode json` outputting JSONL events, not status files; (b) the parent can detect timeout/crash conditions the child can't report; (c) it avoids competing file writes between parent and child.
+
+### Review feedback addressed (rounds 1-4)
 
 #### Round 1
 - **Task ordering**: Builtin agents (Task 2) now precede agent discovery (Task 3) so fallback tests pass.
@@ -22,7 +24,7 @@ Build `subagent` and `subagent_status` tools within megapowers, using jj workspa
 - **Agent `thinking` forwarded**: `buildSpawnArgs()` supports `--thinking <level>` flag.
 - **`resolveAgent()` robustness**: Continues searching when a file has invalid frontmatter.
 
-#### Round 3 (this revision)
+#### Round 3
 - **AC16 satellite TDD enforcement (BLOCKING)**: New Task 12 adds `MEGA_PROJECT_ROOT` env var to `buildSpawnEnv()` and modifies satellite mode in `index.ts` to read state from project root, not workspace cwd. Without this, subagent workspace dirs have no `.megapowers/state.json` and `canWrite()` becomes pass-through.
 - **AC7 full diff for review (BLOCKING)**: Task 13 runs both `jj diff --summary` (→ `filesChanged`) AND `jj diff` (→ `diff` field with full patch). If full diff exceeds 100KB, stores to `diff.patch` file and references it.
 - **JSONL event types fixed (BLOCKING)**: Task 8 now uses `tool_execution_end` (with `toolName`, `result`, `isError`) for error/test detection, and `message_end` with `message.role === "assistant"` for turn counting AND assistant-text error harvesting (AC20). Removed references to nonexistent `tool_result_end` event.
@@ -33,6 +35,13 @@ Build `subagent` and `subagent_status` tools within megapowers, using jj workspa
 - **Dependency validation when plan missing**: Task 9 now returns error when `taskIndex` is provided but plan tasks can't be derived (empty plan or missing file).
 - **Timeout/cleanup race fixed**: Timeout handler only sets `isTerminal` flag and kills the process. All workspace cleanup happens in the `close` handler after process exit, regardless of exit path (success, failure, timeout).
 - **AC5/AC6/AC7 output format**: `subagent_status` returns JSON as tool content for machine-safe LLM parsing. Human-readable summary is secondary.
+
+#### Round 4
+- **Task 1 frontmatter YAML arrays (BLOCKING)**: `parseAgentFrontmatter()` now supports multiline YAML `- item` arrays for tools field, not just inline `[a, b]` and `a, b` formats. New test covers this.
+- **Task 4 atomic status writes (RECOMMENDED)**: `writeSubagentStatus()` now uses atomic temp-file-then-rename (same pattern as `state-io.ts`) to prevent `readSubagentStatus()` from reading partial JSON during concurrent writes.
+- **Task 8 isTestCommand gating (RECOMMENDED)**: Test result detection in `processJsonlLine()` now gates on `isTestCommand(command)` from the correlated `tool_execution_start` args, preventing false positives from non-test bash commands that happen to contain "pass"/"fail" strings.
+- **Task 13 pi.exec cwd support (BLOCKING)**: Confirmed `pi.exec()` supports `ExecOptions.cwd` per the pi SDK type definitions (`exec(command, args, options?: ExecOptions)`). Task 13 now uses `pi.exec("jj", args, { cwd: config.workspacePath })` directly for workspace-scoped jj commands. Does NOT go through `createJJ()` wrapper (which doesn't pass options through).
+- **AC5 clarification**: Explicitly documented that parent/supervisor writes status from JSONL stream parsing, not the child subprocess.
 
 ---
 
@@ -109,6 +118,37 @@ tools: [read, write, bash]
     expect(agent!.tools).toEqual(["read", "write", "bash"]);
   });
 
+  it("parses tools as multiline YAML dash-item array", () => {
+    const md = `---
+name: helper
+tools:
+  - read
+  - write
+  - bash
+---
+
+Helper agent.
+`;
+    const agent = parseAgentFrontmatter(md);
+    expect(agent!.tools).toEqual(["read", "write", "bash"]);
+    expect(agent!.name).toBe("helper");
+    expect(agent!.systemPrompt).toBe("Helper agent.");
+  });
+
+  it("parses tools as multiline YAML dash-item with other fields after", () => {
+    const md = `---
+name: worker
+tools:
+  - read
+  - bash
+thinking: full
+---
+`;
+    const agent = parseAgentFrontmatter(md);
+    expect(agent!.tools).toEqual(["read", "bash"]);
+    expect(agent!.thinking).toBe("full");
+  });
+
   it("trims whitespace from body as system prompt", () => {
     const md = `---
 name: test
@@ -149,6 +189,11 @@ export interface AgentDef {
 /**
  * Parse agent definition from markdown with YAML frontmatter.
  * Compatible with pi-subagents format.
+ *
+ * Supports three formats for the `tools` field:
+ * - Inline YAML array: `tools: [read, write, bash]`
+ * - Comma-separated:   `tools: read, write, bash`
+ * - Multiline YAML:    `tools:\n  - read\n  - write\n  - bash`
  */
 export function parseAgentFrontmatter(content: string): AgentDef | null {
   const match = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
@@ -157,10 +202,34 @@ export function parseAgentFrontmatter(content: string): AgentDef | null {
   const frontmatter = match[1];
   const body = match[2].trim();
 
+  // Parse frontmatter with multiline array support
   const data: Record<string, string> = {};
-  for (const line of frontmatter.split("\n")) {
-    const kv = line.match(/^(\w+):\s*(.+)$/);
-    if (kv) data[kv[1]] = kv[2].trim();
+  const multilineArrays: Record<string, string[]> = {};
+  const lines = frontmatter.split("\n");
+  let currentArrayKey: string | null = null;
+
+  for (const line of lines) {
+    // Check for "- item" continuation of a multiline array
+    const dashItem = line.match(/^\s+-\s+(.+)$/);
+    if (dashItem && currentArrayKey) {
+      if (!multilineArrays[currentArrayKey]) multilineArrays[currentArrayKey] = [];
+      multilineArrays[currentArrayKey].push(dashItem[1].trim());
+      continue;
+    }
+
+    // Check for "key: value" or "key:" (empty value, start of multiline array)
+    const kvWithValue = line.match(/^(\w+):\s+(.+)$/);
+    const kvEmpty = line.match(/^(\w+):\s*$/);
+
+    if (kvWithValue) {
+      currentArrayKey = null;
+      data[kvWithValue[1]] = kvWithValue[2].trim();
+    } else if (kvEmpty) {
+      // Could be start of a multiline array (e.g., "tools:")
+      currentArrayKey = kvEmpty[1];
+    } else {
+      currentArrayKey = null;
+    }
   }
 
   if (!data.name) return null;
@@ -169,7 +238,10 @@ export function parseAgentFrontmatter(content: string): AgentDef | null {
   if (data.model) agent.model = data.model;
   if (data.thinking) agent.thinking = data.thinking;
 
-  if (data.tools) {
+  // Resolve tools: prefer multiline array if present, otherwise parse inline
+  if (multilineArrays.tools && multilineArrays.tools.length > 0) {
+    agent.tools = multilineArrays.tools;
+  } else if (data.tools) {
     // Support both "[a, b, c]" and "a, b, c"
     const raw = data.tools.replace(/^\[|\]$/g, "");
     agent.tools = raw.split(",").map(s => s.trim()).filter(Boolean);
@@ -663,8 +735,9 @@ describe("updateSubagentStatus", () => {
 **Implementation:**
 ```typescript
 // extensions/megapowers/subagent-status.ts
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 
 export type SubagentState = "running" | "completed" | "failed" | "timed-out";
 
@@ -689,10 +762,18 @@ export function subagentDir(cwd: string, id: string): string {
   return join(cwd, ".megapowers", "subagents", id);
 }
 
+/**
+ * Write status.json atomically using temp-file-then-rename.
+ * Same pattern as state-io.ts writeState() — prevents readSubagentStatus()
+ * from seeing partial JSON during concurrent writes from the JSONL stream handler.
+ */
 export function writeSubagentStatus(cwd: string, id: string, status: SubagentStatus): void {
   const dir = subagentDir(cwd, id);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, "status.json"), JSON.stringify(status, null, 2) + "\n");
+  const filePath = join(dir, "status.json");
+  const tmpPath = join(dir, `.status-${randomUUID().slice(0, 8)}.tmp`);
+  writeFileSync(tmpPath, JSON.stringify(status, null, 2) + "\n");
+  renameSync(tmpPath, filePath);
 }
 
 export function readSubagentStatus(cwd: string, id: string): SubagentStatus | null {
@@ -1285,9 +1366,9 @@ describe("processJsonlLine", () => {
     expect(state.pendingToolCalls.get("tc-1")).toEqual({ toolName: "bash", args: { command: "bun test" } });
   });
 
-  it("detects test runner results from tool_execution_end on bash commands", () => {
+  it("detects test runner results from tool_execution_end on bash test commands", () => {
     const state = createRunnerState("sa-001", 1000);
-    // First, register the bash tool call
+    // First, register the bash tool call with a test runner command
     processJsonlLine(state, JSON.stringify({
       type: "tool_execution_start",
       toolCallId: "tc-1",
@@ -1321,6 +1402,26 @@ describe("processJsonlLine", () => {
       isError: false,
     }));
     expect(state.lastTestPassed).toBe(false);
+  });
+
+  it("does not detect test results from non-test bash commands containing pass/fail strings", () => {
+    const state = createRunnerState("sa-001", 1000);
+    // A bash command that isn't a test runner but contains "pass"/"fail" strings
+    processJsonlLine(state, JSON.stringify({
+      type: "tool_execution_start",
+      toolCallId: "tc-grep",
+      toolName: "bash",
+      args: { command: "grep -r 'password' src/" },
+    }));
+    processJsonlLine(state, JSON.stringify({
+      type: "tool_execution_end",
+      toolCallId: "tc-grep",
+      toolName: "bash",
+      result: { content: [{ type: "text", text: "src/auth.ts: const password = '3 pass'\nsrc/config.ts: 0 fail" }] },
+      isError: false,
+    }));
+    // Should NOT detect as test results — the command is grep, not a test runner
+    expect(state.lastTestPassed).toBeUndefined();
   });
 
   it("collects error lines from tool_execution_end results", () => {
@@ -1607,9 +1708,12 @@ export function processJsonlLine(state: RunnerState, line: string): void {
       }
     }
 
-    // Detect test results only from bash tool calls
+    // Detect test results only from bash tool calls running actual test commands.
+    // Gates on isTestCommand() to prevent false positives from non-test bash commands
+    // that happen to contain "pass"/"fail" strings (e.g., grep output).
     const toolName = event.toolName ?? pending?.toolName;
-    if (toolName === "bash" && resultText) {
+    const command = pending?.args?.command ?? "";
+    if (toolName === "bash" && resultText && isTestCommand(command)) {
       const passMatch = resultText.match(TEST_PASS_PATTERN);
       const failMatch = resultText.match(TEST_FAIL_PATTERN);
       if (passMatch || failMatch) {
@@ -2631,6 +2735,10 @@ Add after the existing `create_batch` tool registration block:
                 });
               } else {
                 // Get both summary and full diff from workspace (AC7)
+                // Uses pi.exec() with { cwd } option to run jj in the workspace directory.
+                // pi.exec supports ExecOptions.cwd per the SDK type definitions.
+                // We call pi.exec directly here, NOT through createJJ() wrapper which
+                // doesn't forward options.
                 try {
                   const summaryResult = await pi.exec("jj", buildDiffSummaryArgs(), { cwd: config.workspacePath });
                   const filesChanged = parseTaskDiffFiles(summaryResult.stdout);
