@@ -30,6 +30,32 @@ describe("index.ts architectural invariants", () => {
     expect(source).not.toContain('@mariozechner/pi-coding-agent/tools');
   });
 
+  // AC38: megapowers_save_artifact handler must call ctx.ui.notify and refresh dashboard after successful save
+  describe("AC38 — megapowers_save_artifact tool handler provides UI feedback", () => {
+    it("calls ctx.ui.notify after a successful artifact save", () => {
+      const source = readFileSync(join(__dirname, "../extensions/megapowers/index.ts"), "utf-8");
+      // Extract the megapowers_save_artifact execute handler block
+      const start = source.indexOf('name: "megapowers_save_artifact"');
+      const end = source.indexOf("pi.registerTool", start + 1);
+      const handlerBlock = end > start ? source.slice(start, end) : source.slice(start, start + 600);
+
+      // The handler should call ctx.ui.notify to confirm the save to the user
+      // FAILS: currently the handler has no ctx.ui.notify call
+      expect(handlerBlock).toContain("ctx.ui.notify");
+    });
+
+    it("calls ui.renderDashboard after a successful artifact save", () => {
+      const source = readFileSync(join(__dirname, "../extensions/megapowers/index.ts"), "utf-8");
+      const start = source.indexOf('name: "megapowers_save_artifact"');
+      const end = source.indexOf("pi.registerTool", start + 1);
+      const handlerBlock = end > start ? source.slice(start, end) : source.slice(start, start + 600);
+
+      // The handler should refresh the dashboard so newly-unlocked phase transitions appear
+      // FAILS: currently the handler has no ui.renderDashboard call
+      expect(handlerBlock).toContain("renderDashboard");
+    });
+  });
+
   describe("mega off/on state management", () => {
     let tmp: string;
 

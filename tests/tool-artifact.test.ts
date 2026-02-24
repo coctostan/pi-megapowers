@@ -84,4 +84,66 @@ describe("handleSaveArtifact", () => {
       expect(result.error).toContain("disabled");
     });
   });
+
+  // AC39: overwrite protection — second save to same phase must return an error, not silently clobber
+  describe("AC39 — overwrite protection", () => {
+    it("returns an error when the artifact file already exists (no overwrite flag)", () => {
+      writeState(tmp, { ...createInitialState(), activeIssue: "001-test", megaEnabled: true });
+      // First save — should succeed
+      const first = handleSaveArtifact(tmp, "spec", "# Original content");
+      expect(first.error).toBeUndefined();
+
+      // Second save to same phase with no overwrite flag — should fail
+      const second = handleSaveArtifact(tmp, "spec", "# Replacement content");
+      expect(second.error).toBeDefined();  // FAILS: currently returns success and clobbers the file
+    });
+
+    it("does not overwrite file content when error is returned", () => {
+      writeState(tmp, { ...createInitialState(), activeIssue: "001-test", megaEnabled: true });
+      handleSaveArtifact(tmp, "spec", "# Original content");
+
+      handleSaveArtifact(tmp, "spec", "# Replacement content");
+
+      const path = join(tmp, ".megapowers", "plans", "001-test", "spec.md");
+      const onDisk = readFileSync(path, "utf-8");
+      expect(onDisk).toBe("# Original content");  // FAILS: currently contains "# Replacement content"
+    });
+
+    it("error message references the existing file path and hints at overwrite param", () => {
+      writeState(tmp, { ...createInitialState(), activeIssue: "001-test", megaEnabled: true });
+      handleSaveArtifact(tmp, "spec", "# Original");
+
+      const result = handleSaveArtifact(tmp, "spec", "# New");
+      expect(result.error).toContain("spec.md");        // FAILS: no error currently
+      expect(result.error).toContain("overwrite");       // FAILS: no error currently
+    });
+
+    it("returns the exact overwrite guidance when file exists", () => {
+      writeState(tmp, { ...createInitialState(), activeIssue: "001-test", megaEnabled: true });
+      handleSaveArtifact(tmp, "spec", "# Original");
+
+      const result = handleSaveArtifact(tmp, "spec", "# New");
+      expect(result.error).toBe(
+        "File already exists: .megapowers/plans/001-test/spec.md. Pass overwrite: true to replace it.",
+      );
+    });
+
+    it("succeeds on second save when overwrite: true is passed", () => {
+      writeState(tmp, { ...createInitialState(), activeIssue: "001-test", megaEnabled: true });
+      handleSaveArtifact(tmp, "spec", "# Original");
+
+      const result = handleSaveArtifact(tmp, "spec", "# Replaced", true);
+      expect(result.error).toBeUndefined();
+
+      const path = join(tmp, ".megapowers", "plans", "001-test", "spec.md");
+      expect(readFileSync(path, "utf-8")).toBe("# Replaced");
+    });
+
+    it("does not block first write when file does not yet exist", () => {
+      writeState(tmp, { ...createInitialState(), activeIssue: "001-test", megaEnabled: true });
+      const result = handleSaveArtifact(tmp, "spec", "# Fresh content");
+      // Should still pass — guard only triggers on overwrite
+      expect(result.error).toBeUndefined();
+    });
+  });
 });

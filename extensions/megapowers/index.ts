@@ -296,15 +296,23 @@ export default function megapowers(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "megapowers_save_artifact",
     label: "Save Artifact",
-    description: "Save a phase artifact to disk. Use phase names: spec, plan, brainstorm, reproduce, diagnosis, verify, code-review.",
+    description:
+      "Save a phase artifact to disk. Use phase names: spec, plan, brainstorm, reproduce, diagnosis, verify, code-review. Pass overwrite: true to replace an existing artifact.",
     parameters: Type.Object({
       phase: Type.String(),
       content: Type.String(),
+      overwrite: Type.Optional(Type.Boolean()),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const result = handleSaveArtifact(ctx.cwd, params.phase, params.content);
+      const result = handleSaveArtifact(ctx.cwd, params.phase, params.content, params.overwrite);
       if (result.error) {
         return { content: [{ type: "text", text: `Error: ${result.error}` }], details: undefined };
+      }
+      if (ctx.hasUI) {
+        ctx.ui.notify(result.message!, "info");
+        if (store && ui) {
+          ui.renderDashboard(ctx, readState(ctx.cwd), store);
+        }
       }
       return { content: [{ type: "text", text: result.message ?? "Artifact saved." }], details: undefined };
     },
