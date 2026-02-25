@@ -1,7 +1,7 @@
 ---
 id: 60
 type: feature
-status: open
+status: done
 created: 2026-02-24T19:50:00.000Z
 sources: [55, 57]
 ---

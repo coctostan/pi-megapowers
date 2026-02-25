@@ -48,12 +48,16 @@ export interface SubagentPromptInput {
   taskDescription: string;
   planSection?: string;
   learnings?: string;
+  phase?: string;
+  specContent?: string;
 }
 
 export function buildSubagentPrompt(input: SubagentPromptInput): string {
   const parts: string[] = [];
   parts.push(`## Task\n\n${input.taskDescription}`);
+  if (input.phase) parts.push(`## Current Phase\n\n${input.phase}`);
   if (input.planSection) parts.push(`## Plan Details\n\n${input.planSection}`);
+  if (input.specContent) parts.push(`## Acceptance Criteria\n\n${input.specContent}`);
   if (input.learnings) parts.push(`## Project Learnings\n\n${input.learnings}`);
   return parts.join("\n\n");
 }

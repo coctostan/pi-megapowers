@@ -1,5 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
+export const JJ_MODULE_VERSION = 1;
+
 // --- Pure parsing/building functions (testable without pi) ---
 
 export function parseChangeId(output: string): string | null {
@@ -48,6 +50,23 @@ export function buildSquashIntoArgs(parentChangeId: string): string[] {
 export function formatChangeDescription(issueSlug: string, phase: string, suffix?: string): string {
   const desc = suffix ? `${phase} ${suffix}` : phase;
   return `mega(${issueSlug}): ${desc}`;
+}
+
+// --- checkJJAvailability (pure, injectable deps for testability) ---
+
+export type JJAvailability = "not-installed" | "not-repo" | "ready";
+
+type ExecResult = { code: number; stdout: string; stderr: string };
+
+export async function checkJJAvailability(
+  runVersion: () => Promise<ExecResult>,
+  runRoot: () => Promise<ExecResult>,
+): Promise<JJAvailability> {
+  const versionResult = await runVersion();
+  if (versionResult.code !== 0) return "not-installed";
+  const rootResult = await runRoot();
+  if (rootResult.code !== 0) return "not-repo";
+  return "ready";
 }
 
 // --- JJ interface (used by extension, wraps pi.exec) ---

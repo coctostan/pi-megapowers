@@ -251,6 +251,146 @@ describe("resolveAgent", () => {
   });
 });
 
+describe("worker agent system prompt quality", () => {
+  it("has at least 3 paragraphs in system prompt", () => {
+    const content = readFileSync(join(agentsDir, "worker.md"), "utf-8");
+    const agent = parseAgentFrontmatter(content);
+    const paragraphs = agent!.systemPrompt!.split(/\n\n+/).filter(p => p.trim().length > 0);
+    expect(paragraphs.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("covers task execution approach", () => {
+    const content = readFileSync(join(agentsDir, "worker.md"), "utf-8");
+    const agent = parseAgentFrontmatter(content);
+    const prompt = agent!.systemPrompt!.toLowerCase();
+    expect(prompt).toContain("task");
+    expect(prompt).toContain("minimal");
+  });
+
+  it("covers TDD workflow expectations", () => {
+    const content = readFileSync(join(agentsDir, "worker.md"), "utf-8");
+    const agent = parseAgentFrontmatter(content);
+    const prompt = agent!.systemPrompt!.toLowerCase();
+    expect(prompt).toContain("test");
+    expect(prompt).toContain("fail");
+  });
+
+  it("covers completion signaling", () => {
+    const content = readFileSync(join(agentsDir, "worker.md"), "utf-8");
+    const agent = parseAgentFrontmatter(content);
+    const prompt = agent!.systemPrompt!.toLowerCase();
+    expect(prompt).toContain("complete");
+  });
+});
+
+describe("scout agent system prompt quality", () => {
+  it("has at least 3 paragraphs in system prompt", () => {
+    const content = readFileSync(join(agentsDir, "scout.md"), "utf-8");
+    const agent = parseAgentFrontmatter(content);
+    const paragraphs = agent!.systemPrompt!.split(/\n\n+/).filter(p => p.trim().length > 0);
+    expect(paragraphs.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("covers investigation approach", () => {
+    const content = readFileSync(join(agentsDir, "scout.md"), "utf-8");
+    const agent = parseAgentFrontmatter(content);
+    const prompt = agent!.systemPrompt!.toLowerCase();
+    expect(prompt).toContain("investigat");
+  });
+
+  it("covers structuring findings with file references", () => {
+    const content = readFileSync(join(agentsDir, "scout.md"), "utf-8");
+    const agent = parseAgentFrontmatter(content);
+    const prompt = agent!.systemPrompt!.toLowerCase();
+    expect(prompt).toContain("file");
+    expect(prompt).toContain("line");
+  });
+
+  it("covers depth vs breadth guidance", () => {
+    const content = readFileSync(join(agentsDir, "scout.md"), "utf-8");
+    const agent = parseAgentFrontmatter(content);
+    const prompt = agent!.systemPrompt!.toLowerCase();
+    expect(prompt).toContain("breadth");
+  });
+});
+
+describe("reviewer agent system prompt quality", () => {
+  it("has at least 3 paragraphs in system prompt", () => {
+    const content = readFileSync(join(agentsDir, "reviewer.md"), "utf-8");
+    const agent = parseAgentFrontmatter(content);
+    const paragraphs = agent!.systemPrompt!.split(/\n\n+/).filter(p => p.trim().length > 0);
+    expect(paragraphs.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("covers review methodology", () => {
+    const content = readFileSync(join(agentsDir, "reviewer.md"), "utf-8");
+    const agent = parseAgentFrontmatter(content);
+    const prompt = agent!.systemPrompt!.toLowerCase();
+    expect(prompt).toContain("review");
+    expect(prompt).toContain("correct");
+  });
+
+  it("covers blocking vs non-blocking issues", () => {
+    const content = readFileSync(join(agentsDir, "reviewer.md"), "utf-8");
+    const agent = parseAgentFrontmatter(content);
+    const prompt = agent!.systemPrompt!.toLowerCase();
+    expect(prompt).toContain("block");
+  });
+
+  it("covers feedback format with file/line references", () => {
+    const content = readFileSync(join(agentsDir, "reviewer.md"), "utf-8");
+    const agent = parseAgentFrontmatter(content);
+    const prompt = agent!.systemPrompt!.toLowerCase();
+    expect(prompt).toContain("file");
+    expect(prompt).toContain("line");
+    expect(prompt).toContain("sever");
+  });
+});
+
+describe("builtin agent differentiation", () => {
+  it("no two builtin agents share the same model+thinking combination", () => {
+    const agentFiles = ["worker.md", "scout.md", "reviewer.md"];
+    const combos = new Set<string>();
+    for (const file of agentFiles) {
+      const content = readFileSync(join(agentsDir, file), "utf-8");
+      const agent = parseAgentFrontmatter(content);
+      expect(agent).not.toBeNull();
+      const combo = `${agent!.model}|${agent!.thinking}`;
+      expect(combos.has(combo)).toBe(false);
+      combos.add(combo);
+    }
+    expect(combos.size).toBe(3);
+  });
+});
+
+describe("agent resolution priority unchanged (AC12)", () => {
+  it("resolves project > home > builtin in correct order", () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "ac12-project-"));
+    const fakeHome = mkdtempSync(join(tmpdir(), "ac12-home-"));
+    const projectAgentsDir = join(projectDir, ".megapowers", "agents");
+    const userAgentsDir = join(fakeHome, ".megapowers", "agents");
+    mkdirSync(projectAgentsDir, { recursive: true });
+    mkdirSync(userAgentsDir, { recursive: true });
+
+    // Only builtin exists
+    const builtinAgent = resolveAgent("worker", projectDir, fakeHome);
+    expect(builtinAgent).not.toBeNull();
+
+    // User home overrides builtin
+    writeFileSync(join(userAgentsDir, "worker.md"), `---\nname: worker\nmodel: home-model\n---\nHome.`);
+    const homeAgent = resolveAgent("worker", projectDir, fakeHome);
+    expect(homeAgent!.model).toBe("home-model");
+
+    // Project overrides home
+    writeFileSync(join(projectAgentsDir, "worker.md"), `---\nname: worker\nmodel: project-model\n---\nProject.`);
+    const projectAgent = resolveAgent("worker", projectDir, fakeHome);
+    expect(projectAgent!.model).toBe("project-model");
+
+    rmSync(projectDir, { recursive: true, force: true });
+    rmSync(fakeHome, { recursive: true, force: true });
+  });
+});
+
 describe("UPSTREAM.md", () => {
   it("exists in extensions/megapowers/ directory", () => {
     const upstreamPath = join(thisTestDir, "..", "extensions", "megapowers", "UPSTREAM.md");

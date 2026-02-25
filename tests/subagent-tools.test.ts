@@ -41,11 +41,14 @@ describe("handleSubagentDispatch", () => {
     expect(result.error).toContain("No active issue");
   });
 
-  it("returns error when jj is not available", async () => {
+  it("returns error with install instructions when jj is not available", async () => {
     const result = await handleSubagentDispatch(tmp, { task: "Do thing" }, {
       isJJRepo: async () => false,
     });
     expect(result.error).toContain("jj");
+    expect(result.error).toContain("brew install jj");
+    expect(result.error).toContain("cargo install jj-cli");
+    expect(result.error).toContain("jj git init --colocate");
   });
 
   it("returns error when agent name is unknown", async () => {
@@ -162,7 +165,7 @@ describe("handleSubagentDispatch", () => {
       isJJRepo: async () => true,
     });
     expect(result.config).toBeDefined();
-    expect(result.config!.id).toBe(result.id);
+    expect(result.config!.id).toBe(result.id!);
     expect(result.config!.workspacePath).toContain(".megapowers/subagents");
   });
 });

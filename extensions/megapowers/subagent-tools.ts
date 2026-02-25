@@ -8,6 +8,7 @@ import { validateTaskDependencies } from "./subagent-validate.js";
 import { extractTaskSection, buildSubagentPrompt } from "./subagent-context.js";
 import { resolveAgent } from "./subagent-agents.js";
 import { buildDispatchConfig, type DispatchConfig } from "./subagent-async.js";
+import { jjDispatchErrorMessage } from "./jj-messages.js";
 import { workspacePath } from "./subagent-workspace.js";
 import { createStore } from "./store.js";
 
@@ -52,7 +53,7 @@ export async function handleSubagentDispatch(
   if (jjCheck) {
     const isRepo = await jjCheck.isJJRepo();
     if (!isRepo) {
-      return { error: "jj is required for subagent workspace isolation. This does not appear to be a jj repository." };
+      return { error: jjDispatchErrorMessage() };
     }
   }
 
@@ -100,10 +101,20 @@ export async function handleSubagentDispatch(
   const store = createStore(cwd);
   const learnings = store.getLearnings();
 
+  // Read spec or diagnosis content for acceptance criteria context
+  let specContent: string | undefined;
+  if (state.activeIssue) {
+    const specFile = state.workflow === "bugfix" ? "diagnosis.md" : "spec.md";
+    const specRaw = store.readPlanFile(state.activeIssue, specFile);
+    if (specRaw) specContent = specRaw;
+  }
+
   const prompt = buildSubagentPrompt({
     taskDescription: input.task,
     planSection: planSection || undefined,
     learnings: learnings || undefined,
+    phase: state.phase ?? undefined,
+    specContent,
   });
 
   const promptFilePath = join(saDir, "prompt.md");
