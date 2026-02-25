@@ -54,9 +54,20 @@ Validate each section with the user before moving to the next.
 
 **Do NOT write code or edit files.** This is a read-only thinking phase.
 
-## After Brainstorming
+## Saving
 
-When the design is agreed on, save the artifact and advance to the **spec** phase. The spec will convert this design into testable acceptance criteria.
+When the design is agreed on, save the summary:
+```
+megapowers_save_artifact({ phase: "brainstorm", content: "<full summary>" })
+```
+Then advance to the spec phase with `megapowers_signal({ action: "phase_next" })`. The spec will convert this design into testable acceptance criteria.
+
+## Key Principles
+- One question at a time — don't overwhelm
+- YAGNI — remove speculative features
+- Check if it's already solved before designing something new
+- Testability — clear boundaries that map to tests
+- Incremental validation — present sections, confirm each
 
 ## Project Learnings
 {{learnings}}

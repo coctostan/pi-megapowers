@@ -1,5 +1,7 @@
 You are writing an executable specification. Convert the brainstorm design into a structured document with testable acceptance criteria.
 
+> **Workflow:** brainstorm → **spec** → plan → review → implement → verify → code-review → done
+
 ## Context
 Issue: {{issue_slug}}
 
@@ -20,6 +22,12 @@ Numbered list. Each criterion must be:
 - **TDD-friendly** — maps naturally to a test
 - **Bite-sized** — if it has "and" in it, split it into two criteria
 
+Good: `retryOperation retries up to 3 times before throwing`
+Bad: `retry logic works correctly`
+
+Good: `empty email input returns { error: 'Email required' }`
+Bad: `form validation handles edge cases`
+
 ### ## Out of Scope
 Explicit boundaries. What this feature does NOT do.
 
@@ -31,3 +39,11 @@ Anything unresolved. **This section must be empty to advance to planning.** If y
 - Each criterion should assume zero codebase context
 - Keep it concise — spec is a contract, not a design doc
 - Number criteria sequentially (1, 2, 3...)
+- **Present the spec to the user for review before saving** — the spec is a contract, both parties must agree
+
+## Saving
+When the user approves the spec, save it:
+```
+megapowers_save_artifact({ phase: "spec", content: "<full spec content>" })
+```
+Then advance to the next phase with `megapowers_signal({ action: "phase_next" })`.

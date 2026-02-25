@@ -1,7 +1,12 @@
 You are reviewing code quality. Verification already confirmed the feature works — now evaluate whether the code is good.
 
+> **Workflow:** brainstorm → spec → plan → review → implement → verify → **code-review** → done
+
 ## Context
 Issue: {{issue_slug}}
+
+## Project Conventions
+Check `AGENTS.md` for the project's language, style conventions, and test framework. If not documented there, infer from the codebase.
 
 ## Spec
 {{spec_content}}
@@ -11,14 +16,38 @@ Issue: {{issue_slug}}
 
 ## Instructions
 
-Review all code changes for this feature (use git diff from branch point if available, otherwise inspect changed files).
+Review all code changes for this issue. Use the project's VCS to get the diff (`jj diff`, `git diff`, etc.) or inspect the changed files listed in the verification report.
+
+If subagents implemented some tasks, **review their code with the same rigor** — do not assume subagent work is correct because it passed tests.
 
 ### Evaluate against:
-- **Correctness** — edge cases, error handling, race conditions
-- **Maintainability** — naming, duplication, complexity, readability
-- **Patterns** — consistent with codebase conventions, no anti-patterns
-- **YAGNI** — unused code, over-engineering, speculative abstractions
-- **Test quality** — tests are meaningful (not just coverage), test edge cases, readable
+
+**Code Quality:**
+- Correctness — edge cases, error handling, race conditions
+- Maintainability — naming, duplication, complexity, readability
+- Patterns — consistent with codebase conventions, no anti-patterns
+- YAGNI — unused code, over-engineering, speculative abstractions
+
+**Architecture:**
+- Sound design decisions, scalability considerations
+- Performance implications, security concerns
+- Breaking changes identified and documented
+
+**Testing:**
+- Tests are meaningful (not just coverage), test edge cases, readable
+- Tests actually test logic, not mocks of implementation details
+- For `[no-test]` tasks: verify the justification still holds and no testable behavior slipped through
+
+**Production Readiness:**
+- Migration strategy (if schema changes)
+- Backward compatibility considered
+- No obvious bugs or data loss risks
+
+### For each finding, include:
+- **File:line** reference
+- **What's wrong**
+- **Why it matters**
+- **How to fix** (if not obvious)
 
 ### Categorize findings:
 - **Critical** — must fix before merge (bugs, security, data loss)
@@ -28,6 +57,12 @@ Review all code changes for this feature (use git diff from branch point if avai
 ### Produce a report:
 
 ```
+## Files Reviewed
+[List of files with brief description of changes]
+
+## Strengths
+[What's well done — be specific with file:line references]
+
 ## Findings
 
 ### Critical
@@ -39,14 +74,39 @@ Review all code changes for this feature (use git diff from branch point if avai
 ### Minor
 [List or "None"]
 
+## Recommendations
+[Improvements for code quality, architecture, or process — separate from issues]
+
 ## Assessment
 ready / needs-fixes / needs-rework
 [Explanation]
 ```
 
 ## Rules
-- **Verify suggestions against codebase reality** before making them
+- **Verify suggestions against codebase reality** before making them — read the actual code
 - Be specific — reference file paths and line numbers
 - No performative agreement on future changes — fix now or note for later
 - If needs-fixes: implement fixes in this session, re-run tests, update the review
 - If needs-rework: recommend going back to implement or plan depending on severity
+
+## After Review
+
+### If **ready**
+Save the report and advance:
+```
+megapowers_save_artifact({ phase: "code-review", content: "<full report>" })
+megapowers_signal({ action: "phase_next" })
+```
+
+### If **needs-fixes**
+Small, contained issues (naming, missing error handling, minor bugs). Fix them now:
+1. Implement the fixes in this session
+2. Re-run the full test suite — confirm nothing broke
+3. Update the review report with what was fixed
+4. Re-assess — if all findings resolved, change assessment to **ready** and advance
+
+### If **needs-rework**
+Structural problems that can't be patched (wrong abstraction, missing component, broken architecture). Don't try to fix inline:
+1. Save the review report with detailed findings
+2. Recommend going back to **implement** (fixable with targeted task changes) or **plan** (fundamental design issue)
+3. Present the recommendation to the user — they will need to use `/phase implement` or `/phase plan` to transition back

@@ -12,16 +12,29 @@ Issue: {{issue_slug}}
 ## Verification Results
 {{verify_content}}
 
+> **Bugfix note:** In bugfix workflows, "Spec" above is the **diagnosis** and verification includes the original bug reproduction check.
+
 ## Instructions
 
 Reflect on this issue and propose 2–5 learning entries. Each entry should be:
-- **Specific** — not "testing is important" but "bun test requires `.js` extension in imports"
+- **Specific** — not "testing is important" but "the token service requires dependency injection for mocking, module stubbing doesn't work"
 - **Actionable** — something a developer can act on next time
 - **Concise** — one sentence per entry
+- **Project-scoped** — relevant to this codebase, not generic advice
 
-Format your response as a markdown list. The user will review and approve before anything is saved.
+Focus on:
+- What surprised you during implementation?
+- What took longer than expected and why?
+- What patterns or techniques worked well?
+- What gotchas would trip up someone unfamiliar with this code?
 
 ## Example entries
 - Rate limiter tests need a fake clock — real timers cause flaky failures
 - The token service requires mocking via dependency injection, not module stubbing
-- `bun test` runs all `.test.ts` files in the project root `tests/` dir by default
+- Write policy tests must cover both `canWrite()` pure function and `evaluateWriteOverride()` integration
+- jj workspace squash must happen before workspace forget — order matters
+
+Format your response as a markdown list. Present the learnings to the user for review. When they approve (or edit), save them:
+```
+megapowers_save_artifact({ phase: "learnings", content: "<approved markdown list>" })
+```
