@@ -1,3 +1,4 @@
+// Task 1: checkJJAvailability tests
 import { describe, it, expect } from "bun:test";
 import {
   parseChangeId,
@@ -11,6 +12,9 @@ import {
   buildDiffArgs,
   buildAbandonArgs,
   buildSquashIntoArgs,
+  checkJJAvailability,
+  type JJAvailability,
+  JJ_MODULE_VERSION,
 } from "../extensions/megapowers/jj.js";
 
 describe("parseChangeId", () => {
@@ -108,5 +112,67 @@ describe("buildSquashIntoArgs", () => {
     expect(buildSquashIntoArgs("parentid")).toEqual([
       "squash", "--from", "all:children(parentid)", "--into", "parentid",
     ]);
+  });
+});
+
+// Task 2: jj messages
+import { JJ_INSTALL_MESSAGE, JJ_INIT_MESSAGE, jjDispatchErrorMessage } from "../extensions/megapowers/jj-messages.js";
+
+describe("jj messages", () => {
+  it("JJ_INSTALL_MESSAGE includes brew and cargo install commands", () => {
+    expect(JJ_INSTALL_MESSAGE).toContain("brew install jj");
+    expect(JJ_INSTALL_MESSAGE).toContain("cargo install jj-cli");
+  });
+
+  it("JJ_INIT_MESSAGE includes jj git init --colocate", () => {
+    expect(JJ_INIT_MESSAGE).toContain("jj git init --colocate");
+  });
+
+  it("jjDispatchErrorMessage includes install and init instructions", () => {
+    const msg = jjDispatchErrorMessage();
+    expect(msg).toContain("brew install jj");
+    expect(msg).toContain("cargo install jj-cli");
+    expect(msg).toContain("jj git init --colocate");
+  });
+});
+
+describe("jj module metadata", () => {
+  it("exports module version for dependency tracking", () => {
+    expect(JJ_MODULE_VERSION).toBe(1);
+  });
+});
+
+describe("checkJJAvailability", () => {
+  it("does not call runRoot when version check fails", async () => {
+    let rootCalled = false;
+    await checkJJAvailability(
+      async () => ({ code: 1, stdout: "", stderr: "not found" }),
+      async () => { rootCalled = true; return { code: 0, stdout: "/repo", stderr: "" }; },
+    );
+    expect(rootCalled).toBe(false);
+  });
+
+  it("returns not-installed when jj version fails", async () => {
+    const result = await checkJJAvailability(
+      async () => ({ code: 1, stdout: "", stderr: "not found" }),
+      async () => ({ code: 1, stdout: "", stderr: "" }),
+    );
+    expect(result).toBe("not-installed");
+  });
+
+  it("returns not-repo when jj is installed but jj root fails", async () => {
+    const result = await checkJJAvailability(
+      async () => ({ code: 0, stdout: "jj 0.25.0", stderr: "" }),
+      async () => ({ code: 1, stdout: "", stderr: "" }),
+    );
+    expect(result).toBe("not-repo");
+  });
+
+  it("returns ready when jj is installed and repo exists", async () => {
+    const result = await checkJJAvailability(
+      async () => ({ code: 0, stdout: "jj 0.25.0", stderr: "" }),
+      async () => ({ code: 0, stdout: "/repo", stderr: "" }),
+    );
+    expect(result).toBe("ready");
   });
 });

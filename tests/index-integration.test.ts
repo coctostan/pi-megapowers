@@ -78,4 +78,37 @@ describe("index.ts architectural invariants", () => {
       expect(readState(tmp).megaEnabled).toBe(true);
     });
   });
+
+  describe("session_start jj availability check (AC1-4)", () => {
+    it("imports checkJJAvailability from jj.ts", () => {
+      const source = readFileSync(join(__dirname, "../extensions/megapowers/index.ts"), "utf-8");
+      expect(source).toContain('checkJJAvailability');
+      expect(source).toMatch(/import\s+\{[^}]*checkJJAvailability[^}]*\}\s+from\s+["']\.\/jj/);
+    });
+
+    it("imports JJ_INSTALL_MESSAGE and JJ_INIT_MESSAGE from jj-messages.ts", () => {
+      const source = readFileSync(join(__dirname, "../extensions/megapowers/index.ts"), "utf-8");
+      expect(source).toContain("JJ_INSTALL_MESSAGE");
+      expect(source).toContain("JJ_INIT_MESSAGE");
+      expect(source).toContain("jj-messages");
+    });
+
+    it("calls ctx.ui.notify with JJ_INSTALL_MESSAGE for not-installed case", () => {
+      const source = readFileSync(join(__dirname, "../extensions/megapowers/index.ts"), "utf-8");
+      expect(source).toContain("ctx.ui.notify(JJ_INSTALL_MESSAGE)");
+    });
+
+    it("calls ctx.ui.notify with JJ_INIT_MESSAGE for not-repo case", () => {
+      const source = readFileSync(join(__dirname, "../extensions/megapowers/index.ts"), "utf-8");
+      expect(source).toContain("ctx.ui.notify(JJ_INIT_MESSAGE)");
+    });
+
+    it("jj check does not block — no early return or throw after availability check", () => {
+      const source = readFileSync(join(__dirname, "../extensions/megapowers/index.ts"), "utf-8");
+      const jjCheckIndex = source.indexOf("checkJJAvailability");
+      const dashboardIndex = source.indexOf("renderDashboard");
+      expect(jjCheckIndex).toBeGreaterThan(-1);
+      expect(dashboardIndex).toBeGreaterThan(jjCheckIndex);
+    });
+  });
 });

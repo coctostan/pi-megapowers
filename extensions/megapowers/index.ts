@@ -1,7 +1,8 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { getValidTransitions, OPEN_ENDED_PHASES, type Phase } from "./state-machine.js";
 import { createStore, type Store } from "./store.js";
-import { createJJ, type JJ } from "./jj.js";
+import { createJJ, checkJJAvailability, type JJ } from "./jj.js";
+import { JJ_INSTALL_MESSAGE, JJ_INIT_MESSAGE } from "./jj-messages.js";
 import { createUI, filterTriageableIssues, formatTriageIssueList, type MegapowersUI } from "./ui.js";
 import { loadPromptFile, interpolatePrompt } from "./prompts.js";
 import { isSatelliteMode, resolveProjectRoot } from "./satellite.js";
@@ -172,6 +173,19 @@ export default function megapowers(pi: ExtensionAPI): void {
         if (ctx.hasUI) {
           ctx.ui.notify(`jj change updated: ${currentState.jjChangeId.slice(0, 8)} → ${currentId.slice(0, 8)} for ${currentState.activeIssue}`);
         }
+      }
+    }
+
+    // jj availability check — informational only, does not block (AC1-4)
+    const jjStatus = await checkJJAvailability(
+      () => pi.exec("jj", ["version"]),
+      () => pi.exec("jj", ["root"]),
+    );
+    if (ctx.hasUI) {
+      if (jjStatus === "not-installed") {
+        ctx.ui.notify(JJ_INSTALL_MESSAGE);
+      } else if (jjStatus === "not-repo") {
+        ctx.ui.notify(JJ_INIT_MESSAGE);
       }
     }
 

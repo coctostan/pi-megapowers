@@ -77,3 +77,42 @@ describe("buildSubagentPrompt", () => {
     expect(prompt).toContain("Always check for null");
   });
 });
+
+describe("buildSubagentPrompt phase context", () => {
+  it("includes phase name when provided", () => {
+    const prompt = buildSubagentPrompt({
+      taskDescription: "Build parser",
+      phase: "implement",
+    });
+    expect(prompt).toContain("implement");
+    expect(prompt).toContain("Phase");
+  });
+
+  it("omits phase section when not provided", () => {
+    const prompt = buildSubagentPrompt({
+      taskDescription: "Build parser",
+    });
+    expect(prompt).not.toContain("Current Phase");
+  });
+});
+
+describe("buildSubagentPrompt spec content", () => {
+  it("includes spec content when provided", () => {
+    const prompt = buildSubagentPrompt({
+      taskDescription: "Verify feature",
+      phase: "verify",
+      specContent: "1. User can log in\n2. Session persists",
+    });
+    expect(prompt).toContain("User can log in");
+    expect(prompt).toContain("Session persists");
+    expect(prompt).toContain("Acceptance Criteria");
+  });
+
+  it("omits spec section when not provided", () => {
+    const prompt = buildSubagentPrompt({
+      taskDescription: "Build thing",
+      phase: "implement",
+    });
+    expect(prompt).not.toContain("Acceptance Criteria");
+  });
+});
