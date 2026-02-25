@@ -1,7 +1,7 @@
 ---
 id: 51
 type: feature
-status: open
+status: in-progress
 created: 2026-02-24T19:15:00.000Z
 sources: [22, 31, 45]
 ---

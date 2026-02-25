@@ -1,7 +1,7 @@
 ---
 id: 56
 type: feature
-status: open
+status: done
 created: 2026-02-24T19:40:00.000Z
 ---
 

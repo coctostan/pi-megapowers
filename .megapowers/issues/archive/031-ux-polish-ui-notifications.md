@@ -1,7 +1,7 @@
 ---
 id: 31
 type: bugfix
-status: open
+status: done
 created: 2026-02-23T17:33:56.358Z
 sources: []
 ---

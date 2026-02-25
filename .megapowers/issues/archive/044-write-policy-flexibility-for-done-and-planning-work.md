@@ -1,7 +1,7 @@
 ---
 id: 44
 type: bugfix
-status: open
+status: done
 created: 2026-02-24T15:06:17.000Z
 ---
 
