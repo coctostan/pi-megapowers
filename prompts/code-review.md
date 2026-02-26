@@ -107,6 +107,6 @@ Small, contained issues (naming, missing error handling, minor bugs). Fix them n
 
 ### If **needs-rework**
 Structural problems that can't be patched (wrong abstraction, missing component, broken architecture). Don't try to fix inline:
-1. Save the review report with detailed findings
-2. Recommend going back to **implement** (fixable with targeted task changes) or **plan** (fundamental design issue)
-3. Present the recommendation to the user — they will need to use `/phase implement` or `/phase plan` to transition back
+1. Save the review report with detailed findings via `megapowers_save_artifact({ phase: "code-review", content: "..." })`
+2. Call `megapowers_signal({ action: "phase_back" })` to go back to the implement phase
+3. For fundamental design issues requiring plan changes, inform the user and ask them to manually switch back to the plan phase (do not reference slash commands in this prompt).

@@ -2,11 +2,11 @@ import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { MegapowersState, Phase, PlanTask, WorkflowType } from "./state/state-machine.js";
 import type { Issue, Store } from "./state/store.js";
 import type { JJ } from "./jj.js";
-import { createInitialState, getFirstPhase, getValidTransitions, transition } from "./state/state-machine.js";
+import { getFirstPhase } from "./state/state-machine.js";
 import { formatChangeDescription } from "./jj.js";
-import { checkGate } from "./policy/gates.js";
-import { writeState } from "./state/state-io.js";
+import { readState, writeState } from "./state/state-io.js";
 import { deriveTasks } from "./state/derived.js";
+import { showChecklistUI } from "./ui-checklist.js";
 
 // --- Theme type (subset used by pure renderers) ---
 
@@ -50,12 +50,60 @@ export const PHASE_GUIDANCE: Record<string, string> = {
   "code-review": "Send a message to review the code.",
 };
 
-export const DONE_MODE_LABELS: Record<string, string> = {
-  "generate-docs": "Generate docs",
-  "generate-bugfix-summary": "Bugfix summary",
-  "write-changelog": "Write changelog",
-  "capture-learnings": "Capture learnings",
-};
+
+export interface DoneChecklistItem {
+  key: string;
+  label: string;
+  defaultChecked: boolean;
+}
+
+export function getDoneChecklistItems(state: MegapowersState): DoneChecklistItem[] {
+  const isBugfix = state.workflow === "bugfix";
+  const items: DoneChecklistItem[] = [];
+
+  if (isBugfix) {
+    items.push({ key: "generate-bugfix-summary", label: "Generate bugfix summary", defaultChecked: true });
+  } else {
+    items.push({ key: "generate-docs", label: "Generate feature document", defaultChecked: true });
+  }
+
+  items.push({ key: "write-changelog", label: "Write changelog entry", defaultChecked: true });
+  items.push({ key: "capture-learnings", label: "Capture learnings", defaultChecked: true });
+
+  const hasTaskChanges =
+    Object.keys(state.taskJJChanges).length > 0 && Boolean(state.jjChangeId);
+  if (hasTaskChanges) {
+    items.push({
+      key: "squash-task-changes",
+      label: "Squash task changes into phase change",
+      defaultChecked: true,
+    });
+  }
+
+  items.push({ key: "close-issue", label: "Close issue", defaultChecked: true });
+
+  return items;
+}
+
+
+export async function showDoneChecklist(ctx: any, cwd: string): Promise<void> {
+  const state = readState(cwd);
+  if (!state.activeIssue || state.phase !== "done") return;
+  if (!ctx.hasUI) return;
+
+  const checklistItems = getDoneChecklistItems(state);
+  const selectedKeys = await showChecklistUI(
+    ctx,
+    checklistItems.map((i) => ({ key: i.key, label: i.label, checked: i.defaultChecked })),
+    "Done — select wrap-up actions to perform:",
+  );
+
+  // null = dismissed (Escape) → store empty array
+  const doneActions = selectedKeys ?? [];
+  writeState(cwd, { ...readState(cwd), doneActions });
+}
+
+
 
 export function renderStatusText(state: MegapowersState, tasks?: PlanTask[]): string {
   if (!state.activeIssue) return "";
@@ -64,7 +112,7 @@ export function renderStatusText(state: MegapowersState, tasks?: PlanTask[]): st
   const completedSet = new Set(state.completedTasks);
   const completed = tasks?.filter(t => completedSet.has(t.index)).length ?? 0;
   const taskInfo = total > 0 ? ` ${completed}/${total}` : "";
-  const modeLabel = state.doneMode ? ` → ${DONE_MODE_LABELS[state.doneMode] ?? state.doneMode}` : "";
+  const modeLabel = state.doneActions.length > 0 ? ` → ${state.doneActions.length} actions` : "";
   return `📋 #${idNum} ${state.phase ?? "?"}${taskInfo}${modeLabel}`;
 }
 
@@ -130,11 +178,11 @@ export function renderDashboardLines(state: MegapowersState, _issues: Issue[], t
     }
   }
 
-  // Done phase: show active mode and instruction
-  if (state.phase === "done" && state.doneMode) {
-    const label = DONE_MODE_LABELS[state.doneMode] ?? state.doneMode;
-    lines.push(`${theme.fg("accent", "Action:")} ${label}`);
-    lines.push(theme.fg("dim", "Send any message to generate."));
+  // Done phase: show active actions and instruction
+  if (state.phase === "done" && state.doneActions.length > 0) {
+    const label = state.doneActions.join(", ");
+    lines.push(`${theme.fg("accent", "Actions:")} ${label}`);
+    lines.push(theme.fg("dim", "Send any message to execute wrap-up actions."));
   }
 
   if (state.jjChangeId) {
@@ -150,15 +198,6 @@ export function formatIssueListItem(issue: Issue, batchSlug?: string | null): st
   return `${id} ${issue.title} [${issue.type}] [${issue.status}]${batchAnnotation}`;
 }
 
-function closeSourceIssues(activeIssue: string, store: Store): void {
-  const issue = store.getIssue(activeIssue);
-  if (issue && issue.sources.length > 0) {
-    const sourceIssues = store.getSourceIssues(activeIssue);
-    for (const src of sourceIssues) {
-      store.updateIssueStatus(src.slug, "done");
-    }
-  }
-}
 
 // --- Triage helpers (pure functions) ---
 
@@ -186,19 +225,6 @@ export interface MegapowersUI {
     args: string
   ): Promise<MegapowersState>;
 
-  handlePhaseTransition(
-    ctx: ExtensionContext,
-    state: MegapowersState,
-    store: Store,
-    jj: JJ
-  ): Promise<MegapowersState>;
-
-  handleDonePhase(
-    ctx: ExtensionContext,
-    state: MegapowersState,
-    store: Store,
-    jj: JJ
-  ): Promise<MegapowersState>;
 
   handleTriageCommand(
     ctx: ExtensionContext,
@@ -256,7 +282,7 @@ export function createUI(): MegapowersUI {
           completedTasks: [],
           tddTaskState: null,
           taskJJChanges: {},
-          doneMode: null,
+          doneActions: [],
         };
 
         // Create jj change if in a jj repo
@@ -310,7 +336,7 @@ export function createUI(): MegapowersUI {
           completedTasks: [],
           tddTaskState: null,
           taskJJChanges: {},
-          doneMode: null,
+          doneActions: [],
         };
 
         if (await jj.isJJRepo()) {
@@ -330,178 +356,7 @@ export function createUI(): MegapowersUI {
       return state;
     },
 
-    async handleDonePhase(ctx, state, store, jj) {
-      if (!state.activeIssue) return state;
 
-      const isBugfix = state.workflow === "bugfix";
-      const actions = isBugfix
-        ? [
-            "Generate bugfix summary",
-            "Write changelog entry",
-            "Capture learnings",
-            "Close issue",
-          ]
-        : [
-            "Generate feature doc",
-            "Write changelog entry",
-            "Capture learnings",
-            "Close issue",
-          ];
-
-      // Offer squash if there are per-task jj changes and a phase change to squash into
-      const hasTaskChanges = Object.keys(state.taskJJChanges).length > 0 && state.jjChangeId;
-      if (hasTaskChanges) {
-        actions.push("Squash task changes into phase change");
-      }
-
-      actions.push("Done — finish without further actions");
-
-      let continueMenu = true;
-      let newState = state;
-
-      while (continueMenu) {
-        const choice = await ctx.ui.select("Wrap-up actions:", actions);
-        if (!choice) {
-          // Dismissed — leave state unchanged, stay in done phase
-          continueMenu = false;
-          break;
-        }
-        if (choice.startsWith("Done")) {
-          // Explicitly chose to finish — close the issue and reset state
-          closeSourceIssues(state.activeIssue, store);
-          store.updateIssueStatus(state.activeIssue, "done");
-          newState = createInitialState();
-          writeState(ctx.cwd, newState);
-          ctx.ui.notify("Issue closed.", "info");
-          continueMenu = false;
-          break;
-        }
-
-        if (choice === "Generate feature doc") {
-          newState = { ...newState, doneMode: "generate-docs" };
-          ctx.ui.notify(
-            "Feature doc mode active. Send any message to the LLM to generate the feature doc.\nThe doc will be saved to .megapowers/docs/.",
-            "info"
-          );
-          continueMenu = false;
-          break;
-        }
-
-        if (choice === "Generate bugfix summary") {
-          newState = { ...newState, doneMode: "generate-bugfix-summary" };
-          ctx.ui.notify(
-            "Bugfix summary mode active. Send any message to the LLM to generate the bugfix summary.\nThe summary will be saved to .megapowers/docs/.",
-            "info"
-          );
-          continueMenu = false;
-          break;
-        }
-
-        if (choice === "Write changelog entry") {
-          newState = { ...newState, doneMode: "write-changelog" };
-          ctx.ui.notify(
-            "Changelog mode active. Send any message to the LLM to generate the changelog entry.\nThe entry will be appended to .megapowers/CHANGELOG.md.",
-            "info"
-          );
-          continueMenu = false;
-          break;
-        }
-
-        if (choice === "Capture learnings") {
-          newState = { ...newState, doneMode: "capture-learnings" };
-          ctx.ui.notify(
-            "Learnings capture mode active. Send any message to the LLM to generate learning suggestions.\nReview the output and use /learn to save individual entries.",
-            "info"
-          );
-          continueMenu = false;
-          break;
-        }
-
-        if (choice === "Close issue") {
-          closeSourceIssues(state.activeIssue, store);
-          store.updateIssueStatus(state.activeIssue, "done");
-          newState = createInitialState();
-          writeState(ctx.cwd, newState);
-          ctx.ui.notify("Issue closed.", "info");
-          continueMenu = false;
-          break;
-        }
-
-        if (choice === "Squash task changes into phase change") {
-          if (state.jjChangeId) {
-            await jj.squashInto(state.jjChangeId);
-            newState = { ...newState, taskJJChanges: {} };
-            ctx.ui.notify("Task changes squashed into phase change.", "info");
-          }
-          // Continue menu after squash
-          continue;
-        }
-
-        // Catch-all: unknown selection exits the loop (prevents hang)
-        break;
-      }
-
-      return newState;
-    },
-
-    async handlePhaseTransition(ctx, state, store, jj) {
-      if (!state.workflow || !state.phase || !state.activeIssue) return state;
-
-      const validNext = getValidTransitions(state.workflow, state.phase);
-      if (validNext.length === 0) {
-        ctx.ui.notify("No valid transitions from current phase.", "info");
-        return state;
-      }
-
-      // Check gates for each valid transition and annotate
-      const options: { phase: Phase; label: string; gated: boolean; reason?: string }[] = [];
-      for (const p of validNext) {
-        const gate = checkGate(state, p, store, ctx.cwd);
-        let label = p as string;
-        if (
-          (state.phase === "review" && p === "plan") ||
-          (state.phase === "verify" && p === "implement") ||
-          (state.phase === "code-review" && p === "implement")
-        ) {
-          label = `← ${p} (go back)`;
-        }
-        if (p === "implement" && state.phase === "plan") {
-          label = `${p} (skip review)`;
-        }
-        if (!gate.pass) {
-          label = `${label} ⛔ ${gate.reason}`;
-        }
-        options.push({ phase: p, label, gated: !gate.pass, reason: gate.reason });
-      }
-
-      const labels = options.map(o => o.label);
-      const choice = await ctx.ui.select(`Phase "${state.phase}" — what next?`, labels);
-      if (!choice) return state;
-
-      const selected = options.find(o => o.label === choice);
-      if (!selected) return state;
-
-      if (selected.gated) {
-        ctx.ui.notify(`Cannot advance: ${selected.reason}`, "error");
-        return state;
-      }
-
-      const targetPhase = selected.phase;
-      let newState = transition(state, targetPhase);
-
-      // jj: describe current, create new change
-      if (await jj.isJJRepo()) {
-        await jj.describe(formatChangeDescription(state.activeIssue, state.phase!, "complete"));
-        const changeId = await jj.newChange(formatChangeDescription(state.activeIssue, targetPhase));
-        if (changeId) newState = { ...newState, jjChangeId: changeId };
-      }
-
-      writeState(ctx.cwd, newState);
-      const guidance = PHASE_GUIDANCE[targetPhase] ?? "";
-      ctx.ui.notify(`Transitioned to: ${targetPhase}. ${guidance}`, "info");
-      this.renderDashboard(ctx, newState, store);
-      return newState;
-    },
 
     async handleTriageCommand(ctx, state, store, jj) {
       const allIssues = store.listIssues();
@@ -554,7 +409,7 @@ export function createUI(): MegapowersUI {
         completedTasks: [],
         tddTaskState: null,
         taskJJChanges: {},
-        doneMode: null,
+        doneActions: [],
       };
 
       if (await jj.isJJRepo()) {

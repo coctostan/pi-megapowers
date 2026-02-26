@@ -4,6 +4,7 @@ import { advancePhase } from "../policy/phase-advance.js";
 import { deriveTasks } from "../state/derived.js";
 import { transition, type Phase } from "../state/state-machine.js";
 import { inspectTaskChange, createTaskChange, buildTaskCompletionReport } from "../task-coordinator.js";
+import { getWorkflowConfig } from "../workflows/registry.js";
 import type { JJ } from "../jj.js";
 
 export interface SignalResult {
@@ -13,7 +14,7 @@ export interface SignalResult {
 
 export function handleSignal(
   cwd: string,
-  action: "task_done" | "review_approve" | "phase_next" | string,
+  action: "task_done" | "review_approve" | "phase_next" | "phase_back" | string,
   jj?: JJ,
   target?: string,
 ): SignalResult {
@@ -30,6 +31,8 @@ export function handleSignal(
       return handleReviewApprove(cwd);
     case "phase_next":
       return handlePhaseNext(cwd, jj, target);
+    case "phase_back":
+      return handlePhaseBack(cwd, jj);
     case "tests_failed":
       return handleTestsFailed(cwd);
     case "tests_passed":
@@ -248,5 +251,40 @@ function handlePhaseNext(cwd: string, jj?: JJ, target?: string): SignalResult {
   }
   return {
     message: `Phase advanced to ${result.newPhase}. Proceed with ${result.newPhase} phase work.`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// phase_back
+// ---------------------------------------------------------------------------
+
+function handlePhaseBack(cwd: string, jj?: JJ): SignalResult {
+  const state = readState(cwd);
+
+  if (!state.activeIssue || !state.phase || !state.workflow) {
+    return { error: "No active issue or phase." };
+  }
+
+  const config = getWorkflowConfig(state.workflow);
+  const backwardTransition = config.transitions.find(
+    (t) => t.from === state.phase && t.backward === true,
+  );
+
+  if (!backwardTransition) {
+    return {
+      error: `No backward transition from ${state.phase} in ${state.workflow} workflow.`,
+    };
+  }
+
+  // Note: reviewApproved is reset by transition() in state-machine.ts
+  // when to === "plan". No explicit intermediate write needed here.
+
+  const result = advancePhase(cwd, backwardTransition.to, jj);
+  if (!result.ok) {
+    return { error: result.error };
+  }
+
+  return {
+    message: `Phase moved back to ${result.newPhase}. Rework needed — continue with the ${result.newPhase} phase.`,
   };
 }

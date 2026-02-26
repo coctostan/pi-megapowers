@@ -1,7 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createStore, type Store } from "./state/store.js";
 import { createJJ, type JJ } from "./jj.js";
-import { createUI, filterTriageableIssues, formatTriageIssueList, type MegapowersUI } from "./ui.js";
+import { createUI, filterTriageableIssues, formatTriageIssueList, showDoneChecklist, type MegapowersUI } from "./ui.js";
 import { readState, writeState } from "./state/state-io.js";
 import { loadPromptFile, interpolatePrompt } from "./prompts.js";
 import { handleSignal } from "./tools/tool-signal.js";
@@ -113,8 +113,7 @@ export async function handleDoneCommand(_args: string, ctx: any, deps: Deps): Pr
     return;
   }
 
-  const newState = await deps.ui.handleDonePhase(ctx, state, deps.store, deps.jj);
-  writeState(ctx.cwd, newState);
+  await showDoneChecklist(ctx, ctx.cwd);
   if (ctx.hasUI) deps.ui.renderDashboard(ctx, readState(ctx.cwd), deps.store);
 }
 

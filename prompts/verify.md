@@ -77,7 +77,7 @@ pass / fail
 ## Rules
 - **Tests passing ≠ criteria met** — verify both independently
 - **No weasel words** — only claims backed by command output from THIS session
-- If any criterion fails: explain what's missing and recommend going back to implement (small fix) or plan (bigger gap). The user will need to use `/phase implement` or `/phase plan` to transition back.
+- If any acceptance criterion fails and implementation changes are needed, explain what needs fixing, then call `megapowers_signal({ action: "phase_back" })` to return to implement.
 
 ## Saving
 

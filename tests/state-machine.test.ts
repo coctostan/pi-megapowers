@@ -256,38 +256,23 @@ describe("transition — backward transitions", () => {
   });
 });
 
-describe("doneMode field", () => {
-  it("initializes to null", () => {
+describe("doneActions field", () => {
+  it("initializes to empty array", () => {
     const state = createInitialState();
-    expect(state.doneMode).toBeNull();
+    expect(state.doneActions).toEqual([]);
+    expect((state as any).doneMode).toBeUndefined();
   });
 
-  it("is included in the state type (TypeScript compile check via assignment)", () => {
-    const state = createInitialState();
-    const copy: MegapowersState = { ...state, doneMode: "generate-docs" };
-    expect(copy.doneMode).toBe("generate-docs");
-  });
-
-  it("transition to non-done phase resets doneMode to null", () => {
+  it("transition resets doneActions to empty array", () => {
     const state: MegapowersState = {
       ...createInitialState(),
       activeIssue: "001-test",
       workflow: "feature",
       phase: "code-review",
-      doneMode: "generate-docs",
+      doneActions: ["generate-docs", "write-changelog"],
     };
     const next = transition(state, "done");
-    expect(next.doneMode).toBeNull();
-  });
-});
-
-describe("MegapowersState — doneMode type", () => {
-  it("accepts generate-bugfix-summary as a valid doneMode", () => {
-    const state: MegapowersState = {
-      ...createInitialState(),
-      doneMode: "generate-bugfix-summary",
-    };
-    expect(state.doneMode).toBe("generate-bugfix-summary");
+    expect(next.doneActions).toEqual([]);
   });
 });
 

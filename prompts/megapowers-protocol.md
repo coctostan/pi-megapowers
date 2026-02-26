@@ -5,6 +5,7 @@ You have access to these megapowers tools:
 ### `megapowers_signal`
 Call this to signal state transitions:
 - `{ action: "phase_next" }` — Advance to the next workflow phase
+- `{ action: "phase_back" }` — Go back to the previous phase (feature workflow only). Resolves the first `backward` transition from the current phase: verify→implement, code-review→implement, review→plan. Returns an error if no backward transition exists from the current phase.
 - `{ action: "task_done" }` — Mark the current implementation task as complete
 - `{ action: "review_approve" }` — Approve the plan during review phase
 - `{ action: "tests_failed" }` — Signal that tests failed (RED in TDD cycle — unlocks production code writes)

@@ -60,16 +60,22 @@ Approve and I'll save it.
 
 Does this look good? If approved I'll save it.
 Here's the changelog entry:
-
 ---
 
 ## 2026-02-25 — Fix backward phase transitions and artifact versioning
-
 - **Backward transitions now work via tool and command:** `megapowers_signal({ action: "phase_next", target: "implement" })` and `/phase implement` (or `/phase plan`) correctly navigate backward — previously these always advanced forward regardless of intent
 - **Bugfix workflow gains backward transitions:** `review → plan` and `verify → implement` are now available in bugfix workflows, matching the feature workflow
 - **Artifact saves are now non-destructive:** calling `megapowers_save_artifact` on an already-written artifact preserves the previous version as `spec.v1.md`, `spec.v2.md`, etc. — previously every save silently overwrote the file with no recovery path
 - **Regression guard for #061:** jj change-ID mismatch handling confirmed fixed and protected by a regression test
-
 ---
-
 Does this look good, or any tweaks?
+```
+## [2026-02-26] — Remove blocking phase-transition popups; add `phase_back` signal
+
+- **New:** `megapowers_signal({ action: "phase_back" })` lets the agent go back to the previous phase (review→plan, verify→implement, code-review→implement) without any user prompt
+- **Removed:** Blocking popup dialogs after every agent turn are gone — phase transitions are now fully agent-driven via `megapowers_signal` tool calls
+- **New:** Entering the `done` phase shows a non-blocking checklist widget for wrap-up actions (generate docs, write changelog, capture learnings, squash, close issue); the agent then executes selected actions autonomously
+- **Changed:** `doneMode` state field replaced with `doneActions: string[]`; prompt templates updated to reflect the new agent-driven flow
+```
+
+Approve this and I'll save it, or let me know if you'd like any tweaks.

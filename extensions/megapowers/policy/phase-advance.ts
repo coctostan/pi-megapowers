@@ -4,6 +4,7 @@ import { getValidTransitions, transition, type Phase } from "../state/state-mach
 import { checkGate } from "./gates.js";
 import { createStore } from "../state/store.js";
 import { deriveTasks } from "../state/derived.js";
+import { getWorkflowConfig } from "../workflows/registry.js";
 import { formatChangeDescription, type JJ } from "../jj.js";
 
 export interface AdvanceResult {
@@ -24,7 +25,18 @@ export function advancePhase(cwd: string, targetPhase?: Phase, jj?: JJ): Advance
     return { ok: false, error: `No valid transitions from ${state.phase}.` };
   }
 
-  const target = targetPhase ?? validNext[0];
+  let target: Phase;
+  if (targetPhase) {
+    target = targetPhase;
+  } else {
+    // AC7: default picks first NON-backward transition
+    const config = getWorkflowConfig(state.workflow);
+    const forwardTransition = config.transitions.find(
+      (t) => t.from === state.phase && !t.backward,
+    );
+    target = forwardTransition?.to ?? validNext[0];
+  }
+
   if (!validNext.includes(target)) {
     return {
       ok: false,
