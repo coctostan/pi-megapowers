@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildInjectedPrompt } from "../extensions/megapowers/prompt-inject.js";
@@ -66,5 +66,28 @@ describe("buildInjectedPrompt", () => {
     setState(tmp, { phase: "brainstorm", megaEnabled: true });
     const result = buildInjectedPrompt(tmp);
     expect(result).toContain("phase_next");
+  });
+});
+
+describe("prompt-inject.ts refactor verification", () => {
+  it("uses workflow config for artifact loading (no hardcoded artifactMap)", () => {
+    const source = readFileSync(
+      join(__dirname, "..", "extensions", "megapowers", "prompt-inject.ts"),
+      "utf-8",
+    );
+    expect(source).toContain("getWorkflowConfig");
+    expect(source).not.toContain("artifactMap");
+    expect(source).not.toContain("PHASE_TOOL_INSTRUCTIONS");
+  });
+});
+
+describe("derived.ts refactor verification", () => {
+  it("uses workflow config for acceptance criteria (no hardcoded bugfix check)", () => {
+    const source = readFileSync(
+      join(__dirname, "..", "extensions", "megapowers", "state", "derived.ts"),
+      "utf-8",
+    );
+    expect(source).toContain("getWorkflowConfig");
+    expect(source).not.toContain('=== "bugfix"');
   });
 });

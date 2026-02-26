@@ -3,6 +3,8 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { evaluateWriteOverride, recordTestFileWritten } from "../extensions/megapowers/tools/tool-overrides.js";
+import { canWrite } from "../extensions/megapowers/policy/write-policy.js";
+import { readFileSync } from "node:fs";
 import { readState, writeState } from "../extensions/megapowers/state/state-io.js";
 import { createInitialState, type MegapowersState } from "../extensions/megapowers/state/state-machine.js";
 
@@ -164,5 +166,28 @@ describe("tool-overrides exports", () => {
   it("write-policy does not export isTestRunnerCommand", async () => {
     const mod = await import("../extensions/megapowers/policy/write-policy.js");
     expect((mod as any).isTestRunnerCommand).toBeUndefined();
+  });
+});
+
+describe("bugfix reproduce/diagnose write policy (behavioral equivalence)", () => {
+  it("allows source code writes during reproduce phase", () => {
+    const result = canWrite("reproduce", "src/app.ts", true, false, null);
+    expect(result.allowed).toBe(true);
+  });
+
+  it("allows source code writes during diagnose phase", () => {
+    const result = canWrite("diagnose", "src/app.ts", true, false, null);
+    expect(result.allowed).toBe(true);
+  });
+});
+
+describe("write-policy.ts refactor verification", () => {
+  it("uses workflow config (no hardcoded phase sets)", () => {
+    const source = readFileSync(
+      join(__dirname, "..", "extensions", "megapowers", "policy", "write-policy.ts"),
+      "utf-8",
+    );
+    expect(source).toContain("getAllWorkflowConfigs");
+    expect(source).not.toContain('"brainstorm", "spec", "plan", "review", "verify", "done"');
   });
 });

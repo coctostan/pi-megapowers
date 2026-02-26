@@ -6,6 +6,7 @@ import { checkGate, type GateResult } from "../extensions/megapowers/policy/gate
 import { createStore } from "../extensions/megapowers/state/store.js";
 import { createInitialState, type MegapowersState } from "../extensions/megapowers/state/state-machine.js";
 import { writeState } from "../extensions/megapowers/state/state-io.js";
+import { readFileSync } from "node:fs";
 
 let tmp: string;
 
@@ -235,5 +236,17 @@ describe("diagnose → plan (bugfix)", () => {
     const state = makeState({ phase: "diagnose", workflow: "bugfix" });
     const result = checkGate(state, "plan", store);
     expect(result.pass).toBe(true);
+  });
+});
+
+describe("gates.ts refactor verification", () => {
+  it("uses workflow config and gate evaluator (no hardcoded switch/case)", () => {
+    const source = readFileSync(
+      join(__dirname, "..", "extensions", "megapowers", "policy", "gates.ts"),
+      "utf-8",
+    );
+    expect(source).not.toContain("BACKWARD_TARGETS");
+    expect(source).toContain("getWorkflowConfig");
+    expect(source).toContain("evaluateGate");
   });
 });
