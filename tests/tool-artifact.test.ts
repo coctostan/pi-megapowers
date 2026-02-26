@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { handleSaveArtifact } from "../extensions/megapowers/tool-artifact.js";
-import { writeState } from "../extensions/megapowers/state-io.js";
-import { createInitialState } from "../extensions/megapowers/state-machine.js";
+import { handleSaveArtifact } from "../extensions/megapowers/tools/tool-artifact.js";
+import { writeState } from "../extensions/megapowers/state/state-io.js";
+import { createInitialState } from "../extensions/megapowers/state/state-machine.js";
 
 describe("handleSaveArtifact", () => {
   let tmp: string;

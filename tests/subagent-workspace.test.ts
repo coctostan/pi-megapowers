@@ -7,7 +7,7 @@ import {
   buildDiffSummaryArgs,
   buildDiffFullArgs,
   workspacePath,
-} from "../extensions/megapowers/subagent-workspace.js";
+} from "../extensions/megapowers/subagent/subagent-workspace.js";
 
 describe("buildWorkspaceName", () => {
   it("creates workspace name from subagent ID", () => {

@@ -9,7 +9,7 @@ import {
   type Phase,
   type PlanTask,
   type AcceptanceCriterion,
-} from "../extensions/megapowers/state-machine.js";
+} from "../extensions/megapowers/state/state-machine.js";
 
 describe("createInitialState", () => {
   it("returns a blank state with no active issue", () => {

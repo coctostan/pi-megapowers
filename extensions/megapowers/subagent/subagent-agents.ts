@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 
 const thisDir = dirname(fileURLToPath(import.meta.url));
-export const BUILTIN_AGENTS_DIR = join(thisDir, "..", "..", "agents");
+export const BUILTIN_AGENTS_DIR = join(thisDir, "..", "..", "..", "agents");
 const SAFE_AGENT_NAME = /^[A-Za-z0-9_-]+$/;
 
 export interface AgentDef {

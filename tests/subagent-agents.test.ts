@@ -2,7 +2,7 @@ import { describe, it, expect } from "bun:test";
 import { existsSync, existsSync as fileExists, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseAgentFrontmatter, type AgentDef } from "../extensions/megapowers/subagent-agents.js";
+import { parseAgentFrontmatter, type AgentDef } from "../extensions/megapowers/subagent/subagent-agents.js";
 
 const thisTestDir = dirname(fileURLToPath(import.meta.url));
 const agentsDir = join(thisTestDir, "..", "agents");
@@ -150,7 +150,7 @@ describe("builtin agent files", () => {
   });
 });
 
-import { resolveAgent, BUILTIN_AGENTS_DIR } from "../extensions/megapowers/subagent-agents.js";
+import { resolveAgent, BUILTIN_AGENTS_DIR } from "../extensions/megapowers/subagent/subagent-agents.js";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { beforeEach, afterEach } from "bun:test";
 import { tmpdir } from "node:os";

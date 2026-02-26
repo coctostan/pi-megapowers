@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { readState, writeState } from "../extensions/megapowers/state-io.js";
-import { createInitialState } from "../extensions/megapowers/state-machine.js";
+import { readState, writeState } from "../extensions/megapowers/state/state-io.js";
+import { createInitialState } from "../extensions/megapowers/state/state-machine.js";
 
 // These tests verify the architectural invariants of the rewritten index.ts
 // by checking the source code and state file behavior.
@@ -37,9 +37,10 @@ describe("index.ts architectural invariants", () => {
     });
 
     it("registers megapowers_signal in satellite mode", () => {
-      const source = readFileSync(join(__dirname, "../extensions/megapowers/index.ts"), "utf-8");
-      const hasSatelliteSignalTool = /if \(satellite\) \{[\s\S]*?pi\.registerTool\(\{[\s\S]*?name: "megapowers_signal"[\s\S]*?\}\);[\s\S]*?return; \/\/ Skip all primary session setup/.test(source);
-      expect(hasSatelliteSignalTool).toBe(true);
+      // Satellite setup logic lives in satellite.ts (extracted from index.ts)
+      const source = readFileSync(join(__dirname, "../extensions/megapowers/satellite.ts"), "utf-8");
+      expect(source).toContain('name: "megapowers_signal"');
+      expect(source).toContain("setupSatellite");
     });
   });
 
@@ -81,30 +82,31 @@ describe("index.ts architectural invariants", () => {
 
   describe("session_start jj availability check (AC1-4)", () => {
     it("imports checkJJAvailability from jj.ts", () => {
-      const source = readFileSync(join(__dirname, "../extensions/megapowers/index.ts"), "utf-8");
+      // session_start handler lives in hooks.ts (extracted from index.ts)
+      const source = readFileSync(join(__dirname, "../extensions/megapowers/hooks.ts"), "utf-8");
       expect(source).toContain('checkJJAvailability');
       expect(source).toMatch(/import\s+\{[^}]*checkJJAvailability[^}]*\}\s+from\s+["']\.\/jj/);
     });
 
     it("imports JJ_INSTALL_MESSAGE and JJ_INIT_MESSAGE from jj-messages.ts", () => {
-      const source = readFileSync(join(__dirname, "../extensions/megapowers/index.ts"), "utf-8");
+      const source = readFileSync(join(__dirname, "../extensions/megapowers/hooks.ts"), "utf-8");
       expect(source).toContain("JJ_INSTALL_MESSAGE");
       expect(source).toContain("JJ_INIT_MESSAGE");
       expect(source).toContain("jj-messages");
     });
 
     it("calls ctx.ui.notify with JJ_INSTALL_MESSAGE for not-installed case", () => {
-      const source = readFileSync(join(__dirname, "../extensions/megapowers/index.ts"), "utf-8");
+      const source = readFileSync(join(__dirname, "../extensions/megapowers/hooks.ts"), "utf-8");
       expect(source).toContain("ctx.ui.notify(JJ_INSTALL_MESSAGE)");
     });
 
     it("calls ctx.ui.notify with JJ_INIT_MESSAGE for not-repo case", () => {
-      const source = readFileSync(join(__dirname, "../extensions/megapowers/index.ts"), "utf-8");
+      const source = readFileSync(join(__dirname, "../extensions/megapowers/hooks.ts"), "utf-8");
       expect(source).toContain("ctx.ui.notify(JJ_INIT_MESSAGE)");
     });
 
     it("jj check does not block — no early return or throw after availability check", () => {
-      const source = readFileSync(join(__dirname, "../extensions/megapowers/index.ts"), "utf-8");
+      const source = readFileSync(join(__dirname, "../extensions/megapowers/hooks.ts"), "utf-8");
       const jjCheckIndex = source.indexOf("checkJJAvailability");
       const dashboardIndex = source.indexOf("renderDashboard");
       expect(jjCheckIndex).toBeGreaterThan(-1);

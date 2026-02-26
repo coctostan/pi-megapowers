@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { deriveTasks, deriveAcceptanceCriteria } from "../extensions/megapowers/derived.js";
+import { deriveTasks, deriveAcceptanceCriteria } from "../extensions/megapowers/state/derived.js";
 
 describe("derived", () => {
   let tmp: string;

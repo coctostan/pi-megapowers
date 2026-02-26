@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Phase, PlanTask, AcceptanceCriterion } from "./state-machine.js";
-import type { Issue } from "./store.js";
+import type { Phase, PlanTask, AcceptanceCriterion } from "./state/state-machine.js";
+import type { Issue } from "./state/store.js";
 
 // --- Prompt file mapping ---
 

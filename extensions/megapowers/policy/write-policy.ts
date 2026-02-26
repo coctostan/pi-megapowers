@@ -1,9 +1,9 @@
-// extensions/megapowers/write-policy.ts
+// extensions/megapowers/policy/write-policy.ts
 //
 // Pure write-policy functions — no disk I/O, no pi imports.
 // Used by tool-overrides.ts (disk-based) and satellite mode (in-memory).
 
-import type { Phase, TddTaskState } from "./state-machine.js";
+import type { Phase, TddTaskState } from "../state/state-machine.js";
 
 export interface WriteDecision {
   allowed: boolean;

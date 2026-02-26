@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { handleSignal } from "../extensions/megapowers/tool-signal.js";
-import { readState, writeState } from "../extensions/megapowers/state-io.js";
-import { createInitialState, type MegapowersState } from "../extensions/megapowers/state-machine.js";
+import { handleSignal } from "../extensions/megapowers/tools/tool-signal.js";
+import { readState, writeState } from "../extensions/megapowers/state/state-io.js";
+import { createInitialState, type MegapowersState } from "../extensions/megapowers/state/state-machine.js";
 import type { JJ } from "../extensions/megapowers/jj.js";
 
 function setState(tmp: string, overrides: Partial<MegapowersState>) {
@@ -466,9 +466,10 @@ describe("handleSignal", () => {
 
   describe("megapowers_signal schema", () => {
     it("includes tests_failed and tests_passed actions", () => {
-      const indexSource = readFileSync(join(process.cwd(), "extensions/megapowers/index.ts"), "utf8");
-      expect(indexSource).toContain('Type.Literal("tests_failed")');
-      expect(indexSource).toContain('Type.Literal("tests_passed")');
+      // Tool registrations live in register-tools.ts (extracted from index.ts)
+      const toolsSource = readFileSync(join(process.cwd(), "extensions/megapowers/register-tools.ts"), "utf8");
+      expect(toolsSource).toContain('Type.Literal("tests_failed")');
+      expect(toolsSource).toContain('Type.Literal("tests_passed")');
     });
   });
 

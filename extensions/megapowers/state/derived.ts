@@ -1,8 +1,8 @@
-// extensions/megapowers/derived.ts
+// extensions/megapowers/state/derived.ts
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { extractPlanTasks } from "./plan-parser.js";
-import { extractAcceptanceCriteria, extractFixedWhenCriteria } from "./spec-parser.js";
+import { extractPlanTasks } from "../plan-parser.js";
+import { extractAcceptanceCriteria, extractFixedWhenCriteria } from "../spec-parser.js";
 import type { PlanTask, AcceptanceCriterion, WorkflowType } from "./state-machine.js";
 
 /**

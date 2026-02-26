@@ -8,13 +8,13 @@ import {
   filterTriageableIssues,
   formatTriageIssueList,
 } from "../extensions/megapowers/ui.js";
-import type { MegapowersState } from "../extensions/megapowers/state-machine.js";
-import { createInitialState } from "../extensions/megapowers/state-machine.js";
+import type { MegapowersState } from "../extensions/megapowers/state/state-machine.js";
+import { createInitialState } from "../extensions/megapowers/state/state-machine.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createStore } from "../extensions/megapowers/store.js";
-import type { Issue } from "../extensions/megapowers/store.js";
+import { createStore } from "../extensions/megapowers/state/store.js";
+import type { Issue } from "../extensions/megapowers/state/store.js";
 
 // Shared temp dir for mock contexts that need a cwd for writeState
 let mockCwd: string;

@@ -1,16 +1,16 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { readState } from "./state-io.js";
-import { deriveTasks } from "./derived.js";
+import { readState } from "../state/state-io.js";
+import { deriveTasks } from "../state/derived.js";
 import { readSubagentStatus, subagentDir, type SubagentStatus } from "./subagent-status.js";
 import { generateSubagentId } from "./subagent-runner.js";
 import { validateTaskDependencies } from "./subagent-validate.js";
 import { extractTaskSection, buildSubagentPrompt } from "./subagent-context.js";
 import { resolveAgent } from "./subagent-agents.js";
 import { buildDispatchConfig, type DispatchConfig } from "./subagent-async.js";
-import { jjDispatchErrorMessage } from "./jj-messages.js";
+import { jjDispatchErrorMessage } from "../jj-messages.js";
 import { workspacePath } from "./subagent-workspace.js";
-import { createStore } from "./store.js";
+import { createStore } from "../state/store.js";
 
 export interface SubagentDispatchInput {
   task: string;

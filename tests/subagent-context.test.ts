@@ -2,7 +2,7 @@ import { describe, it, expect } from "bun:test";
 import {
   extractTaskSection,
   buildSubagentPrompt,
-} from "../extensions/megapowers/subagent-context.js";
+} from "../extensions/megapowers/subagent/subagent-context.js";
 
 describe("extractTaskSection", () => {
   const plan = `# Implementation Plan

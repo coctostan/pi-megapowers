@@ -3,10 +3,10 @@ import {
   handleSubagentDispatch,
   handleSubagentStatus,
   type SubagentDispatchInput,
-} from "../extensions/megapowers/subagent-tools.js";
-import { writeSubagentStatus } from "../extensions/megapowers/subagent-status.js";
-import { writeState } from "../extensions/megapowers/state-io.js";
-import { createInitialState } from "../extensions/megapowers/state-machine.js";
+} from "../extensions/megapowers/subagent/subagent-tools.js";
+import { writeSubagentStatus } from "../extensions/megapowers/subagent/subagent-status.js";
+import { writeState } from "../extensions/megapowers/state/state-io.js";
+import { createInitialState } from "../extensions/megapowers/state/state-machine.js";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -271,14 +271,14 @@ describe("subagent available in all phases", () => {
 describe("satellite TDD enforcement", () => {
   it("sets PI_SUBAGENT=1 in spawn env for TDD enforcement", async () => {
     const { isSatelliteMode } = await import("../extensions/megapowers/satellite.js");
-    const { buildSpawnEnv: buildEnv } = await import("../extensions/megapowers/subagent-runner.js");
+    const { buildSpawnEnv: buildEnv } = await import("../extensions/megapowers/subagent/subagent-runner.js");
 
     const env = buildEnv({ subagentId: "sa-test" });
     expect(isSatelliteMode({ isTTY: false, env })).toBe(true);
   });
 
   it("sets MEGA_PROJECT_ROOT so satellite can read state", async () => {
-    const { buildSpawnEnv: buildEnv } = await import("../extensions/megapowers/subagent-runner.js");
+    const { buildSpawnEnv: buildEnv } = await import("../extensions/megapowers/subagent/subagent-runner.js");
     const { resolveProjectRoot } = await import("../extensions/megapowers/satellite.js");
 
     const env = buildEnv({ subagentId: "sa-test", projectRoot: "/my/project" });

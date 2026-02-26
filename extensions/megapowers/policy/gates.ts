@@ -1,7 +1,7 @@
-import type { MegapowersState, Phase } from "./state-machine.js";
-import type { Store } from "./store.js";
-import { hasOpenQuestions } from "./spec-parser.js";
-import { deriveTasks } from "./derived.js";
+import type { MegapowersState, Phase } from "../state/state-machine.js";
+import type { Store } from "../state/store.js";
+import { hasOpenQuestions } from "../spec-parser.js";
+import { deriveTasks } from "../state/derived.js";
 
 export interface GateResult {
   pass: boolean;

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createStore, type Store, type Issue } from "../extensions/megapowers/store.js";
+import { createStore, type Store, type Issue } from "../extensions/megapowers/state/store.js";
 
 let tmp: string;
 let store: Store;

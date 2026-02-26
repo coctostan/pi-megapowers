@@ -1,10 +1,10 @@
-// extensions/megapowers/tool-overrides.ts
+// extensions/megapowers/tools/tool-overrides.ts
 //
 // Disk-backed wrappers for write/edit tool overrides.
 
-import { readState, writeState } from "./state-io.js";
-import { canWrite, isTestFile, isAllowlisted } from "./write-policy.js";
-import { deriveTasks } from "./derived.js";
+import { readState, writeState } from "../state/state-io.js";
+import { canWrite, isTestFile, isAllowlisted } from "../policy/write-policy.js";
+import { deriveTasks } from "../state/derived.js";
 
 // Re-export for consumers who only want policy utilities
 export { isTestFile, isAllowlisted };

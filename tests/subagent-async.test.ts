@@ -3,7 +3,7 @@ import {
   buildDispatchConfig,
   type DispatchConfig,
   DEFAULT_TIMEOUT_MS,
-} from "../extensions/megapowers/subagent-async.js";
+} from "../extensions/megapowers/subagent/subagent-async.js";
 
 describe("DEFAULT_TIMEOUT_MS", () => {
   it("defaults to 10 minutes", () => {

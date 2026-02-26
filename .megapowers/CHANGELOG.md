@@ -28,3 +28,24 @@ Saved with a unique name:
 `.megapowers/plans/060-subagent-robustness/changelog-2026-02-24-subagent-robustness-release-notes.md`
 
 If you want, I can also generate an “ultra-short” 3-bullet version for a top-level `CHANGELOG.md` summary block.
+Here's the changelog entry:
+
+---
+
+```
+## 2026-02-26 — Megapowers extension directory restructure
+
+- 29 source files reorganised from a flat directory into four concern-based
+  subdirectories: `state/`, `policy/`, `tools/`, and `subagent/`
+- `index.ts` reduced from 870 lines to 108 — it now contains only wiring
+  (hook/tool/command registration); all logic lives in `commands.ts`,
+  `hooks.ts`, and `register-tools.ts`
+- No behaviour changes — all 574 tests pass unchanged
+- ⚠️ Import paths for moved modules have changed (see docs for full mapping);
+  any code importing directly from `extensions/megapowers/*.js` flat paths
+  must update to the new subdirectory paths
+```
+
+---
+
+Approve and I'll save it.

@@ -1,12 +1,12 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
-import type { MegapowersState, Phase, PlanTask, WorkflowType } from "./state-machine.js";
-import type { Issue, Store } from "./store.js";
+import type { MegapowersState, Phase, PlanTask, WorkflowType } from "./state/state-machine.js";
+import type { Issue, Store } from "./state/store.js";
 import type { JJ } from "./jj.js";
-import { createInitialState, getFirstPhase, getValidTransitions, transition } from "./state-machine.js";
+import { createInitialState, getFirstPhase, getValidTransitions, transition } from "./state/state-machine.js";
 import { formatChangeDescription } from "./jj.js";
-import { checkGate } from "./gates.js";
-import { writeState } from "./state-io.js";
-import { deriveTasks } from "./derived.js";
+import { checkGate } from "./policy/gates.js";
+import { writeState } from "./state/state-io.js";
+import { deriveTasks } from "./state/derived.js";
 
 // --- Theme type (subset used by pure renderers) ---
 

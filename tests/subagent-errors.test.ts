@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { detectRepeatedErrors, type MessageLine } from "../extensions/megapowers/subagent-errors.js";
+import { detectRepeatedErrors, type MessageLine } from "../extensions/megapowers/subagent/subagent-errors.js";
 
 describe("detectRepeatedErrors", () => {
   it("detects same error appearing 3+ times", () => {
