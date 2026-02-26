@@ -109,7 +109,7 @@ describe("state-io", () => {
         tddTaskState: { taskIndex: 3, state: "test-written" as const, skipped: false },
         taskJJChanges: { 1: "abc", 2: "def" },
         jjChangeId: "xyz",
-        doneMode: null,
+        doneActions: [],
         megaEnabled: true,
       };
       writeState(tmp, state);

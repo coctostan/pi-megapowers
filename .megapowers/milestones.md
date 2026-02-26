@@ -30,7 +30,7 @@
 
 | ID | Title | Priority | Status |
 |----|-------|----------|--------|
-| 061 | jj mismatch dialog frozen | 1 | open |
+| 061 | jj mismatch dialog frozen | 1 | **done** |
 | 072 | Kill phase transition popup | 1 | open |
 | 050 | Agent context & awareness | 1 | in-progress |
 | 042 | Interactive UX transparency | 2 | open |

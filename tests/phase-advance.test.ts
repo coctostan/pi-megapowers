@@ -6,6 +6,7 @@ import { advancePhase } from "../extensions/megapowers/policy/phase-advance.js";
 import { readState, writeState } from "../extensions/megapowers/state/state-io.js";
 import { createInitialState, type MegapowersState } from "../extensions/megapowers/state/state-machine.js";
 import type { JJ } from "../extensions/megapowers/jj.js";
+import { featureWorkflow } from "../extensions/megapowers/workflows/feature.js";
 
 describe("advancePhase", () => {
   let tmp: string;
@@ -127,6 +128,75 @@ describe("advancePhase", () => {
     expect(state.phaseHistory).toHaveLength(1);
     expect(state.phaseHistory[0].from).toBe("brainstorm");
     expect(state.phaseHistory[0].to).toBe("spec");
+  });
+
+  describe("phase_next default target skips backward transitions (AC7)", () => {
+    it("from verify, default target is code-review (skips backward implement)", () => {
+      const originalTransitions = [...featureWorkflow.transitions];
+      try {
+        const reorderedVerify = originalTransitions
+          .filter((t) => t.from === "verify")
+          .sort((a, b) => Number(Boolean(b.backward)) - Number(Boolean(a.backward)));
+        featureWorkflow.transitions = [
+          ...originalTransitions.filter((t) => t.from !== "verify"),
+          ...reorderedVerify,
+        ];
+
+        setState({ phase: "verify" });
+        writeArtifact("001-test", "verify.md", "# Verify\nAll passing\n");
+        const result = advancePhase(tmp);
+        expect(result.ok).toBe(true);
+        expect(result.newPhase).toBe("code-review");
+      } finally {
+        featureWorkflow.transitions = originalTransitions;
+      }
+    });
+
+    it("from code-review, default target is done (skips backward implement)", () => {
+      setState({ phase: "code-review" });
+      writeArtifact("001-test", "code-review.md", "# Code Review\nApproved\n");
+      const result = advancePhase(tmp);
+      expect(result.ok).toBe(true);
+      expect(result.newPhase).toBe("done");
+    });
+
+    it("from review, default target is implement (skips backward plan)", () => {
+      setState({ phase: "review", reviewApproved: true });
+      writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n");
+      const result = advancePhase(tmp);
+      expect(result.ok).toBe(true);
+      expect(result.newPhase).toBe("implement");
+    });
+
+    it("explicit backward target still works when specified (AC7 — explicit override)", () => {
+      setState({ phase: "verify" });
+      const result = advancePhase(tmp, "implement");
+      expect(result.ok).toBe(true);
+      expect(result.newPhase).toBe("implement");
+    });
+  });
+
+  describe("phase_next preserves existing gate behavior (AC8)", () => {
+    it("brainstorm → spec still works", () => {
+      setState({ phase: "brainstorm" });
+      const result = advancePhase(tmp);
+      expect(result.ok).toBe(true);
+      expect(result.newPhase).toBe("spec");
+    });
+
+    it("spec → plan gate still rejects without spec.md", () => {
+      setState({ phase: "spec" });
+      const result = advancePhase(tmp);
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain("spec.md");
+    });
+
+    it("review → implement gate still rejects without reviewApproved", () => {
+      setState({ phase: "review", reviewApproved: false });
+      const result = advancePhase(tmp);
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain("review");
+    });
   });
 
   describe("jj integration", () => {

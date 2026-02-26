@@ -4,7 +4,6 @@ import { checkJJAvailability } from "./jj.js";
 import { JJ_INSTALL_MESSAGE, JJ_INIT_MESSAGE } from "./jj-messages.js";
 import { buildInjectedPrompt } from "./prompt-inject.js";
 import { evaluateWriteOverride, recordTestFileWritten } from "./tools/tool-overrides.js";
-import { getValidTransitions, OPEN_ENDED_PHASES } from "./state/state-machine.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 
@@ -109,52 +108,35 @@ export async function onToolResult(event: any, ctx: any, _deps: Deps): Promise<v
 }
 
 export async function onAgentEnd(event: any, ctx: any, deps: Deps): Promise<void> {
-  const { store, jj, ui } = deps;
+  const { store, ui } = deps;
 
   const state = readState(ctx.cwd);
   if (!state.activeIssue || !state.phase) return;
 
   const phase = state.phase;
 
-  // Done-phase artifact capture (when LLM generates content from doneMode prompt)
-  if (phase === "done" && state.doneMode) {
+  // Done-phase artifact capture (when LLM generates content from done actions prompt)
+  if (phase === "done" && state.doneActions.length > 0) {
+    const doneAction = state.doneActions[0];
     const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
     if (lastAssistant) {
       const text = getAssistantText(lastAssistant);
       if (text && text.length > 100) {
-        if (state.doneMode === "generate-docs" || state.doneMode === "generate-bugfix-summary") {
+        if (doneAction === "generate-docs" || doneAction === "generate-bugfix-summary") {
           store.writeFeatureDoc(state.activeIssue, text);
           if (ctx.hasUI) ctx.ui.notify(`Feature doc saved to .megapowers/docs/${state.activeIssue}.md`, "info");
         }
-        if (state.doneMode === "write-changelog") {
+        if (doneAction === "write-changelog") {
           store.appendChangelog(text);
           if (ctx.hasUI) ctx.ui.notify("Changelog entry appended to .megapowers/CHANGELOG.md", "info");
         }
-        if (state.doneMode !== "capture-learnings") {
-          writeState(ctx.cwd, { ...state, doneMode: null });
-        }
+        writeState(ctx.cwd, { ...state, doneActions: state.doneActions.filter(a => a !== doneAction) });
       }
     }
   }
 
-  // Interactive-only: offer phase transitions
-  // Open-ended phases (brainstorm, reproduce, diagnose) suppress auto-prompts —
-  // transitions happen only via explicit /phase next or megapowers_signal
-  if (ctx.hasUI && !OPEN_ENDED_PHASES.has(phase)) {
-    const freshState = readState(ctx.cwd);
-    const validNext = getValidTransitions(freshState.workflow, phase);
-    if (validNext.length > 0) {
-      const newState = await ui.handlePhaseTransition(ctx, freshState, store, jj);
-      writeState(ctx.cwd, newState);
-    }
-
-    // Done phase: wrap-up menu
-    const afterTransition = readState(ctx.cwd);
-    if (afterTransition.phase === "done") {
-      const afterDone = await ui.handleDonePhase(ctx, afterTransition, store, jj);
-      writeState(ctx.cwd, afterDone);
-    }
-
+  // Refresh dashboard after agent turn (AC9, AC10 — no blocking popup)
+  if (ctx.hasUI) {
     ui.renderDashboard(ctx, readState(ctx.cwd), store);
   }
 }

@@ -14,7 +14,7 @@ export const PHASE_PROMPT_MAP: Record<Phase, string> = {
   implement: "implement-task.md",
   verify: "verify.md",
   "code-review": "code-review.md",
-  done: "generate-docs.md",
+  done: "done.md",
   reproduce: "reproduce-bug.md",
   diagnose: "diagnose-bug.md",
 };

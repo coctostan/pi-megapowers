@@ -12,6 +12,10 @@ Issue: {{issue_slug}}
 ## Plan
 {{plan_content}}
 
+## Files Changed (from VCS)
+{{files_changed}}
+
+
 ## Learnings Captured
 {{learnings}}
 

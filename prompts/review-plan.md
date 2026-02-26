@@ -82,4 +82,4 @@ If the plan passes, approve it:
 ```
 megapowers_signal({ action: "review_approve" })
 ```
-If the plan needs revision, present specific feedback to the user. When confirmed, the plan phase will need to be revisited.
+If the plan needs revision, provide specific, actionable feedback on what must change. Once the feedback is clear, call `megapowers_signal({ action: "phase_back" })` to return to the plan phase for rework. Do not approve a plan that has unresolved issues.

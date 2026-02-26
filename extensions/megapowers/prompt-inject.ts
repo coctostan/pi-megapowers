@@ -101,27 +101,20 @@ export function buildInjectedPrompt(cwd: string, store?: Store, _jj?: JJ): strin
     if (!vars.files_changed) vars.files_changed = "";
   }
 
-  // Phase prompt template (skip done phase unless doneMode is set)
+  // Phase prompt template (skip done phase unless doneActions is set)
   if (state.phase !== "done") {
     const template = getPhasePromptTemplate(state.phase);
     if (template) {
       const phasePrompt = interpolatePrompt(template, vars);
       if (phasePrompt) parts.push(phasePrompt);
     }
-  } else if (state.doneMode) {
-    const doneModeTemplateMap: Record<string, string> = {
-      "generate-docs": "generate-docs.md",
-      "capture-learnings": "capture-learnings.md",
-      "write-changelog": "write-changelog.md",
-      "generate-bugfix-summary": "generate-bugfix-summary.md",
-    };
-    const filename = doneModeTemplateMap[state.doneMode];
-    if (filename) {
-      const template = loadPromptFile(filename);
-      if (template) {
-        const phasePrompt = interpolatePrompt(template, vars);
-        if (phasePrompt) parts.push(phasePrompt);
-      }
+  } else if (state.doneActions.length > 0) {
+    // AC16: done.md template reads doneActions, interpolates the list
+    vars.done_actions_list = state.doneActions.map((a) => `- ${a}`).join("\n");
+    const template = getPhasePromptTemplate("done");
+    if (template) {
+      const phasePrompt = interpolatePrompt(template, vars);
+      if (phasePrompt) parts.push(phasePrompt);
     }
   }
 

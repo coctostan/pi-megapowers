@@ -69,6 +69,89 @@ describe("buildInjectedPrompt", () => {
   });
 });
 
+describe("done phase — doneActions prompt injection (AC16, AC17)", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "prompt-inject-done-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("injects done template listing selected actions when doneActions is non-empty", () => {
+    setState(tmp, {
+      phase: "done",
+      megaEnabled: true,
+      doneActions: ["generate-docs", "write-changelog", "capture-learnings", "close-issue"],
+    });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).not.toBeNull();
+    expect(result).toContain("generate-docs");
+    expect(result).toContain("write-changelog");
+    expect(result).toContain("capture-learnings");
+    expect(result).toContain("close-issue");
+  });
+
+  it("injects done template with single action", () => {
+    setState(tmp, {
+      phase: "done",
+      megaEnabled: true,
+      doneActions: ["write-changelog"],
+    });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).not.toBeNull();
+    expect(result).toContain("write-changelog");
+  });
+
+  it("no action prompt when doneActions is empty", () => {
+    setState(tmp, {
+      phase: "done",
+      megaEnabled: true,
+      doneActions: [],
+    });
+    const result = buildInjectedPrompt(tmp);
+    // Should still get protocol prompt but not the done actions template
+    expect(result).not.toBeNull();
+    expect(result).not.toContain("Execute the following wrap-up actions");
+  });
+
+  it("lists all selected actions in doneActions list", () => {
+    setState(tmp, {
+      phase: "done",
+      megaEnabled: true,
+      doneActions: ["generate-docs", "capture-learnings"],
+    });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).toContain("generate-docs");
+    expect(result).toContain("capture-learnings");
+  });
+
+  it("instructs capture-learnings to use megapowers_save_artifact with phase learnings (AC17)", () => {
+    setState(tmp, {
+      phase: "done",
+      megaEnabled: true,
+      doneActions: ["capture-learnings"],
+    });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).toContain("learnings");
+    expect(result).toContain('phase: "learnings"');
+  });
+
+  it("instructs close-issue with explicit steps (AC17)", () => {
+    setState(tmp, {
+      phase: "done",
+      megaEnabled: true,
+      doneActions: ["close-issue"],
+    });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).toContain("close-issue");
+    expect(result!.length).toBeGreaterThan(200);
+  });
+});
+
+
 describe("prompt-inject.ts refactor verification", () => {
   it("uses workflow config for artifact loading (no hardcoded artifactMap)", () => {
     const source = readFileSync(

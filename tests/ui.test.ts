@@ -7,9 +7,12 @@ import {
   createUI,
   filterTriageableIssues,
   formatTriageIssueList,
+  getDoneChecklistItems,
+  showDoneChecklist,
 } from "../extensions/megapowers/ui.js";
 import type { MegapowersState } from "../extensions/megapowers/state/state-machine.js";
 import { createInitialState } from "../extensions/megapowers/state/state-machine.js";
+import { readState, writeState } from "../extensions/megapowers/state/state-io.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -125,50 +128,250 @@ describe("renderStatusText", () => {
   });
 });
 
-describe("renderDashboardLines — done phase with doneMode", () => {
-  // Task 1: doneMode must be visible in the dashboard
-  it("shows active doneMode in dashboard when set", () => {
+describe("renderDashboardLines — done phase with doneActions", () => {
+  it("shows action labels when doneActions is non-empty", () => {
     const state: MegapowersState = {
       ...createInitialState(),
       activeIssue: "014-filter-issues",
       workflow: "bugfix",
       phase: "done",
-      doneMode: "write-changelog",
+      doneActions: ["write-changelog"],
     };
     const lines = renderDashboardLines(state, [], plainTheme as any);
-    const joined = lines.join("\n");
-    // User must see what mode is active so they know what to do next
-    expect(joined).toContain("changelog");
+    expect(lines.join("\n")).toContain("write-changelog");
   });
 
-  it("shows instruction to send a message when doneMode is active", () => {
+  it("shows instruction when doneActions non-empty", () => {
     const state: MegapowersState = {
       ...createInitialState(),
       activeIssue: "014-filter-issues",
       workflow: "bugfix",
       phase: "done",
-      doneMode: "generate-bugfix-summary",
+      doneActions: ["generate-bugfix-summary"],
     };
     const lines = renderDashboardLines(state, [], plainTheme as any);
-    const joined = lines.join("\n").toLowerCase();
-    // User must know they need to send a message to trigger generation
-    expect(joined).toContain("send");
+    expect(lines.join("\n").toLowerCase()).toContain("send");
   });
-});
 
-describe("renderStatusText — done phase with doneMode", () => {
-  // Task 2: doneMode must be visible in status bar
-  it("includes doneMode in status text", () => {
+  it("shows nothing extra when doneActions is empty", () => {
     const state: MegapowersState = {
       ...createInitialState(),
       activeIssue: "014-filter-issues",
       phase: "done",
-      doneMode: "write-changelog",
+      doneActions: [],
     };
-    const text = renderStatusText(state);
-    expect(text).toContain("changelog");
+    const linesBefore = renderDashboardLines(state, [], plainTheme as any).length;
+    const stateWithActions: MegapowersState = { ...state, doneActions: ["write-changelog"] };
+    const linesAfter = renderDashboardLines(stateWithActions, [], plainTheme as any).length;
+    expect(linesAfter).toBeGreaterThan(linesBefore);
   });
 });
+
+describe("doneActions API cleanup", () => {
+  it("createUI does not expose legacy popup handlers", () => {
+    const ui = createUI() as any;
+    expect(ui.handlePhaseTransition).toBeUndefined();
+    expect(ui.handleDonePhase).toBeUndefined();
+  });
+});
+
+
+describe("getDoneChecklistItems (AC12)", () => {
+  it("feature workflow: returns generate-docs, write-changelog, capture-learnings, close-issue all defaultChecked", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+    };
+    const items = getDoneChecklistItems(state);
+    expect(items.length).toBeGreaterThanOrEqual(4);
+    expect(items.every((i) => i.defaultChecked === true)).toBe(true);
+    const keys = items.map((i) => i.key);
+    expect(keys).toContain("generate-docs");
+    expect(keys).toContain("write-changelog");
+    expect(keys).toContain("capture-learnings");
+    expect(keys).toContain("close-issue");
+    expect(keys).not.toContain("generate-bugfix-summary");
+  });
+
+  it("bugfix workflow: returns generate-bugfix-summary instead of generate-docs", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "bugfix",
+      phase: "done",
+    };
+    const items = getDoneChecklistItems(state);
+    const keys = items.map((i) => i.key);
+    expect(keys).toContain("generate-bugfix-summary");
+    expect(keys).not.toContain("generate-docs");
+    expect(keys).toContain("write-changelog");
+    expect(keys).toContain("capture-learnings");
+    expect(keys).toContain("close-issue");
+    expect(items.every((i) => i.defaultChecked === true)).toBe(true);
+  });
+
+  it("includes squash option when taskJJChanges non-empty and jjChangeId set", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+      taskJJChanges: { 1: "abc123" },
+      jjChangeId: "phase-change",
+    };
+    const items = getDoneChecklistItems(state);
+    expect(items.map((i) => i.key)).toContain("squash-task-changes");
+  });
+
+  it("excludes squash option when taskJJChanges is empty", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+      taskJJChanges: {},
+    };
+    const items = getDoneChecklistItems(state);
+    expect(items.map((i) => i.key)).not.toContain("squash-task-changes");
+  });
+
+  it("each item has a non-empty key and label", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+    };
+    for (const item of getDoneChecklistItems(state)) {
+      expect(typeof item.key).toBe("string");
+      expect(typeof item.label).toBe("string");
+      expect(item.key.length).toBeGreaterThan(0);
+      expect(item.label.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+
+describe("showDoneChecklist (AC11, AC13, AC14)", () => {
+  let tmp2: string;
+
+  beforeEach(() => {
+    tmp2 = mkdtempSync(join(tmpdir(), "megapowers-done-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp2, { recursive: true, force: true });
+  });
+
+  it("stores all default-checked keys when ctx.ui.custom resolves with them (AC13)", async () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+    };
+    writeState(tmp2, state);
+
+    const ctx = {
+      hasUI: true,
+      ui: {
+        custom: async (_fn: any) =>
+          ["generate-docs", "write-changelog", "capture-learnings", "close-issue"],
+      },
+    };
+
+    await showDoneChecklist(ctx as any, tmp2);
+    const updated = readState(tmp2);
+    expect(updated.doneActions).toContain("generate-docs");
+    expect(updated.doneActions).toContain("write-changelog");
+    expect(updated.doneActions).toContain("capture-learnings");
+    expect(updated.doneActions).toContain("close-issue");
+  });
+
+  it("stores empty doneActions when ctx.ui.custom resolves with null (Escape) (AC14)", async () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+    };
+    writeState(tmp2, state);
+
+    const ctx = {
+      hasUI: true,
+      ui: {
+        custom: async (_fn: any) => null,
+      },
+    };
+
+    await showDoneChecklist(ctx as any, tmp2);
+    const updated = readState(tmp2);
+    expect(updated.doneActions).toEqual([]);
+  });
+
+  it("stores only the returned subset when user deselects some items (AC13)", async () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+    };
+    writeState(tmp2, state);
+
+    const ctx = {
+      hasUI: true,
+      ui: {
+        custom: async (_fn: any) => ["generate-docs", "capture-learnings", "close-issue"],
+      },
+    };
+
+    await showDoneChecklist(ctx as any, tmp2);
+    const updated = readState(tmp2);
+    expect(updated.doneActions).not.toContain("write-changelog");
+    expect(updated.doneActions).toContain("generate-docs");
+    expect(updated.doneActions).toContain("capture-learnings");
+  });
+
+  it("does nothing when not in done phase", async () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "implement",
+    };
+    writeState(tmp2, state);
+
+    const ctx = {
+      hasUI: true,
+      ui: { custom: async (_fn: any) => ["generate-docs"] },
+    };
+
+    await showDoneChecklist(ctx as any, tmp2);
+    const updated = readState(tmp2);
+    expect(updated.doneActions).toEqual([]);
+  });
+
+  it("does nothing when no active issue", async () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      phase: "done",
+    };
+    writeState(tmp2, state);
+
+    let called = false;
+    const ctx = {
+      hasUI: true,
+      ui: { custom: async (_fn: any) => { called = true; return []; } },
+    };
+
+    await showDoneChecklist(ctx as any, tmp2);
+    expect(called).toBe(false);
+  });
+});
+
+
 
 describe("formatPhaseProgress", () => {
   it("shows feature phases with current highlighted", () => {
@@ -210,163 +413,6 @@ describe("formatIssueListItem", () => {
   });
 });
 
-describe("handlePhaseTransition — gate enforcement", () => {
-  let tmp: string;
-
-  beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), "megapowers-ui-gate-test-"));
-  });
-
-  afterEach(() => {
-    rmSync(tmp, { recursive: true, force: true });
-  });
-
-  it("blocks gated transitions with error notification", async () => {
-    const store = createStore(tmp);
-    const ui = createUI();
-    const jj = createMockJJ();
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "spec",
-    };
-
-    // Select the gated option (which will include ⛔)
-    const ctx = createMockCtx(undefined, tmp);
-    ctx.ui.select = async (_prompt: string, items: string[]) => {
-      // Pick the gated option containing ⛔
-      return items.find(i => i.includes("⛔")) ?? items[0];
-    };
-    const result = await ui.handlePhaseTransition(ctx as any, state, store, jj as any);
-
-    // Should NOT transition — gate blocks it
-    expect(result.phase).toBe("spec");
-    expect(ctx._notifications.some(n => n.type === "error")).toBe(true);
-  });
-
-  it("allows transition when gate passes", async () => {
-    const store = createStore(tmp);
-    const ui = createUI();
-    const jj = createMockJJ();
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "brainstorm",
-    };
-
-    // brainstorm → spec always passes gate
-    const ctx = createMockCtx("spec", tmp);
-    const result = await ui.handlePhaseTransition(ctx as any, state, store, jj as any);
-
-    expect(result.phase).toBe("spec");
-  });
-
-  it("labels backward transitions with ← prefix", async () => {
-    const store = createStore(tmp);
-    const ui = createUI();
-    const jj = createMockJJ();
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "verify",
-    };
-
-    // Capture what select is called with
-    let selectItems: string[] = [];
-    const ctx = createMockCtx(undefined, tmp);
-    ctx.ui.select = async (_prompt: string, items: string[]) => {
-      selectItems = items;
-      return null; // cancel
-    };
-
-    await ui.handlePhaseTransition(ctx as any, state, store, jj as any);
-
-    // verify → implement should be labeled as backward
-    expect(selectItems.some(item => item.includes("←") && item.includes("implement"))).toBe(true);
-  });
-
-  it("marks gated options with ⛔ in select labels", async () => {
-    const store = createStore(tmp);
-    const ui = createUI();
-    const jj = createMockJJ();
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "verify",
-    };
-
-    let selectItems: string[] = [];
-    const ctx = createMockCtx(undefined, tmp);
-    ctx.ui.select = async (_prompt: string, items: string[]) => {
-      selectItems = items;
-      return null;
-    };
-
-    await ui.handlePhaseTransition(ctx as any, state, store, jj as any);
-
-    // verify → code-review should be gated (no verify.md)
-    expect(selectItems.some(item => item.includes("⛔") && item.includes("code-review"))).toBe(true);
-  });
-});
-
-describe("handlePhaseTransition — post-transition guidance", () => {
-  // Task 1: phase guidance in dashboard
-  // Task 2: guidance in transition notification
-  let tmp: string;
-
-  beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), "megapowers-ui-guidance-"));
-  });
-
-  afterEach(() => {
-    rmSync(tmp, { recursive: true, force: true });
-  });
-
-  it("provides phase-specific guidance after transition", async () => {
-    const store = createStore(tmp);
-    const ui = createUI();
-    const jj = createMockJJ();
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "brainstorm",
-    };
-
-    const ctx = createMockCtx("spec", tmp);
-    await ui.handlePhaseTransition(ctx as any, state, store, jj as any);
-
-    // After transitioning to "spec", the user should receive guidance about what to do
-    // Either via notification or dashboard — must mention sending a message or the phase's purpose
-    const allText = ctx._notifications.map(n => n.msg.toLowerCase()).join(" ");
-    expect(allText).toContain("send");
-  });
-
-  it("shows phase instruction in dashboard after transition", async () => {
-    const store = createStore(tmp);
-    const ui = createUI();
-    const jj = createMockJJ();
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "brainstorm",
-    };
-
-    const ctx = createMockCtx("spec", tmp);
-    const newState = await ui.handlePhaseTransition(ctx as any, state, store, jj as any);
-
-    // The dashboard should render with guidance for the new phase
-    const lines = renderDashboardLines(newState, [], plainTheme as any);
-    const joined = lines.join("\n").toLowerCase();
-    // Should contain some instruction about what to do in the spec phase
-    expect(joined).toContain("send");
-  });
-});
 
 describe("renderDashboardLines — implement phase with tasks", () => {
   it("shows per-task progress count", () => {
@@ -425,256 +471,6 @@ describe("renderDashboardLines — verify phase with criteria", () => {
   });
 });
 
-describe("handleDonePhase", () => {
-  let tmp: string;
-
-  beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), "megapowers-ui-done-test-"));
-  });
-
-  afterEach(() => {
-    rmSync(tmp, { recursive: true, force: true });
-  });
-
-  it("closes issue when 'Close issue' is selected", async () => {
-    const store = createStore(tmp);
-    const issue = store.createIssue("Test feature", "feature", "desc");
-    const ui = createUI();
-    const jj = createMockJJ();
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: issue.slug,
-      workflow: "feature",
-      phase: "done",
-    };
-
-    const ctx = createMockCtx(undefined, tmp);
-    ctx.ui.select = async () => "Close issue";
-
-    const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
-
-    expect(result.activeIssue).toBeNull();
-    expect(result.phase).toBeNull();
-    expect(result.workflow).toBeNull();
-    // Verify issue status updated in store
-    const issues = store.listIssues();
-    const closed = issues.find(i => i.slug === issue.slug);
-    expect(closed?.status).toBe("done");
-  });
-
-  it("closes issue and resets state when 'Done' is selected", async () => {
-    const store = createStore(tmp);
-    const ui = createUI();
-    const jj = createMockJJ();
-    const issue = store.createIssue("test", "feature", "desc");
-    store.updateIssueStatus(issue.slug, "in-progress");
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: issue.slug,
-      workflow: "feature",
-      phase: "done",
-    };
-
-    const ctx = createMockCtx(undefined, tmp);
-    ctx.ui.select = async () => "Done — finish without further actions";
-
-    const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
-
-    expect(result.activeIssue).toBeNull();
-    expect(result.phase).toBeNull();
-    // Issue should be marked done in the store
-    const updated = store.listIssues().find(i => i.slug === issue.slug);
-    expect(updated?.status).toBe("done");
-  });
-
-  it("returns state unchanged when selection is cancelled", async () => {
-    const store = createStore(tmp);
-    const ui = createUI();
-    const jj = createMockJJ();
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "done",
-    };
-
-    const ctx = createMockCtx(undefined, tmp); // returns null by default (cancel)
-    const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
-
-    expect(result.activeIssue).toBe("001-test");
-    expect(result.phase).toBe("done");
-  });
-
-  it("offers squash option when taskJJChanges exist", async () => {
-    const store = createStore(tmp);
-    const ui = createUI();
-    const jj = createMockJJ();
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "done",
-      taskJJChanges: { 1: "abc123", 2: "def456" },
-      jjChangeId: "phase-change-id",
-    };
-
-    let selectItems: string[] = [];
-    const ctx = createMockCtx(undefined, tmp);
-    ctx.ui.select = async (_prompt: string, items: string[]) => {
-      selectItems = items;
-      return "Done — finish without further actions";
-    };
-
-    await ui.handleDonePhase(ctx as any, state, store, jj as any);
-
-    expect(selectItems.some(item => item.toLowerCase().includes("squash"))).toBe(true);
-  });
-
-  it("does not offer squash option when no taskJJChanges", async () => {
-    const store = createStore(tmp);
-    const ui = createUI();
-    const jj = createMockJJ();
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "done",
-      taskJJChanges: {},
-    };
-
-    let selectItems: string[] = [];
-    const ctx = createMockCtx(undefined, tmp);
-    ctx.ui.select = async (_prompt: string, items: string[]) => {
-      selectItems = items;
-      return "Done — finish without further actions";
-    };
-
-    await ui.handleDonePhase(ctx as any, state, store, jj as any);
-
-    expect(selectItems.every(item => !item.toLowerCase().includes("squash"))).toBe(true);
-  });
-
-  it("squashes task changes and clears taskJJChanges", async () => {
-    const store = createStore(tmp);
-    const ui = createUI();
-    let squashedInto: string | null = null;
-    const jj = {
-      ...createMockJJ(),
-      squashInto: async (id: string) => { squashedInto = id; },
-    };
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "done",
-      taskJJChanges: { 1: "abc123" },
-      jjChangeId: "phase-change-id",
-    };
-
-    let callCount = 0;
-    const ctx = createMockCtx(undefined, tmp);
-    ctx.ui.select = async (_prompt: string, _items: string[]) => {
-      callCount++;
-      if (callCount === 1) return "Squash task changes into phase change";
-      return "Done — finish without further actions";
-    };
-
-    const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
-
-    expect(squashedInto).toBe("phase-change-id");
-    expect(result.taskJJChanges).toEqual({});
-  });
-});
-
-describe("handleDonePhase — doneMode actions", () => {
-  let tmp: string;
-
-  beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), "megapowers-ui-donemode-test-"));
-  });
-
-  afterEach(() => {
-    rmSync(tmp, { recursive: true, force: true });
-  });
-
-  it("sets doneMode to 'generate-docs' when feature doc is selected", async () => {
-    const store = createStore(tmp);
-    const ui = createUI();
-    const jj = createMockJJ();
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "done",
-    };
-
-    const ctx = createMockCtx(undefined, tmp);
-    ctx.ui.select = async (_prompt: string, _items: string[]) => "Generate feature doc";
-
-    const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
-    expect(result.doneMode).toBe("generate-docs");
-  });
-
-  it("sets doneMode to 'write-changelog' when changelog is selected", async () => {
-    const store = createStore(tmp);
-    const ui = createUI();
-    const jj = createMockJJ();
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "done",
-    };
-
-    const ctx = createMockCtx(undefined, tmp);
-    ctx.ui.select = async (_prompt: string, _items: string[]) => "Write changelog entry";
-
-    const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
-    expect(result.doneMode).toBe("write-changelog");
-  });
-
-  it("sets doneMode to 'capture-learnings' when capture learnings is selected", async () => {
-    const store = createStore(tmp);
-    const ui = createUI();
-    const jj = createMockJJ();
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "done",
-    };
-
-    const ctx = createMockCtx(undefined, tmp);
-    ctx.ui.select = async (_prompt: string, _items: string[]) => "Capture learnings";
-
-    const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
-    expect(result.doneMode).toBe("capture-learnings");
-  });
-
-  it("menu includes all three doneMode action labels", async () => {
-    const store = createStore(tmp);
-    const ui = createUI();
-    const jj = createMockJJ();
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "done",
-    };
-
-    let menuItems: string[] = [];
-    const ctx = createMockCtx(undefined, tmp);
-    ctx.ui.select = async (_prompt: string, items: string[]) => {
-      menuItems = items;
-      return "Done — finish without further actions";
-    };
-
-    await ui.handleDonePhase(ctx as any, state, store, jj as any);
-    expect(menuItems).toContain("Generate feature doc");
-    expect(menuItems).toContain("Write changelog entry");
-    expect(menuItems).toContain("Capture learnings");
-  });
-});
 
 describe("renderDashboardLines — TDD state indicator", () => {
   const implTasks = [{ index: 1, description: "Build auth", completed: false, noTest: false }];
@@ -1025,95 +821,6 @@ describe("handleIssueCommand — list filtering", () => {
   });
 });
 
-describe("handleDonePhase — bugfix workflow", () => {
-  let tmp: string;
-
-  beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), "megapowers-ui-bugfix-done-"));
-  });
-
-  afterEach(() => {
-    rmSync(tmp, { recursive: true, force: true });
-  });
-
-  it("shows bugfix menu items when workflow is bugfix", async () => {
-    const store = createStore(tmp);
-    const ui = createUI();
-    const jj = createMockJJ();
-    let menuItems: string[] = [];
-    const ctx = createMockCtx(undefined, tmp);
-    ctx.ui.select = async (_prompt: string, items: string[]) => {
-      menuItems = items;
-      return "Done — finish without further actions";
-    };
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "bugfix",
-      phase: "done",
-    };
-    await ui.handleDonePhase(ctx as any, state, store, jj as any);
-    expect(menuItems).toContain("Generate bugfix summary");
-    expect(menuItems).not.toContain("Generate feature doc");
-    expect(menuItems).toContain("Write changelog entry");
-    expect(menuItems).toContain("Capture learnings");
-    expect(menuItems).toContain("Close issue");
-  });
-
-  it("sets doneMode to 'generate-bugfix-summary' when selected", async () => {
-    const store = createStore(tmp);
-    const ui = createUI();
-    const jj = createMockJJ();
-    const ctx = createMockCtx(undefined, tmp);
-    ctx.ui.select = async () => "Generate bugfix summary";
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "bugfix",
-      phase: "done",
-    };
-    const result = await ui.handleDonePhase(ctx as any, state, store, jj as any);
-    expect(result.doneMode).toBe("generate-bugfix-summary");
-  });
-
-  it("notifies user when bugfix summary mode is active", async () => {
-    const store = createStore(tmp);
-    const ui = createUI();
-    const jj = createMockJJ();
-    const ctx = createMockCtx(undefined, tmp);
-    ctx.ui.select = async () => "Generate bugfix summary";
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "bugfix",
-      phase: "done",
-    };
-    await ui.handleDonePhase(ctx as any, state, store, jj as any);
-    const msgs = (ctx._notifications as Array<{msg: string, type: string}>).map(n => n.msg);
-    expect(msgs.some(m => m.toLowerCase().includes("bugfix summary"))).toBe(true);
-  });
-
-  it("still shows feature menu when workflow is feature", async () => {
-    const store = createStore(tmp);
-    const ui = createUI();
-    const jj = createMockJJ();
-    let menuItems: string[] = [];
-    const ctx = createMockCtx(undefined, tmp);
-    ctx.ui.select = async (_prompt: string, items: string[]) => {
-      menuItems = items;
-      return "Done — finish without further actions";
-    };
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "done",
-    };
-    await ui.handleDonePhase(ctx as any, state, store, jj as any);
-    expect(menuItems).toContain("Generate feature doc");
-    expect(menuItems).not.toContain("Generate bugfix summary");
-  });
-});
 
 describe("formatIssueListItem — batch annotation", () => {
   it("appends batch annotation when batchSlug is provided", () => {
@@ -1146,93 +853,6 @@ describe("formatIssueListItem — batch annotation", () => {
   });
 });
 
-describe("handleDonePhase — batch auto-close", () => {
-  let tmp: string;
-  let testStore: ReturnType<typeof createStore>;
-
-  beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), "megapowers-ui-batch-"));
-    testStore = createStore(tmp);
-  });
-
-  afterEach(() => {
-    rmSync(tmp, { recursive: true, force: true });
-  });
-
-  it("closes source issues when batch issue is closed via 'Close issue'", async () => {
-    // Create source issues
-    testStore.createIssue("Bug A", "bugfix", "desc");  // id 1
-    testStore.createIssue("Bug B", "bugfix", "desc");  // id 2
-
-    // Create batch referencing both
-    const batch = testStore.createIssue("Batch fix", "bugfix", "combined", [1, 2]);
-    testStore.updateIssueStatus(batch.slug, "in-progress");
-
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: batch.slug,
-      workflow: "bugfix",
-      phase: "done",
-    };
-
-    const ctx = createMockCtx("Close issue", tmp);
-    const jj = createMockJJ();
-    const uiInstance = createUI();
-
-    const newState = await uiInstance.handleDonePhase(ctx as any, state, testStore, jj as any);
-
-    // Batch issue itself should be done (state reset)
-    expect(newState.activeIssue).toBeNull();
-
-    // Source issues should be closed
-    const bugA = testStore.getIssue("001-bug-a");
-    const bugB = testStore.getIssue("002-bug-b");
-    expect(bugA!.status).toBe("done");
-    expect(bugB!.status).toBe("done");
-  });
-
-  it("closes source issues when batch issue is closed via 'Done' action", async () => {
-    testStore.createIssue("Bug A", "bugfix", "desc");  // id 1
-    const batch = testStore.createIssue("Batch fix", "bugfix", "combined", [1]);
-    testStore.updateIssueStatus(batch.slug, "in-progress");
-
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: batch.slug,
-      workflow: "bugfix",
-      phase: "done",
-    };
-
-    const ctx = createMockCtx("Done — finish without further actions", tmp);
-    const jj = createMockJJ();
-    const uiInstance = createUI();
-
-    await uiInstance.handleDonePhase(ctx as any, state, testStore, jj as any);
-
-    const bugA = testStore.getIssue("001-bug-a");
-    expect(bugA!.status).toBe("done");
-  });
-
-  it("does not close source issues for non-batch issues", async () => {
-    testStore.createIssue("Normal bug", "bugfix", "desc");  // id 1
-    testStore.updateIssueStatus("001-normal-bug", "in-progress");
-
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-normal-bug",
-      workflow: "bugfix",
-      phase: "done",
-    };
-
-    const ctx = createMockCtx("Close issue", tmp);
-    const jj = createMockJJ();
-    const uiInstance = createUI();
-
-    await uiInstance.handleDonePhase(ctx as any, state, testStore, jj as any);
-
-    // Issue itself is closed (state reset confirms) — no crash, no side effects
-  });
-});
 
 describe("handleTriageCommand", () => {
   let tmp: string;

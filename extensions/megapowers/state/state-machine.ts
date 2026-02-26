@@ -49,7 +49,7 @@ export interface MegapowersState {
   tddTaskState: TddTaskState | null;
   taskJJChanges: Record<number, string>;
   jjChangeId: string | null;
-  doneMode: "generate-docs" | "capture-learnings" | "write-changelog" | "generate-bugfix-summary" | null;
+  doneActions: string[];
   megaEnabled: boolean;
 }
 
@@ -80,7 +80,7 @@ export function createInitialState(): MegapowersState {
     tddTaskState: null,
     taskJJChanges: {},
     jjChangeId: null,
-    doneMode: null,
+    doneActions: [],
     megaEnabled: true,
   };
 }
@@ -134,8 +134,8 @@ export function transition(state: MegapowersState, to: Phase, tasks?: PlanTask[]
     next.taskJJChanges = {};
   }
 
-  // Reset doneMode on every phase transition
-  next.doneMode = null;
+  // Reset doneActions on every phase transition
+  next.doneActions = [];
 
   return next;
 }
