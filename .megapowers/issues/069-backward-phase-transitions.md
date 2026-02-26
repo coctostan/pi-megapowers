@@ -3,6 +3,8 @@ id: 69
 type: feature
 status: open
 created: 2026-02-24T00:21:00.000Z
+milestone: M5
+priority: 1
 ---
 
 # Enable backward phase transitions via LLM tools and slash commands

@@ -4,6 +4,8 @@ type: feature
 status: in-progress
 created: 2026-02-24T19:15:00.000Z
 sources: [40, 44, 47, 48]
+milestone: M1
+priority: 1
 ---
 
 # Agent context & awareness — prompt quality, TDD edge cases, and baseline context

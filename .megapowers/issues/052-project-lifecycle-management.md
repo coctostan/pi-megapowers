@@ -4,6 +4,8 @@ type: feature
 status: open
 created: 2026-02-24T19:15:00.000Z
 sources: [11, 18, 49]
+milestone: M6
+priority: 3
 ---
 
 # Project lifecycle management — onboarding, roadmap, and branching

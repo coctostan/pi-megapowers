@@ -4,6 +4,8 @@ type: feature
 status: open
 created: 2026-02-24T00:48:17.085Z
 sources: [13, 27, 35]
+milestone: M0
+priority: 2
 ---
 
 # Workflow architecture — extract slash commands and expose as LLM tools

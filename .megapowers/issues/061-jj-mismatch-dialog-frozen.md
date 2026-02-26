@@ -3,6 +3,8 @@ id: 61
 type: bugfix
 status: open
 created: 2026-02-24T20:00:00.000Z
+milestone: M1
+priority: 1
 ---
 
 # jj change mismatch dialog is frozen — select widget doesn't accept input during session_start

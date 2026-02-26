@@ -3,6 +3,8 @@ id: 65
 type: feature
 status: open
 created: 2026-02-24T00:21:00.000Z
+milestone: M4
+priority: 1
 ---
 
 # Done phase refactor — reliable artifact capture and wrap-up flow

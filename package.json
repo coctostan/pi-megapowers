@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "keywords": ["pi-package"],
   "pi": {
-    "extensions": ["./extensions"]
+    "extensions": ["./extensions"],
+    "prompts": [".pi/prompts"]
   },
   "peerDependencies": {
     "@mariozechner/pi-ai": "*",

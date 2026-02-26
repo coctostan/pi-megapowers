@@ -4,6 +4,8 @@ type: bugfix
 status: open
 created: 2026-02-24T00:48:02.892Z
 sources: [38, 39]
+milestone: M1
+priority: 3
 ---
 
 # save_artifact tool reliability — overwrite protection and user feedback

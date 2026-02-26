@@ -4,6 +4,8 @@ type: feature
 status: open
 created: 2026-02-24T19:50:00.000Z
 sources: [33, 46, 53]
+milestone: M1
+priority: 3
 ---
 
 # Issue management UX — create tool, LLM-driven creation, list improvements

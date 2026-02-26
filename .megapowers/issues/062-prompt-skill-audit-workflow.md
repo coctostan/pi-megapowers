@@ -3,6 +3,8 @@ id: 62
 type: feature
 status: open
 created: 2026-02-24T20:10:00.000Z
+milestone: M6
+priority: 2
 ---
 
 # Prompt/skill markdown audit, change, and creation workflow

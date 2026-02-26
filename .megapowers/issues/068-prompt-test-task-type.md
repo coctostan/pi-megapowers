@@ -3,6 +3,8 @@ id: 68
 type: feature
 status: open
 created: 2026-02-24T00:21:00.000Z
+milestone: M5
+priority: 2
 ---
 
 # Add `[prompt-test]` task type for TDD of prompts and skills
