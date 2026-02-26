@@ -3,6 +3,8 @@ id: 63
 type: bugfix
 status: open
 created: 2026-02-24T23:30:00.000Z
+milestone: M4
+priority: 2
 ---
 
 # Done-phase artifacts all overwrite the same `done.md` file
