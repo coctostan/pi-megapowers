@@ -143,10 +143,21 @@ describe("bugfix workflow config", () => {
   });
 
   it("has review → implement transition with requireReviewApproved gate", () => {
-    const transitions = bugfixWorkflow.transitions.filter(t => t.from === "review");
-    expect(transitions).toHaveLength(1);
-    expect(transitions[0].to).toBe("implement");
-    expect(transitions[0].gates).toEqual([{ type: "requireReviewApproved" }]);
+    const t = bugfixWorkflow.transitions.find(t => t.from === "review" && t.to === "implement");
+    expect(t).toBeDefined();
+    expect(t!.gates).toEqual([{ type: "requireReviewApproved" }]);
+  });
+
+  it("has review → plan as backward transition", () => {
+    const t = bugfixWorkflow.transitions.find(t => t.from === "review" && t.to === "plan");
+    expect(t).toBeDefined();
+    expect(t!.backward).toBe(true);
+  });
+
+  it("has verify → implement as backward transition", () => {
+    const t = bugfixWorkflow.transitions.find(t => t.from === "verify" && t.to === "implement");
+    expect(t).toBeDefined();
+    expect(t!.backward).toBe(true);
   });
 
   it("has verify → done transition with alwaysPass", () => {

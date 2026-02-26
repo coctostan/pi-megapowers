@@ -45,6 +45,28 @@ describe("handleSaveArtifact", () => {
       expect(readFileSync(path, "utf-8")).toBe("# My Spec\n\nContent here.");
     });
 
+    it("creates spec.v1.md backup when saving spec twice", () => {
+      writeState(tmp, { ...createInitialState(), activeIssue: "001-test", megaEnabled: true });
+      handleSaveArtifact(tmp, "spec", "first version");
+      handleSaveArtifact(tmp, "spec", "second version");
+
+      const dir = join(tmp, ".megapowers", "plans", "001-test");
+      expect(readFileSync(join(dir, "spec.md"), "utf-8")).toBe("second version");
+      expect(readFileSync(join(dir, "spec.v1.md"), "utf-8")).toBe("first version");
+    });
+
+    it("creates sequential versions on repeated saves", () => {
+      writeState(tmp, { ...createInitialState(), activeIssue: "001-test", megaEnabled: true });
+      handleSaveArtifact(tmp, "plan", "v1 content");
+      handleSaveArtifact(tmp, "plan", "v2 content");
+      handleSaveArtifact(tmp, "plan", "v3 content");
+
+      const dir = join(tmp, ".megapowers", "plans", "001-test");
+      expect(readFileSync(join(dir, "plan.md"), "utf-8")).toBe("v3 content");
+      expect(readFileSync(join(dir, "plan.v1.md"), "utf-8")).toBe("v1 content");
+      expect(readFileSync(join(dir, "plan.v2.md"), "utf-8")).toBe("v2 content");
+    });
+
     it("does not modify state.json", () => {
       const initialState = { ...createInitialState(), activeIssue: "001-test", phase: "spec" as const, megaEnabled: true };
       writeState(tmp, initialState);

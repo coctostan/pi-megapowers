@@ -77,8 +77,12 @@ export async function handleTriageCommand(_args: string, ctx: any, deps: Deps): 
 }
 
 export async function handlePhaseCommand(args: string, ctx: any, deps: Deps): Promise<void> {
-  if (args.trim() === "next") {
-    const result = handleSignal(ctx.cwd, "phase_next", deps.jj);
+  const sub = args.trim().toLowerCase();
+
+  if (sub === "next" || (sub !== "" && sub !== "status")) {
+    // "next" uses default forward transition; any other non-empty string is a target phase
+    const target = sub === "next" ? undefined : sub;
+    const result = handleSignal(ctx.cwd, "phase_next", deps.jj, target);
     if (result.error) {
       if (ctx.hasUI) ctx.ui.notify(result.error, "error");
     } else {

@@ -224,6 +224,16 @@ describe("handleSignal", () => {
       expect(result.error).toBeDefined();
       expect(result.error).toContain("spec.md");
     });
+
+    it("phase_next uses explicit target for backward transition", () => {
+      writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: Build\n");
+      writeArtifact(tmp, "001-test", "code-review.md", "# Code Review\nApproved.");
+      setState(tmp, { phase: "code-review", workflow: "feature", completedTasks: [1] });
+
+      const result = handleSignal(tmp, "phase_next", undefined, "implement");
+      expect(result.error).toBeUndefined();
+      expect(readState(tmp).phase).toBe("implement");
+    });
   });
 
   // ======================================================================
@@ -259,8 +269,8 @@ describe("handleSignal", () => {
         taskJJChanges: { 1: "change-for-task-1" },
       });
 
-      let diffedChangeId: string | null = null;
-      let createdDesc: string | null = null;
+      let diffedChangeId = "";
+      let createdDesc = "";
       const jj: JJ = {
         ...mockJJ(),
         diff: async (changeId: string) => { diffedChangeId = changeId; return "M src/foo.ts"; },
@@ -403,10 +413,10 @@ describe("handleSignal", () => {
       expect(result.error).toContain("already in impl-allowed");
     });
 
-    it("returns error when state is red-pending", () => {
+    it("returns error when state is no-test", () => {
       setState(tmp, {
         phase: "implement",
-        tddTaskState: { taskIndex: 1, state: "red-pending", skipped: false },
+        tddTaskState: { taskIndex: 1, state: "no-test", skipped: false },
       });
 
       const result = handleSignal(tmp, "tests_failed");
@@ -470,6 +480,12 @@ describe("handleSignal", () => {
       const toolsSource = readFileSync(join(process.cwd(), "extensions/megapowers/register-tools.ts"), "utf8");
       expect(toolsSource).toContain('Type.Literal("tests_failed")');
       expect(toolsSource).toContain('Type.Literal("tests_passed")');
+    });
+
+    it("includes optional target parameter and passes it to handleSignal", () => {
+      const toolsSource = readFileSync(join(process.cwd(), "extensions/megapowers/register-tools.ts"), "utf8");
+      expect(toolsSource).toContain("target: Type.Optional(Type.String");
+      expect(toolsSource).toContain("handleSignal(ctx.cwd, params.action, jj, params.target)");
     });
   });
 

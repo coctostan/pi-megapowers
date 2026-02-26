@@ -29,10 +29,11 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
         Type.Literal("tests_failed"),
         Type.Literal("tests_passed"),
       ]),
+      target: Type.Optional(Type.String({ description: "Target phase for phase_next (enables backward transitions)" })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const { store, jj, ui } = ensureDeps(runtimeDeps, pi, ctx.cwd);
-      const result = handleSignal(ctx.cwd, params.action, jj);
+      const result = handleSignal(ctx.cwd, params.action, jj, params.target);
       if (result.error) {
         return { content: [{ type: "text", text: `Error: ${result.error}` }], details: undefined };
       }
