@@ -15,6 +15,9 @@ Issue: {{issue_slug}}
 ## Learnings Captured
 {{learnings}}
 
+## Files Changed
+{{files_changed}}
+
 ## Instructions
 
 Review the artifacts above and inspect the actual files changed using the project's VCS (`jj diff`, `git diff`, etc.) to get the real list of modified files.

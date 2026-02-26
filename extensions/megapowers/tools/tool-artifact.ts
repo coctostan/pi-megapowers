@@ -1,5 +1,5 @@
 // extensions/megapowers/tools/tool-artifact.ts
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, renameSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { readState } from "../state/state-io.js";
 
@@ -28,7 +28,26 @@ export function handleSaveArtifact(cwd: string, phase: string, content: string):
 
   const dir = join(cwd, ".megapowers", "plans", state.activeIssue);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, `${phase}.md`), content);
+
+  const filePath = join(dir, `${phase}.md`);
+
+  // Version existing artifact before overwriting
+  if (existsSync(filePath)) {
+    const existing = readdirSync(dir);
+    const versionPattern = new RegExp(`^${phase}\\.v(\\d+)\\.md$`);
+    let maxVersion = 0;
+    for (const f of existing) {
+      const match = f.match(versionPattern);
+      if (match) {
+        const v = parseInt(match[1], 10);
+        if (v > maxVersion) maxVersion = v;
+      }
+    }
+    const nextVersion = maxVersion + 1;
+    renameSync(filePath, join(dir, `${phase}.v${nextVersion}.md`));
+  }
+
+  writeFileSync(filePath, content);
 
   return { message: `Artifact saved: .megapowers/plans/${state.activeIssue}/${phase}.md` };
 }

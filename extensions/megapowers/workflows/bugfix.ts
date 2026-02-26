@@ -18,8 +18,10 @@ export const bugfixWorkflow: WorkflowConfig = {
     { from: "plan", to: "review", gates: [{ type: "requireArtifact", file: "plan.md" }] },
     { from: "plan", to: "implement", gates: [{ type: "requireArtifact", file: "plan.md" }] },
     { from: "review", to: "implement", gates: [{ type: "requireReviewApproved" }] },
+    { from: "review", to: "plan", gates: [], backward: true },
     { from: "implement", to: "verify", gates: [{ type: "allTasksComplete" }] },
     { from: "verify", to: "done", gates: [{ type: "alwaysPass" }] },
+    { from: "verify", to: "implement", gates: [], backward: true },
   ],
   phaseAliases: {
     reproduce: "brainstorm",

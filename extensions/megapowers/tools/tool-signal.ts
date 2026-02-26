@@ -15,6 +15,7 @@ export function handleSignal(
   cwd: string,
   action: "task_done" | "review_approve" | "phase_next" | string,
   jj?: JJ,
+  target?: string,
 ): SignalResult {
   const state = readState(cwd);
 
@@ -28,7 +29,7 @@ export function handleSignal(
     case "review_approve":
       return handleReviewApprove(cwd);
     case "phase_next":
-      return handlePhaseNext(cwd, jj);
+      return handlePhaseNext(cwd, jj, target);
     case "tests_failed":
       return handleTestsFailed(cwd);
     case "tests_passed":
@@ -240,8 +241,8 @@ function handleReviewApprove(cwd: string): SignalResult {
 // phase_next
 // ---------------------------------------------------------------------------
 
-function handlePhaseNext(cwd: string, jj?: JJ): SignalResult {
-  const result = advancePhase(cwd, undefined, jj);
+function handlePhaseNext(cwd: string, jj?: JJ, target?: string): SignalResult {
+  const result = advancePhase(cwd, target as Phase | undefined, jj);
   if (!result.ok) {
     return { error: result.error };
   }
