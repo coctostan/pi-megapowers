@@ -10,9 +10,9 @@ import {
   allTasksComplete,
   buildSourceIssuesContext,
 } from "../extensions/megapowers/prompts.js";
-import type { Phase } from "../extensions/megapowers/state-machine.js";
-import type { Issue } from "../extensions/megapowers/store.js";
-import type { PlanTask, AcceptanceCriterion } from "../extensions/megapowers/state-machine.js";
+import type { Phase } from "../extensions/megapowers/state/state-machine.js";
+import type { Issue } from "../extensions/megapowers/state/store.js";
+import type { PlanTask, AcceptanceCriterion } from "../extensions/megapowers/state/state-machine.js";
 
 describe("PHASE_PROMPT_MAP", () => {
   it("maps every feature phase to a prompt file", () => {

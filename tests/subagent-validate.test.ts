@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import { validateTaskDependencies, type ValidationResult } from "../extensions/megapowers/subagent-validate.js";
-import type { PlanTask } from "../extensions/megapowers/state-machine.js";
+import { validateTaskDependencies, type ValidationResult } from "../extensions/megapowers/subagent/subagent-validate.js";
+import type { PlanTask } from "../extensions/megapowers/state/state-machine.js";
 
 describe("validateTaskDependencies", () => {
   const tasks: PlanTask[] = [

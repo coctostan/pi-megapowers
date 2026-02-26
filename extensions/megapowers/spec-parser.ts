@@ -1,4 +1,4 @@
-import type { AcceptanceCriterion } from "./state-machine.js";
+import type { AcceptanceCriterion } from "./state/state-machine.js";
 
 export type { AcceptanceCriterion };
 

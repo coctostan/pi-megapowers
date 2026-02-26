@@ -29,25 +29,28 @@ describe("satellite integration", () => {
   it("index.ts imports resolveProjectRoot for satellite state reads", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
-    const indexSource = readFileSync(join(import.meta.dir, "..", "extensions", "megapowers", "index.ts"), "utf-8");
-    expect(indexSource).toContain("resolveProjectRoot");
+    // resolveProjectRoot is used in satellite.ts (extracted from index.ts), imported via setupSatellite
+    const satelliteSource = readFileSync(join(import.meta.dir, "..", "extensions", "megapowers", "satellite.ts"), "utf-8");
+    expect(satelliteSource).toContain("resolveProjectRoot");
   });
 
   it("index.ts mega off hides subagent tools", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
-    const indexSource = readFileSync(join(import.meta.dir, "..", "extensions", "megapowers", "index.ts"), "utf-8");
+    // The /mega off handler lives in commands.ts (extracted from index.ts)
+    const commandsSource = readFileSync(join(import.meta.dir, "..", "extensions", "megapowers", "commands.ts"), "utf-8");
     // The filter in /mega off should exclude subagent tools
-    expect(indexSource).toContain('"subagent_status"');
+    expect(commandsSource).toContain('"subagent_status"');
     // Verify the off handler filters subagent tools (the filter callback itself mentions "subagent")
-    expect(indexSource).toMatch(/filter\(\s*\n?\s*t\s*=>[^)]*"subagent"/);
+    expect(commandsSource).toMatch(/filter\(\s*\n?\s*\(?t[^)]*\)?\s*=>[^)]*"subagent"/);
   });
 
-  it("index.ts registers subagent and subagent_status tools", async () => {
+  it("register-tools.ts registers subagent and subagent_status tools", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
-    const indexSource = readFileSync(join(import.meta.dir, "..", "extensions", "megapowers", "index.ts"), "utf-8");
-    expect(indexSource).toContain('name: "subagent"');
-    expect(indexSource).toContain('name: "subagent_status"');
+    // Tool registrations live in register-tools.ts (extracted from index.ts)
+    const toolsSource = readFileSync(join(import.meta.dir, "..", "extensions", "megapowers", "register-tools.ts"), "utf-8");
+    expect(toolsSource).toContain('name: "subagent"');
+    expect(toolsSource).toContain('name: "subagent_status"');
   });
 });

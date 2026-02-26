@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildInjectedPrompt } from "../extensions/megapowers/prompt-inject.js";
-import { writeState } from "../extensions/megapowers/state-io.js";
-import { createInitialState, type MegapowersState } from "../extensions/megapowers/state-machine.js";
+import { writeState } from "../extensions/megapowers/state/state-io.js";
+import { createInitialState, type MegapowersState } from "../extensions/megapowers/state/state-machine.js";
 
 function setState(tmp: string, overrides: Partial<MegapowersState>) {
   writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", ...overrides });

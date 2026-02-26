@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { advancePhase } from "../extensions/megapowers/phase-advance.js";
-import { readState, writeState } from "../extensions/megapowers/state-io.js";
-import { createInitialState, type MegapowersState } from "../extensions/megapowers/state-machine.js";
+import { advancePhase } from "../extensions/megapowers/policy/phase-advance.js";
+import { readState, writeState } from "../extensions/megapowers/state/state-io.js";
+import { createInitialState, type MegapowersState } from "../extensions/megapowers/state/state-machine.js";
 import type { JJ } from "../extensions/megapowers/jj.js";
 
 describe("advancePhase", () => {

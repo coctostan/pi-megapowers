@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { readState, writeState } from "../extensions/megapowers/state-io.js";
-import { createInitialState } from "../extensions/megapowers/state-machine.js";
+import { readState, writeState } from "../extensions/megapowers/state/state-io.js";
+import { createInitialState } from "../extensions/megapowers/state/state-machine.js";
 
 describe("state-io", () => {
   let tmp: string;

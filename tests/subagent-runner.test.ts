@@ -6,7 +6,7 @@ import {
   processJsonlLine,
   type RunnerState,
   createRunnerState,
-} from "../extensions/megapowers/subagent-runner.js";
+} from "../extensions/megapowers/subagent/subagent-runner.js";
 
 describe("generateSubagentId", () => {
   it("returns a string starting with 'sa-'", () => {

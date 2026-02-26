@@ -1,10 +1,10 @@
-// extensions/megapowers/tool-signal.ts
-import { readState, writeState } from "./state-io.js";
-import { advancePhase } from "./phase-advance.js";
-import { deriveTasks } from "./derived.js";
-import { transition, type Phase } from "./state-machine.js";
-import { inspectTaskChange, createTaskChange, buildTaskCompletionReport } from "./task-coordinator.js";
-import type { JJ } from "./jj.js";
+// extensions/megapowers/tools/tool-signal.ts
+import { readState, writeState } from "../state/state-io.js";
+import { advancePhase } from "../policy/phase-advance.js";
+import { deriveTasks } from "../state/derived.js";
+import { transition, type Phase } from "../state/state-machine.js";
+import { inspectTaskChange, createTaskChange, buildTaskCompletionReport } from "../task-coordinator.js";
+import type { JJ } from "../jj.js";
 
 export interface SignalResult {
   message?: string;

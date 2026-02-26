@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { checkGate, type GateResult } from "../extensions/megapowers/gates.js";
-import { createStore } from "../extensions/megapowers/store.js";
-import { createInitialState, type MegapowersState } from "../extensions/megapowers/state-machine.js";
-import { writeState } from "../extensions/megapowers/state-io.js";
+import { checkGate, type GateResult } from "../extensions/megapowers/policy/gates.js";
+import { createStore } from "../extensions/megapowers/state/store.js";
+import { createInitialState, type MegapowersState } from "../extensions/megapowers/state/state-machine.js";
+import { writeState } from "../extensions/megapowers/state/state-io.js";
 
 let tmp: string;
 

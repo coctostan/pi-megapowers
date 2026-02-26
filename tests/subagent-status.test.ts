@@ -6,7 +6,7 @@ import {
   subagentDir,
   type SubagentState,
   type SubagentStatus,
-} from "../extensions/megapowers/subagent-status.js";
+} from "../extensions/megapowers/subagent/subagent-status.js";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";

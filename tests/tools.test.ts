@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createStore } from "../extensions/megapowers/store.js";
-import { createBatchHandler } from "../extensions/megapowers/tools.js";
-import { readState } from "../extensions/megapowers/state-io.js";
+import { createStore } from "../extensions/megapowers/state/store.js";
+import { createBatchHandler } from "../extensions/megapowers/tools/tools.js";
+import { readState } from "../extensions/megapowers/state/state-io.js";
 
 let tmp: string;
 let store: ReturnType<typeof createStore>;

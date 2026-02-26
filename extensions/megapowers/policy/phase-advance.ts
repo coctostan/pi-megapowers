@@ -1,10 +1,10 @@
-// extensions/megapowers/phase-advance.ts
-import { readState, writeState } from "./state-io.js";
-import { getValidTransitions, transition, type Phase } from "./state-machine.js";
+// extensions/megapowers/policy/phase-advance.ts
+import { readState, writeState } from "../state/state-io.js";
+import { getValidTransitions, transition, type Phase } from "../state/state-machine.js";
 import { checkGate } from "./gates.js";
-import { createStore } from "./store.js";
-import { deriveTasks } from "./derived.js";
-import { formatChangeDescription, type JJ } from "./jj.js";
+import { createStore } from "../state/store.js";
+import { deriveTasks } from "../state/derived.js";
+import { formatChangeDescription, type JJ } from "../jj.js";
 
 export interface AdvanceResult {
   ok: boolean;

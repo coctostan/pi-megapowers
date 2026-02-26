@@ -1,4 +1,4 @@
-import type { Store } from "./store.js";
+import type { Store } from "../state/store.js";
 
 export interface BatchResult {
   slug: string;

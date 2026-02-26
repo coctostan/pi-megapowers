@@ -1,4 +1,4 @@
-// extensions/megapowers/state-io.ts
+// extensions/megapowers/state/state-io.ts
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";

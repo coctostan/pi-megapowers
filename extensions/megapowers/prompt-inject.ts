@@ -1,6 +1,6 @@
 // extensions/megapowers/prompt-inject.ts
-import { readState } from "./state-io.js";
-import { deriveTasks, deriveAcceptanceCriteria } from "./derived.js";
+import { readState } from "./state/state-io.js";
+import { deriveTasks, deriveAcceptanceCriteria } from "./state/derived.js";
 import {
   loadPromptFile,
   interpolatePrompt,
@@ -10,8 +10,8 @@ import {
   formatAcceptanceCriteriaList,
   buildSourceIssuesContext,
 } from "./prompts.js";
-import type { Phase } from "./state-machine.js";
-import type { Store } from "./store.js";
+import type { Phase } from "./state/state-machine.js";
+import type { Store } from "./state/store.js";
 import type { JJ } from "./jj.js";
 
 /** Phase-specific tool call instructions appended to every phase prompt (AC42). */

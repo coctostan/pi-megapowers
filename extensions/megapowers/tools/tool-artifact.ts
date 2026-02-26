@@ -1,7 +1,7 @@
-// extensions/megapowers/tool-artifact.ts
+// extensions/megapowers/tools/tool-artifact.ts
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { readState } from "./state-io.js";
+import { readState } from "../state/state-io.js";
 
 export interface ArtifactResult {
   message?: string;

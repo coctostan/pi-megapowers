@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { evaluateWriteOverride, recordTestFileWritten } from "../extensions/megapowers/tool-overrides.js";
-import { readState, writeState } from "../extensions/megapowers/state-io.js";
-import { createInitialState, type MegapowersState } from "../extensions/megapowers/state-machine.js";
+import { evaluateWriteOverride, recordTestFileWritten } from "../extensions/megapowers/tools/tool-overrides.js";
+import { readState, writeState } from "../extensions/megapowers/state/state-io.js";
+import { createInitialState, type MegapowersState } from "../extensions/megapowers/state/state-machine.js";
 
 // --- helpers ---
 
@@ -157,12 +157,12 @@ describe("recordTestFileWritten", () => {
 
 describe("tool-overrides exports", () => {
   it("does not export processBashResult", async () => {
-    const mod = await import("../extensions/megapowers/tool-overrides.js");
+    const mod = await import("../extensions/megapowers/tools/tool-overrides.js");
     expect((mod as any).processBashResult).toBeUndefined();
   });
 
   it("write-policy does not export isTestRunnerCommand", async () => {
-    const mod = await import("../extensions/megapowers/write-policy.js");
+    const mod = await import("../extensions/megapowers/policy/write-policy.js");
     expect((mod as any).isTestRunnerCommand).toBeUndefined();
   });
 });

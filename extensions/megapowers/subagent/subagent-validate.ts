@@ -1,4 +1,4 @@
-import type { PlanTask } from "./state-machine.js";
+import type { PlanTask } from "../state/state-machine.js";
 
 export interface ValidationResult {
   valid: boolean;
