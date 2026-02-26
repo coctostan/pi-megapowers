@@ -4,6 +4,8 @@ type: feature
 status: in-progress
 created: 2026-02-24T19:15:00.000Z
 sources: [22, 31, 45]
+milestone: M1
+priority: 2
 ---
 
 # UX feedback & visibility — progress indicators, notifications, and polish

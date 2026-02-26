@@ -4,6 +4,8 @@ type: feature
 status: open
 created: 2026-02-24T19:50:00.000Z
 sources: [54, 56]
+milestone: M3
+priority: 2
 ---
 
 # Workflow iteration quality — context management and plan-review versioning

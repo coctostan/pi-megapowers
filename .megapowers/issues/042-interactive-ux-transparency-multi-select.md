@@ -4,6 +4,8 @@ type: feature
 status: open
 created: 2026-02-24T00:48:10.229Z
 sources: [36, 37]
+milestone: M1
+priority: 2
 ---
 
 # Interactive UX transparency — multi-select, Discuss option, prompt injection visibility

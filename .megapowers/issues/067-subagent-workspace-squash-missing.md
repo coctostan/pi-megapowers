@@ -3,6 +3,8 @@ id: 67
 type: bugfix
 status: open
 created: 2026-02-24T00:21:00.000Z
+milestone: M2
+priority: 1
 ---
 
 # Subagent workspace changes never squashed into main working copy
