@@ -10,52 +10,10 @@ import {
   formatAcceptanceCriteriaList,
   buildSourceIssuesContext,
 } from "./prompts.js";
-import type { Phase } from "./state/state-machine.js";
 import type { Store } from "./state/store.js";
 import type { JJ } from "./jj.js";
-
-/** Phase-specific tool call instructions appended to every phase prompt (AC42). */
-const PHASE_TOOL_INSTRUCTIONS: Partial<Record<Phase, string>> = {
-  brainstorm: `
-When you have finished brainstorming, call \`megapowers_signal\` with action \`"phase_next"\` to advance to the spec phase.`,
-
-  spec: `
-When the spec is complete, call \`megapowers_save_artifact\` with phase \`"spec"\` and the full spec content.
-Then call \`megapowers_signal\` with action \`"phase_next"\` to advance to the plan phase.`,
-
-  plan: `
-When the plan is complete, call \`megapowers_save_artifact\` with phase \`"plan"\` and the full plan content.
-Then call \`megapowers_signal\` with action \`"phase_next"\` to advance to the review phase.`,
-
-  review: `
-If the plan is acceptable, call \`megapowers_signal\` with action \`"review_approve"\` to approve it.
-Then call \`megapowers_signal\` with action \`"phase_next"\` to advance to implement.
-If changes are needed, explain what to fix. The user will revise and re-submit.`,
-
-  implement: `
-For each task: write tests first, run them (they must fail), then write implementation.
-When a task is complete, call \`megapowers_signal\` with action \`"task_done"\`.
-The system will automatically advance to the next task or to verify when all tasks are done.`,
-
-  verify: `
-When verification is complete, call \`megapowers_save_artifact\` with phase \`"verify"\` and the verification report.
-Then call \`megapowers_signal\` with action \`"phase_next"\` to advance.`,
-
-  "code-review": `
-When the code review is complete, call \`megapowers_save_artifact\` with phase \`"code-review"\` and the review report.
-Then call \`megapowers_signal\` with action \`"phase_next"\` to advance to done.`,
-
-  reproduce: `
-When the bug is reproduced, call \`megapowers_save_artifact\` with phase \`"reproduce"\` and the reproduction steps.
-Then call \`megapowers_signal\` with action \`"phase_next"\` to advance to diagnose.`,
-
-  diagnose: `
-When the diagnosis is complete, call \`megapowers_save_artifact\` with phase \`"diagnose"\` and the diagnosis.
-Then call \`megapowers_signal\` with action \`"phase_next"\` to advance to plan.`,
-
-  done: `
-Use \`megapowers_save_artifact\` to save any done-phase outputs (docs, changelog, learnings).`,
-};
+import { getWorkflowConfig } from "./workflows/registry.js";
+import { deriveToolInstructions } from "./workflows/tool-instructions.js";
 
 /**
  * Build the injected system prompt for the current phase.
@@ -81,27 +39,37 @@ export function buildInjectedPrompt(cwd: string, store?: Store, _jj?: JJ): strin
     phase: state.phase,
   };
 
-  // Load artifacts for context when store is available
-  if (store) {
-    const artifactMap: Record<string, string> = {
-      "brainstorm.md": "brainstorm_content",
-      "spec.md": "spec_content",
-      "plan.md": "plan_content",
-      "diagnosis.md": "diagnosis_content",
-      "verify.md": "verify_content",
-      "code-review.md": "code_review_content",
-    };
-    for (const [file, varName] of Object.entries(artifactMap)) {
-      const content = store.readPlanFile(state.activeIssue, file);
-      if (content) vars[varName] = content;
+  // Load artifacts from workflow config phases (config-driven, not hardcoded)
+  if (store && state.workflow) {
+    const config = getWorkflowConfig(state.workflow);
+
+    // Load artifacts declared in phase configs
+    for (const phase of config.phases) {
+      if (phase.artifact) {
+        const content = store.readPlanFile(state.activeIssue, phase.artifact);
+        if (content) {
+          const varName = phase.artifact.replace(/\.md$/, "").replace(/-/g, "_") + "_content";
+          vars[varName] = content;
+        }
+      }
     }
 
-    // Bugfix aliasing: reproduce → brainstorm_content, diagnosis → spec_content
-    if (state.workflow === "bugfix") {
-      const reproduce = store.readPlanFile(state.activeIssue, "reproduce.md");
-      const diagnosis = store.readPlanFile(state.activeIssue, "diagnosis.md");
-      if (reproduce) { vars.brainstorm_content = reproduce; vars.reproduce_content = reproduce; }
-      if (diagnosis) { vars.spec_content = diagnosis; vars.diagnosis_content = diagnosis; }
+    // Apply phase aliases: populate aliased variable names
+    // e.g. reproduce.md → brainstorm_content, diagnosis.md → spec_content
+    if (config.phaseAliases) {
+      for (const [aliasName, canonicalName] of Object.entries(config.phaseAliases)) {
+        // Find the phase or artifact with this alias name
+        const aliasPhase = config.phases.find(p => p.name === aliasName);
+        const artifactFile = aliasPhase?.artifact ?? `${aliasName}.md`;
+        const content = store.readPlanFile(state.activeIssue, artifactFile);
+        if (content) {
+          // Set both the alias and canonical variable names
+          const aliasVar = aliasName.replace(/-/g, "_") + "_content";
+          const canonicalVar = canonicalName.replace(/-/g, "_") + "_content";
+          vars[aliasVar] = content;
+          vars[canonicalVar] = content;
+        }
+      }
     }
   }
 
@@ -157,9 +125,16 @@ export function buildInjectedPrompt(cwd: string, store?: Store, _jj?: JJ): strin
     }
   }
 
-  // Phase-specific tool instructions (AC42)
-  const toolInstructions = PHASE_TOOL_INSTRUCTIONS[state.phase];
-  if (toolInstructions) parts.push(toolInstructions.trim());
+  // Phase-specific tool instructions derived from config (AC42)
+  if (state.workflow && state.phase) {
+    const config = getWorkflowConfig(state.workflow);
+    const phaseConfig = config.phases.find(p => p.name === state.phase);
+    if (phaseConfig) {
+      const isTerminal = config.phases[config.phases.length - 1].name === state.phase;
+      const toolInstructions = deriveToolInstructions(phaseConfig, { isTerminal });
+      if (toolInstructions) parts.push(toolInstructions.trim());
+    }
+  }
 
   // Source issues context when store is available
   if (store) {

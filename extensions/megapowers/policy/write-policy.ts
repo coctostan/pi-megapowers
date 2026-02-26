@@ -4,6 +4,7 @@
 // Used by tool-overrides.ts (disk-based) and satellite mode (in-memory).
 
 import type { Phase, TddTaskState } from "../state/state-machine.js";
+import { getAllWorkflowConfigs } from "../workflows/registry.js";
 
 export interface WriteDecision {
   allowed: boolean;
@@ -34,12 +35,14 @@ export function isAllowlisted(filePath: string): boolean {
 // --- Phase classification ---
 
 /** Phases where source code writes are completely blocked (only .megapowers/ allowed). */
-const BLOCKING_PHASES: ReadonlySet<string> = new Set([
-  "brainstorm", "spec", "plan", "review", "verify", "done",
-]);
+const BLOCKING_PHASES: ReadonlySet<string> = new Set(
+  getAllWorkflowConfigs().flatMap(c => c.phases.filter(p => p.blocking).map(p => p.name))
+);
 
 /** Phases where writes require TDD gating (tests before production code). */
-const TDD_PHASES: ReadonlySet<string> = new Set(["implement", "code-review"]);
+const TDD_PHASES: ReadonlySet<string> = new Set(
+  getAllWorkflowConfigs().flatMap(c => c.phases.filter(p => p.tdd).map(p => p.name))
+);
 
 // --- Core write policy ---
 

@@ -53,34 +53,17 @@ export interface MegapowersState {
   megaEnabled: boolean;
 }
 
-// --- Transition Tables ---
+// --- Config-driven data ---
 
-const FEATURE_TRANSITIONS: Record<FeaturePhase, FeaturePhase[]> = {
-  brainstorm: ["spec"],
-  spec: ["plan"],
-  plan: ["review", "implement"],
-  review: ["implement", "plan"],
-  implement: ["verify"],
-  verify: ["code-review", "implement"],
-  "code-review": ["done", "implement"],
-  done: [],
-};
-
-const BUGFIX_TRANSITIONS: Record<BugfixPhase, BugfixPhase[]> = {
-  reproduce: ["diagnose"],
-  diagnose: ["plan"],
-  plan: ["review", "implement"],
-  review: ["implement"],
-  implement: ["verify"],
-  verify: ["done"],
-  done: [],
-};
+import { getWorkflowConfig, getAllWorkflowConfigs } from "../workflows/registry.js";
 
 /**
  * Open-ended phases suppress automatic phase-transition prompts after every message.
- * Transitions from these phases happen only via explicit /phase next command.
+ * Derived from all registered workflow configs.
  */
-export const OPEN_ENDED_PHASES: ReadonlySet<Phase> = new Set(["brainstorm", "reproduce", "diagnose"]);
+export const OPEN_ENDED_PHASES: ReadonlySet<Phase> = new Set(
+  getAllWorkflowConfigs().flatMap(c => c.phases.filter(p => p.openEnded).map(p => p.name))
+);
 
 // --- Functions ---
 
@@ -103,13 +86,14 @@ export function createInitialState(): MegapowersState {
 }
 
 export function getFirstPhase(workflow: WorkflowType): Phase {
-  return workflow === "feature" ? "brainstorm" : "reproduce";
+  const config = getWorkflowConfig(workflow);
+  return config.phases[0].name;
 }
 
 export function getValidTransitions(workflow: WorkflowType | null, phase: Phase): Phase[] {
   if (!workflow) return [];
-  const table = workflow === "feature" ? FEATURE_TRANSITIONS : BUGFIX_TRANSITIONS;
-  return (table as Record<string, Phase[]>)[phase] ?? [];
+  const config = getWorkflowConfig(workflow);
+  return config.transitions.filter(t => t.from === phase).map(t => t.to);
 }
 
 export function canTransition(workflow: WorkflowType | null, from: Phase, to: Phase): boolean {

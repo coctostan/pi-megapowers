@@ -2,6 +2,7 @@ import { describe, it, expect } from "bun:test";
 import {
   createInitialState,
   getValidTransitions,
+  getFirstPhase,
   canTransition,
   transition,
   OPEN_ENDED_PHASES,
@@ -10,6 +11,7 @@ import {
   type PlanTask,
   type AcceptanceCriterion,
 } from "../extensions/megapowers/state/state-machine.js";
+import { getWorkflowConfig } from "../extensions/megapowers/workflows/registry.js";
 
 describe("createInitialState", () => {
   it("returns a blank state with no active issue", () => {
@@ -301,6 +303,20 @@ describe("OPEN_ENDED_PHASES", () => {
     for (const phase of gateDriven) {
       expect(OPEN_ENDED_PHASES.has(phase)).toBe(false);
     }
+  });
+
+  it("state-machine uses workflow config (no hardcoded transition tables)", () => {
+    // After refactor: state-machine.ts should import from workflows/registry
+    // and NOT contain hardcoded FEATURE_TRANSITIONS or BUGFIX_TRANSITIONS
+    const { readFileSync } = require("node:fs");
+    const { join } = require("node:path");
+    const source = readFileSync(
+      join(__dirname, "..", "extensions", "megapowers", "state", "state-machine.ts"),
+      "utf-8",
+    );
+    expect(source).not.toContain("FEATURE_TRANSITIONS");
+    expect(source).not.toContain("BUGFIX_TRANSITIONS");
+    expect(source).toContain("getWorkflowConfig");
   });
 
   it("all open-ended phases have valid forward transitions", () => {

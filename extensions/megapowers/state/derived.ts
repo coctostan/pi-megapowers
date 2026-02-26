@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { extractPlanTasks } from "../plan-parser.js";
 import { extractAcceptanceCriteria, extractFixedWhenCriteria } from "../spec-parser.js";
 import type { PlanTask, AcceptanceCriterion, WorkflowType } from "./state-machine.js";
+import { getWorkflowConfig } from "../workflows/registry.js";
 
 /**
  * Parse tasks from plan.md on demand.
@@ -25,11 +26,14 @@ export function deriveAcceptanceCriteria(
   issueSlug: string,
   workflow: WorkflowType,
 ): AcceptanceCriterion[] {
-  const filename = workflow === "bugfix" ? "diagnosis.md" : "spec.md";
+  const config = getWorkflowConfig(workflow);
+  // If "diagnosis" is aliased to "spec", use diagnosis.md with Fixed When extraction
+  const usesDiagnosisAlias = config.phaseAliases?.["diagnosis"] === "spec";
+  const filename = usesDiagnosisAlias ? "diagnosis.md" : "spec.md";
   const filePath = join(cwd, ".megapowers", "plans", issueSlug, filename);
   if (!existsSync(filePath)) return [];
   const content = readFileSync(filePath, "utf-8");
-  return workflow === "bugfix"
+  return usesDiagnosisAlias
     ? extractFixedWhenCriteria(content)
     : extractAcceptanceCriteria(content);
 }
