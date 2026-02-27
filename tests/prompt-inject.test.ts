@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { buildInjectedPrompt } from "../extensions/megapowers/prompt-inject.js";
 import { writeState } from "../extensions/megapowers/state/state-io.js";
 import { createInitialState, type MegapowersState } from "../extensions/megapowers/state/state-machine.js";
+import { createStore } from "../extensions/megapowers/state/store.js";
 
 function setState(tmp: string, overrides: Partial<MegapowersState>) {
   writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", ...overrides });
@@ -26,9 +27,9 @@ describe("buildInjectedPrompt", () => {
     expect(buildInjectedPrompt(tmp)).toBeNull();
   });
 
-  it("returns null when no active issue", () => {
+  it("returns non-null idle content when no active issue and mega enabled", () => {
     writeState(tmp, createInitialState());
-    expect(buildInjectedPrompt(tmp)).toBeNull();
+    expect(buildInjectedPrompt(tmp)).not.toBeNull();
   });
 
   it("includes megapowers protocol section with tool descriptions", () => {
@@ -148,6 +149,95 @@ describe("done phase — doneActions prompt injection (AC16, AC17)", () => {
     const result = buildInjectedPrompt(tmp);
     expect(result).toContain("close-issue");
     expect(result!.length).toBeGreaterThan(200);
+  });
+});
+
+describe("buildInjectedPrompt — idle mode", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "prompt-inject-idle-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("returns non-null when megaEnabled is true and no active issue (AC1)", () => {
+    writeState(tmp, { ...createInitialState(), megaEnabled: true });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).not.toBeNull();
+    expect(result!.length).toBeGreaterThan(0);
+  });
+
+  it("returns null when megaEnabled is false with no active issue (AC2)", () => {
+    writeState(tmp, { ...createInitialState(), megaEnabled: false });
+    expect(buildInjectedPrompt(tmp)).toBeNull();
+  });
+
+  it("returns null when megaEnabled is false with active issue (AC2)", () => {
+    writeState(tmp, {
+      ...createInitialState(),
+      megaEnabled: false,
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "spec",
+    });
+    expect(buildInjectedPrompt(tmp)).toBeNull();
+  });
+
+  it("includes protocol section with tool names (AC3)", () => {
+    writeState(tmp, { ...createInitialState(), megaEnabled: true });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).not.toBeNull();
+    expect(result).toContain("Megapowers Protocol");
+    expect(result).toContain("megapowers_signal");
+    expect(result).toContain("megapowers_save_artifact");
+  });
+
+  it("includes open issues list with id, title, milestone, and priority (AC4)", () => {
+    writeState(tmp, { ...createInitialState(), megaEnabled: true });
+    const store = createStore(tmp);
+    store.createIssue("Auth refactor", "feature", "Refactor auth module");
+
+    const issuePath = join(tmp, ".megapowers", "issues", "001-auth-refactor.md");
+    const content = readFileSync(issuePath, "utf-8");
+    writeFileSync(issuePath, content.replace("status: open", "status: open\nmilestone: M2\npriority: 2"));
+
+    const result = buildInjectedPrompt(tmp, store);
+    expect(result).toContain("Open Issues");
+    expect(result).toContain("#001");
+    expect(result).toContain("Auth refactor");
+    expect(result).toContain("M2");
+    expect(result).toContain("priority: 2");
+  });
+
+  it("does not include done issues in idle prompt", () => {
+    writeState(tmp, { ...createInitialState(), megaEnabled: true });
+    const store = createStore(tmp);
+    store.createIssue("Open task", "feature", "Still open");
+    store.createIssue("Done task", "bugfix", "Already done");
+    store.updateIssueStatus("002-done-task", "done");
+
+    const result = buildInjectedPrompt(tmp, store);
+    expect(result).toContain("Open task");
+    expect(result).not.toContain("Done task");
+  });
+
+  it("includes slash command hints (AC5)", () => {
+    writeState(tmp, { ...createInitialState(), megaEnabled: true });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).toContain("/issue new");
+    expect(result).toContain("/issue list");
+    expect(result).toContain("/triage");
+    expect(result).toContain("/mega on|off");
+  });
+
+  it("includes roadmap and milestones reference (AC6)", () => {
+    writeState(tmp, { ...createInitialState(), megaEnabled: true });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).toContain("ROADMAP.md");
+    expect(result).toContain(".megapowers/milestones.md");
   });
 });
 

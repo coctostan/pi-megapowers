@@ -82,6 +82,28 @@ describe("renderDashboardLines — no active issue", () => {
   });
 });
 
+describe("renderDashboardLines — idle mode command hints", () => {
+  it("includes /triage command hint (AC7)", () => {
+    const state = createInitialState();
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    expect(lines.join("\n")).toContain("/triage");
+  });
+
+  it("includes /mega on|off command hint (AC7)", () => {
+    const state = createInitialState();
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    expect(lines.join("\n")).toContain("/mega on|off");
+  });
+
+  it("includes ROADMAP.md and milestones.md reference (AC8)", () => {
+    const state = createInitialState();
+    const lines = renderDashboardLines(state, [], plainTheme as any);
+    const joined = lines.join("\n");
+    expect(joined).toContain("ROADMAP.md");
+    expect(joined).toContain(".megapowers/milestones.md");
+  });
+});
+
 describe("renderDashboardLines — active issue", () => {
   it("shows issue, phase, and task progress", () => {
     const tasks = [
@@ -405,6 +427,9 @@ describe("formatIssueListItem", () => {
       status: "open",
       description: "",
       createdAt: 0,
+      sources: [],
+      milestone: "",
+      priority: 0,
     });
     expect(result).toContain("#001");
     expect(result).toContain("Auth refactor");
@@ -826,7 +851,7 @@ describe("formatIssueListItem — batch annotation", () => {
   it("appends batch annotation when batchSlug is provided", () => {
     const issue: Issue = {
       id: 6, slug: "006-criteria-bug", title: "Criteria not extracted",
-      type: "bugfix", status: "open", description: "", createdAt: 0, sources: [],
+      type: "bugfix", status: "open", description: "", createdAt: 0, sources: [], milestone: "", priority: 0,
     };
     const result = formatIssueListItem(issue, "019-batch-parser-fixes");
     expect(result).toContain("#006");
@@ -837,7 +862,7 @@ describe("formatIssueListItem — batch annotation", () => {
   it("does not append annotation when batchSlug is null", () => {
     const issue: Issue = {
       id: 6, slug: "006-criteria-bug", title: "Criteria not extracted",
-      type: "bugfix", status: "open", description: "", createdAt: 0, sources: [],
+      type: "bugfix", status: "open", description: "", createdAt: 0, sources: [], milestone: "", priority: 0,
     };
     const result = formatIssueListItem(issue, null);
     expect(result).not.toContain("in batch");
@@ -846,7 +871,7 @@ describe("formatIssueListItem — batch annotation", () => {
   it("does not append annotation when batchSlug is undefined (backwards compat)", () => {
     const issue: Issue = {
       id: 6, slug: "006-criteria-bug", title: "Criteria not extracted",
-      type: "bugfix", status: "open", description: "", createdAt: 0, sources: [],
+      type: "bugfix", status: "open", description: "", createdAt: 0, sources: [], milestone: "", priority: 0,
     };
     const result = formatIssueListItem(issue);
     expect(result).not.toContain("in batch");
@@ -951,10 +976,10 @@ describe("handleTriageCommand", () => {
 describe("filterTriageableIssues", () => {
   it("returns open non-batch issues (AC 7)", () => {
     const issues: Issue[] = [
-      { id: 1, slug: "001-a", title: "A", type: "bugfix", status: "open", description: "d", sources: [], createdAt: 0 },
-      { id: 2, slug: "002-b", title: "B", type: "bugfix", status: "done", description: "d", sources: [], createdAt: 0 },
-      { id: 3, slug: "003-c", title: "C", type: "feature", status: "open", description: "d", sources: [1, 2], createdAt: 0 },
-      { id: 4, slug: "004-d", title: "D", type: "bugfix", status: "in-progress", description: "d", sources: [], createdAt: 0 },
+      { id: 1, slug: "001-a", title: "A", type: "bugfix", status: "open", description: "d", sources: [], createdAt: 0, milestone: "", priority: 0 },
+      { id: 2, slug: "002-b", title: "B", type: "bugfix", status: "done", description: "d", sources: [], createdAt: 0, milestone: "", priority: 0 },
+      { id: 3, slug: "003-c", title: "C", type: "feature", status: "open", description: "d", sources: [1, 2], createdAt: 0, milestone: "", priority: 0 },
+      { id: 4, slug: "004-d", title: "D", type: "bugfix", status: "in-progress", description: "d", sources: [], createdAt: 0, milestone: "", priority: 0 },
     ];
     const result = filterTriageableIssues(issues);
     expect(result).toHaveLength(2);
@@ -970,7 +995,7 @@ describe("filterTriageableIssues", () => {
 describe("formatTriageIssueList", () => {
   it("formats issues with id, title, type, and description (AC 7)", () => {
     const issues: Issue[] = [
-      { id: 1, slug: "001-a", title: "Bug A", type: "bugfix", status: "open", description: "Parser fails on edge case", sources: [], createdAt: 0 },
+      { id: 1, slug: "001-a", title: "Bug A", type: "bugfix", status: "open", description: "Parser fails on edge case", sources: [], createdAt: 0, milestone: "", priority: 0 },
     ];
     const result = formatTriageIssueList(issues);
     expect(result).toContain("#001");

@@ -1,43 +1,91 @@
-# Brainstorm: Agent Context and Awareness (#050)
+# Brainstorm: Agent Context & Awareness (#050)
+
+## Scope Reduction
+
+Original #050 batched four source issues: #048, #040, #047, #044. During brainstorm we determined:
+- **#044** (write policy flexibility) — Already solved by allowlist + config-driven blocking. Dropped.
+- **#047** (TDD guard blocks type-only tasks) — Already solved: `[no-test]` annotation parsed from plan, TDD guard respects it, prompts explain it thoroughly. Marked done.
+- **#048** (no context without active issue) — Still broken. `buildInjectedPrompt()` returns null.
+- **#040** (prompt audit) — Still needed but less severe than expected.
+
+**Final scope: two items.**
 
 ## Approach
 
-This batch improves agent context and awareness across four areas. The write policy in `canWrite()` is restructured so allowlisted files (`.md`, config, `.d.ts`, etc.) pass through in all phases — not just implement/code-review — while source code remains blocked outside those phases. This unlocks done-phase doc generation and brainstorm-phase project management writes without weakening TDD enforcement.
+**Item 1: Idle-mode context.** When no issue is active but mega is enabled, `buildInjectedPrompt()` currently returns null — the agent has zero awareness of megapowers. We'll add an idle-mode path that injects: the base protocol (tool names, available signals), a list of open issues with milestone/priority, available slash commands, and a reference to ROADMAP.md and .megapowers/milestones.md. The dashboard widget (`renderDashboardLines`) will also be enhanced to show command hints beyond just `/issue new` and `/issue list` — adding `/triage`, `/mega on|off`, and the roadmap/milestones reference.
 
-A new `prompts/base.md` template is created for the "no active issue" state. `buildInjectedPrompt()` is restructured with three tiers: return `null` when mega is off, return `base.md` when enabled but no issue is active, return full phase prompt when an issue is active. This gives the agent orientation on available commands and tools even before a workflow starts.
-
-The TDD type-only task problem is solved entirely through prompt improvements — `write-plan.md` gains guidance on annotating type-only tasks with `[no-test]`, and `implement-task.md` surfaces the `/tdd skip` escape hatch. No guard code changes needed. Finally, all 15 prompt templates get a full audit covering both behavioral fixes (unpopulated variables, missing tool guidance) and a consistency/tone pass — but the prompt audit is a **collaborative task** where the agent proposes each edit and the user approves before writing, since prompt wording directly shapes LLM behavior in every future session.
+**Item 2: Prompt audit (level B).** All 15 prompt templates audited for correctness and quality. Grouped by workflow phase for consistency. Specific findings documented below — the implementer applies these fixes, not a vague "audit and fix" directive.
 
 ## Key Decisions
 
-- **Allowlisted files writable in all phases** — reorder `canWrite()` to check `isAllowlisted()` before `BLOCKING_PHASES`. Source code still blocked outside implement/code-review.
-- **`base.md` for no-issue state** — separate prompt file, not bolted onto `megapowers-protocol.md`. Named for extensibility as new processes are added.
-- **TDD type-only fix is prompt-only** — `[no-test]` and `/tdd skip` already work; the LLM just doesn't know about them.
-- **`tests_failed`/`tests_passed` stay in `implement-task.md` only** — keeps base protocol lean.
-- **Prompt audit is collaborative** — agent proposes edits, user approves before writing. Not autonomous batch rewrite. Task description encodes this process, no new tooling.
-- **Full audit scope** — both behavior fixes (unpopulated vars, missing guidance) and consistency/tone in one pass.
+- **Idle prompt = B (moderate)** — protocol + open issues + commands + roadmap reference. Not A (too minimal) or C (context bloat with full roadmap content).
+- **Dashboard hints as text, not interactive** — simple hint lines, no new UI components.
+- **Prompt audit level B** — correctness + quality tightening, not full overhaul (C). Saves full overhaul for #062.
+- **Audit done in brainstorm** — specific findings documented here so implementer gets exact marching orders, not vague "review and fix."
+- **Prompt tasks grouped by workflow phase** — ~5 groups for consistency within stages.
+- **#044 dropped, #047 marked done** — both already solved in codebase.
 
 ## Components
 
-- **`write-policy.ts`** — reorder `canWrite()` so `isAllowlisted()` is checked before phase blocking
-- **`prompt-inject.ts`** — three-tier injection: null (mega off) → base.md (no issue) → full phase prompt (active issue)
-- **`prompts/base.md`** — new template for no-active-issue orientation
-- **All 15 existing prompt templates** — collaborative audit and revision
-- **`prompts/write-plan.md`** — add `[no-test]` annotation guidance for type-only tasks
-- **`prompts/implement-task.md`** — add `/tdd skip` awareness
-- **Tests** — `canWrite()` tests for allowlisted-in-all-phases, `buildInjectedPrompt()` tests for base.md injection path
+### 1. `prompt-inject.ts` — Idle mode path
+New branch in `buildInjectedPrompt()` when `state.megaEnabled && !state.activeIssue`:
+- Load base protocol (`megapowers-protocol.md`)
+- List open issues from store (id, title, milestone, priority)
+- List available slash commands with descriptions
+- Reference to ROADMAP.md and .megapowers/milestones.md
+
+### 2. `ui.ts` → `renderDashboardLines` — Enhanced idle dashboard
+When no active issue, show:
+```
+No active issue.
+/issue new   — create an issue
+/issue list  — pick an issue to work on
+/triage      — batch and prioritize issues
+/mega on|off — enable/disable workflow enforcement
+See ROADMAP.md and .megapowers/milestones.md for what's next.
+```
+
+### 3. Prompt template fixes (15 files, 5 groups)
+
+#### Group A: Protocol
+**`megapowers-protocol.md`**
+- Add `{ action: "phase_back" }` to signal list with description: "Go back to previous phase (verify→implement, code-review→implement, review→plan)"
+- Add `learnings` to valid artifact phases list
+
+#### Group B: Early phases (brainstorm, write-spec, write-plan, review-plan)
+**`review-plan.md`**
+- Fix duplicate section numbering: second "### 5." (Self-Containment) should be "### 6."
+- "After Review" section: add mention of `megapowers_signal({ action: "phase_back" })` for going back to plan
+
+**`brainstorm.md`**, **`write-spec.md`**, **`write-plan.md`** — No changes needed. Clean.
+
+#### Group C: Implement phase
+**`implement-task.md`**
+- Tighten "Execution Mode" section — reduce verbosity while keeping all info
+- No stale references found
+
+#### Group D: Late phases (verify, code-review)
+**`verify.md`**
+- Replace "use `/phase implement` or `/phase plan` to transition back" with reference to `megapowers_signal({ action: "phase_back" })`
+
+**`code-review.md`**
+- Same fix: replace `/phase implement` or `/phase plan` references with `phase_back` signal
+- Update "needs-fixes" and "needs-rework" sections to reference `phase_back`
+
+#### Group E: Done/utility + standalone
+**`capture-learnings.md`**, **`write-changelog.md`**, **`generate-docs.md`**, **`generate-bugfix-summary.md`**, **`triage.md`**, **`reproduce-bug.md`**, **`diagnose-bug.md`** — No changes needed. All clean.
 
 ## Testing Strategy
 
-- **`write-policy.ts`**: verify `.md` files pass `canWrite()` in all phases; verify `.ts`/`.js` still blocked in non-implement phases; verify TDD guard still enforced for source files during implement
-- **`prompt-inject.ts`**: verify `base.md` returned when `megaEnabled && !activeIssue`; verify `null` when `!megaEnabled`; verify full phase prompt when issue active; verify template variable interpolation
-- **Template variable validation**: unit tests checking all `{{var}}` placeholders in each template have corresponding population logic — prevents regression
-- **Prompt audit**: no automated tests — collaborative content work validated by human review during the task
-- **Regression**: full `bun test` suite to confirm no breakage from `canWrite()` reordering
-
-## Source Issues Addressed
-
-- #040 — Review all injected prompts for accuracy and completeness
-- #044 — Write policy too strict in done/early phases
-- #047 — TDD guard blocks type-only tasks
-- #048 — No megapowers context without active issue
+- **`buildInjectedPrompt` idle mode** — unit tests:
+  - Returns content when mega enabled + no active issue
+  - Returns null when mega disabled (regardless of active issue)
+  - Idle content includes protocol section
+  - Idle content includes open issues list
+  - Idle content includes slash command hints
+  - Idle content includes roadmap/milestones reference
+- **`renderDashboardLines` idle mode** — unit tests:
+  - Idle mode lines include all command hints (`/issue`, `/triage`, `/mega`)
+  - Idle mode lines include roadmap reference
+  - Active-issue mode unchanged (no regression)
+- **Prompt templates** — no automated tests (markdown files). Correctness verified by human review during code-review phase. Specific fixes are mechanical (find/replace stale references).

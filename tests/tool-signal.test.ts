@@ -238,8 +238,7 @@ describe("handleSignal", () => {
 
   describe("phase_back", () => {
     // --- Happy path: backward transitions ---
-
-    it("transitions review → plan (AC1, AC2)", () => {
+    it("transitions review \u2192 plan (AC1, AC2)", () => {
       writeArtifact(tmp, "001-test", "plan.md", "# Plan\n");
       setState(tmp, { phase: "review", reviewApproved: true });
       const result = handleSignal(tmp, "phase_back");
@@ -247,14 +246,12 @@ describe("handleSignal", () => {
       expect(result.message).toContain("plan");
       expect(readState(tmp).phase).toBe("plan");
     });
-
     it("clears reviewApproved when going back to plan (AC2)", () => {
       writeArtifact(tmp, "001-test", "plan.md", "# Plan\n");
       setState(tmp, { phase: "review", reviewApproved: true });
       handleSignal(tmp, "phase_back");
       expect(readState(tmp).reviewApproved).toBe(false);
     });
-
     it("transitions verify → implement (AC3)", () => {
       setState(tmp, { phase: "verify" });
       const result = handleSignal(tmp, "phase_back");
@@ -262,7 +259,6 @@ describe("handleSignal", () => {
       expect(result.message).toContain("implement");
       expect(readState(tmp).phase).toBe("implement");
     });
-
     it("transitions code-review → implement (AC4)", () => {
       setState(tmp, { phase: "code-review" });
       const result = handleSignal(tmp, "phase_back");
@@ -272,35 +268,30 @@ describe("handleSignal", () => {
     });
 
     // --- Error paths: no backward transition (AC5, AC6) ---
-
     it("returns error from brainstorm — no backward transition (AC5)", () => {
       setState(tmp, { phase: "brainstorm" });
       const result = handleSignal(tmp, "phase_back");
       expect(result.error).toBeDefined();
       expect(result.error).toContain("No backward transition");
     });
-
     it("returns error from spec — no backward transition (AC5)", () => {
       setState(tmp, { phase: "spec" });
       const result = handleSignal(tmp, "phase_back");
       expect(result.error).toBeDefined();
       expect(result.error).toContain("No backward transition");
     });
-
     it("returns error from plan — no backward transition (AC5)", () => {
       setState(tmp, { phase: "plan" });
       const result = handleSignal(tmp, "phase_back");
       expect(result.error).toBeDefined();
       expect(result.error).toContain("No backward transition");
     });
-
     it("returns error from implement — no backward transition (AC5)", () => {
       setState(tmp, { phase: "implement" });
       const result = handleSignal(tmp, "phase_back");
       expect(result.error).toBeDefined();
       expect(result.error).toContain("No backward transition");
     });
-
     it("returns error for bugfix workflow phases without backward transitions (AC6)", () => {
       const phasesWithNoBackward = ["reproduce", "diagnose", "plan", "implement"] as const;
       for (const phase of phasesWithNoBackward) {
@@ -310,26 +301,22 @@ describe("handleSignal", () => {
         expect(result.error).toContain("No backward transition");
       }
     });
-
     it("bugfix review and verify have backward transitions after #084", () => {
       setState(tmp, { workflow: "bugfix", phase: "review" as any });
       const r1 = handleSignal(tmp, "phase_back");
       expect(r1.error).toBeUndefined();
       expect(r1.message).toContain("plan");
-
       setState(tmp, { workflow: "bugfix", phase: "verify" as any });
       const r2 = handleSignal(tmp, "phase_back");
       expect(r2.error).toBeUndefined();
       expect(r2.message).toContain("implement");
     });
-
     it("returns error when megaEnabled is false", () => {
       setState(tmp, { phase: "review", megaEnabled: false });
       const result = handleSignal(tmp, "phase_back");
       expect(result.error).toContain("disabled");
     });
   });
-
   describe("done checklist trigger wiring (AC11, AC25)", () => {
     it("phase_next to done succeeds and stores doneActions when wired", () => {
       // This test verifies the behavioral outcome: when phase_next advances to done,
@@ -342,7 +329,6 @@ describe("handleSignal", () => {
       expect(result.message).toContain("done");
       expect(readState(tmp).phase).toBe("done");
     });
-
     it("no remaining doneMode references in extension source files (AC25)", () => {
       const files = [
         "extensions/megapowers/state/state-machine.ts",
@@ -362,7 +348,6 @@ describe("handleSignal", () => {
         expect(lines).toHaveLength(0);
       }
     });
-
     it("register-tools wires showDoneChecklist trigger after successful phase_next to done (AC11)", () => {
       const source = readFileSync(join(process.cwd(), "extensions/megapowers/register-tools.ts"), "utf8");
       expect(source).toContain('import { showDoneChecklist } from "./ui.js"');
@@ -371,7 +356,6 @@ describe("handleSignal", () => {
       expect(source).toContain("await showDoneChecklist(ctx, ctx.cwd)");
     });
   });
-
   // ======================================================================
   // task_done — jj integration (AC20)
   // ======================================================================
@@ -617,6 +601,12 @@ describe("handleSignal", () => {
       expect(toolsSource).toContain('Type.Literal("phase_back")');
       expect(toolsSource).toContain('Type.Literal("tests_failed")');
       expect(toolsSource).toContain('Type.Literal("tests_passed")');
+    });
+
+
+    it("includes phase_back action", () => {
+      const toolsSource = readFileSync(join(process.cwd(), "extensions/megapowers/register-tools.ts"), "utf8");
+      expect(toolsSource).toContain('Type.Literal("phase_back")');
     });
 
     it("includes optional target parameter and passes it to handleSignal", () => {
