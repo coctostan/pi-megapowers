@@ -36,10 +36,10 @@ describe("index.ts architectural invariants", () => {
       expect(source).not.toContain("After bash, track test runner results for TDD RED detection (in-memory)");
     });
 
-    it("registers megapowers_signal in satellite mode", () => {
+    it("setupSatellite is a no-op (audit-only TDD in subagent mode)", () => {
       // Satellite setup logic lives in satellite.ts (extracted from index.ts)
       const source = readFileSync(join(__dirname, "../extensions/megapowers/satellite.ts"), "utf-8");
-      expect(source).toContain('name: "megapowers_signal"');
+      expect(source).not.toContain('name: "megapowers_signal"');
       expect(source).toContain("setupSatellite");
     });
   });

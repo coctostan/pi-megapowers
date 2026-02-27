@@ -13,6 +13,9 @@
     "@mariozechner/pi-tui": "*",
     "@sinclair/typebox": "*"
   },
+  "dependencies": {
+    "pi-subagents": "^0.11.0"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },

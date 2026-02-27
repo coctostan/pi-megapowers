@@ -74,3 +74,23 @@
 
 ### Fixed
 - Stale acceptance criteria no longer persist after diagnosis edits remove `## Fixed When` section
+
+### Added — Subagent Pipeline (#084)
+- **`pipeline` tool** — dispatches a full implement → verify → review cycle for a plan task in an isolated jj workspace. Retry budget (default 3 cycles), configurable per-step timeout (default 10 min). On exhaustion returns log + diff + error summary to the parent LLM; resumes with `{ resume: true, guidance }`.
+- **`subagent` tool (rewritten)** — one-shot subagent dispatch for ad-hoc tasks; squashes workspace on success, cleans up on failure, surfaces workspace errors explicitly.
+- **`PiSubagentsDispatcher`** — implements the new `Dispatcher` interface by delegating to pi-subagents' `runSync`, with injectable `RunSyncFn` for testability.
+- **`auditTddCompliance`** — deterministic TDD ordering check from tool-call history. Produces `{ testWrittenFirst, testRanBeforeProduction, productionFilesBeforeTest, testRunCount }`. Report passed to reviewer as a soft gate.
+- **Pipeline context carry-forward** — `renderContextPrompt()` builds structured markdown context passed to each agent; retry context includes failure reason and accumulated review findings.
+- **JSONL pipeline log** — `writeLogEntry` / `readPipelineLog` for structured per-step logging under `.megapowers/subagents/{id}/log.jsonl`.
+- **jj workspace manager** — `createPipelineWorkspace`, `squashPipelineWorkspace`, `cleanupPipelineWorkspace`, `getWorkspaceDiff`; all injectable for testability.
+- **Agent definitions** — `.pi/agents/implementer.md` (TDD-strict, gpt-5.3-codex), `.pi/agents/verifier.md` (bun test only, haiku-4-5), `.pi/agents/reviewer.md` (structured approve/reject, sonnet-4-5).
+- **`pi-subagents: ^0.11.0`** added as npm dependency.
+- **`PI_SUBAGENT_DEPTH` support** in `isSatelliteMode()` and `resolveProjectRoot()` walk-up.
+
+### Changed
+- **Satellite mode** (`satellite.ts`) — `setupSatellite()` is now a no-op; subagent sessions no longer install write-blocking TDD hooks (TDD is enforced via prompts + post-hoc audit).
+- **`/mega off` / `/mega on`** — tool filter updated: `pipeline` added, `subagent_status` removed.
+
+### Removed
+- **Old subagent implementation** — 9 source files (`subagent-agents.ts`, `subagent-async.ts`, `subagent-context.ts`, `subagent-errors.ts`, `subagent-runner.ts`, `subagent-status.ts`, `subagent-tools.ts`, `subagent-validate.ts`, `subagent-workspace.ts`) and 9 corresponding test files replaced wholesale.
+- **`subagent_status` tool** — removed from tool registration and `/mega off` / `/mega on` filter lists.
