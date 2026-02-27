@@ -14,6 +14,8 @@ export interface Issue {
   description: string;
   createdAt: number;
   sources: number[];
+  milestone: string;
+  priority: number;
 }
 
 export interface Store {
@@ -82,6 +84,8 @@ function parseIssueFrontmatter(content: string): Partial<Issue> {
     description: body.replace(/^#[^\n]*\n*/, "").trim(),
     title: body.match(/^#\s+(.+)/)?.[1],
     sources,
+    milestone: data.milestone ?? undefined,
+    priority: data.priority ? parseInt(data.priority) : undefined,
   };
 }
 
@@ -144,6 +148,8 @@ export function createStore(projectRoot: string): Store {
             description: parsed.description ?? "",
             createdAt: parsed.createdAt ?? 0,
             sources: parsed.sources ?? [],
+            milestone: parsed.milestone ?? "",
+            priority: parsed.priority ?? 0,
           };
         });
     },
@@ -167,6 +173,8 @@ export function createStore(projectRoot: string): Store {
         description,
         createdAt: Date.now(),
         sources: sources ?? [],
+        milestone: "",
+        priority: 0,
       };
 
       writeFileSync(join(issuesDir, `${slug}.md`), formatIssueFile(issue));
@@ -188,6 +196,8 @@ export function createStore(projectRoot: string): Store {
         description: parsed.description ?? "",
         createdAt: parsed.createdAt ?? 0,
         sources: parsed.sources ?? [],
+        milestone: parsed.milestone ?? "",
+        priority: parsed.priority ?? 0,
       };
     },
 

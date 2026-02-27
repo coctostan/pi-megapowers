@@ -2,6 +2,7 @@
 id: 47
 type: bugfix
 status: done
+resolution: Already solved — [no-test] annotation, /tdd skip, and prompt guidance all exist and work correctly.
 created: 2026-02-24T18:55:00.000Z
 ---
 

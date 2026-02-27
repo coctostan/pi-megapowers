@@ -46,7 +46,7 @@ Tasks marked `[no-test]` must have a justification. Flag any `[no-test]` task th
 
 Valid `[no-test]` reasons: config-only, documentation, pure refactor with existing coverage, CI/tooling setup, prompt/skill file changes (should include subagent verification step when possible).
 
-### 5. Self-Containment
+### 6. Self-Containment
 Could a developer with zero context execute each task from the plan alone? Flag: missing file paths, references to "the above pattern", unclear inputs/outputs.
 
 ## Output format

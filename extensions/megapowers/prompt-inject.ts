@@ -21,11 +21,44 @@ import { deriveToolInstructions } from "./workflows/tool-instructions.js";
  *
  * Covers AC41 (prompt injection) and AC42 (phase-specific tool instructions).
  */
+
+function buildIdlePrompt(_cwd: string, store?: Store): string | null {
+  const parts: string[] = [];
+  const protocol = loadPromptFile("megapowers-protocol.md");
+  if (protocol) parts.push(protocol);
+
+  if (store) {
+    const issues = store.listIssues().filter(i => i.status !== "done");
+    const issueLines = issues.map(i =>
+      `- #${String(i.id).padStart(3, "0")} ${i.title} (milestone: ${i.milestone || "none"}, priority: ${i.priority})`,
+    );
+
+    parts.push(
+      issues.length > 0
+        ? `## Open Issues\n\n${issueLines.join("\n")}`
+        : "## Open Issues\n\nNo open issues. Use `/issue new` to create one.",
+    );
+  }
+
+  parts.push(`## Available Commands
+
+- \`/issue new\` — create a new issue
+- \`/issue list\` — pick an issue to work on
+- \`/triage\` — batch and prioritize open issues
+- \`/mega on|off\` — enable/disable workflow enforcement`);
+
+  parts.push("See `ROADMAP.md` and `.megapowers/milestones.md` for what's next.");
+
+  return parts.length > 0 ? parts.join("\n\n") : null;
+}
+
 export function buildInjectedPrompt(cwd: string, store?: Store, _jj?: JJ): string | null {
   const state = readState(cwd);
 
   if (!state.megaEnabled) return null;
-  if (!state.activeIssue || !state.phase) return null;
+  if (!state.activeIssue || !state.phase) {
+    return buildIdlePrompt(cwd, store);
+  }
 
   const parts: string[] = [];
 

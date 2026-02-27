@@ -77,7 +77,7 @@ pass / fail
 ## Rules
 - **Tests passing ≠ criteria met** — verify both independently
 - **No weasel words** — only claims backed by command output from THIS session
-- If any acceptance criterion fails and implementation changes are needed, explain what needs fixing, then call `megapowers_signal({ action: "phase_back" })` to return to implement.
+- If any criterion fails: explain what's missing and recommend next steps. Use `megapowers_signal({ action: "phase_back" })` to return to implement for fixes. If planning is fundamentally wrong, call this out explicitly and recommend continuing backward through review→plan as needed.
 
 ## Saving
 
