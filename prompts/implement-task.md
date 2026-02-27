@@ -22,48 +22,25 @@ Check `AGENTS.md` for the project's language, test framework, and test runner. I
 {{plan_content}}
 
 ## Execution Mode
-
 ### Work inline (default)
 Work directly in this session. TDD is enforced via tdd-guard.
-
 ### Delegate to subagent (when available)
 If the `subagent` tool is available and there are independent remaining tasks, delegate them for parallel execution.
-
 **How subagents work:**
-- Each subagent runs in its own **jj workspace** — an isolated copy of the codebase
-- The subagent works independently with no file conflicts against your session
-- The subagent receives the task description, plan section, spec, and project learnings as context
-- You do NOT need to manage jj or workspaces — this is handled automatically
-- When the subagent completes, its changes are squashed into the main working copy
-
-**When to delegate:** Delegate a task when it is marked `[ready — can be delegated to subagent]` in the remaining tasks list. These tasks have no unmet dependencies and can run in parallel.
-
+- Each subagent runs in its own **jj workspace** (isolated copy)
+- The subagent receives task description, plan context, spec, and learnings
+- Workspace/jj management is automatic
 **How to invoke:**
-```
-subagent({ agent: "worker", task: "Implement Task N: <description>. Follow TDD: write failing test, make it pass, refactor. Files: <relevant files from plan>. Plan context: <paste relevant task section from plan>", taskIndex: N })
-```
-
+- `subagent({ agent: "worker", task: "Implement Task N: <description>. Follow TDD: write failing test, make it pass, refactor. Files: <files>. Plan context: <task section>", taskIndex: N })`
 **After dispatching:**
-1. Continue working on your own task — don't wait
-2. Periodically check: `subagent_status({ id: "<returned id>" })`
-3. Status fields to check:
-   - `state`: "running" | "completed" | "failed" | "timed-out"
-   - `testsPassed`: whether the subagent's tests passed
-   - `filesChanged`: list of files the subagent modified
-   - `error` / `detectedErrors`: what went wrong (if failed)
-4. When `state: "completed"` and `testsPassed: true`:
-   - The subagent's changes are in the working copy
-   - **Re-read any files you were working on** that the subagent also changed
-   - Signal task completion: `megapowers_signal({ action: "task_done" })`
-5. When `state: "failed"` or `testsPassed: false`:
-   - Read the error/diff to understand what went wrong
-   - Either retry with a new subagent or complete the task inline
-
-**Do NOT delegate** when:
-- The task depends on incomplete tasks (marked `[blocked]`)
-- There is only one remaining task
-- The task modifies the same files as your current task — the squash will conflict
-- The task shares test files with your current task
+1. Continue your own task
+2. Poll with `subagent_status({ id: "<id>" })`
+3. If `state: "completed"` and `testsPassed: true`, re-read overlapping files and call `megapowers_signal({ action: "task_done" })`
+4. If failed, inspect error/diff and retry or complete inline
+**Do NOT delegate when:**
+- Task has unmet dependencies (`[blocked]`)
+- Only one task remains
+- Task touches same files or test files as your current task
 
 ## Strict Red-Green-Refactor
 

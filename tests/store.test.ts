@@ -71,6 +71,38 @@ describe("issues", () => {
     expect(third.id).toBe(3);
     expect(third.slug).toBe("003-third");
   });
+
+  it("parses milestone and priority from frontmatter", () => {
+    const { writeFileSync, mkdirSync } = require("node:fs");
+    const issuesDir = join(tmp, ".megapowers", "issues");
+    mkdirSync(issuesDir, { recursive: true });
+
+    writeFileSync(join(issuesDir, "001-test-issue.md"), `---
+id: 1
+type: feature
+status: open
+created: 2026-01-01T00:00:00.000Z
+milestone: M2
+priority: 2
+---
+
+# Test issue
+
+Description here
+`);
+
+    const issues = store.listIssues();
+    expect(issues).toHaveLength(1);
+    expect(issues[0].milestone).toBe("M2");
+    expect(issues[0].priority).toBe(2);
+  });
+
+  it("defaults milestone to empty string and priority to 0", () => {
+    const issue = store.createIssue("No metadata", "feature", "Bare issue");
+    const fetched = store.getIssue(issue.slug);
+    expect(fetched!.milestone).toBe("");
+    expect(fetched!.priority).toBe(0);
+  });
 });
 
 describe("sources field", () => {

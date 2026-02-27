@@ -123,6 +123,9 @@ export function renderDashboardLines(state: MegapowersState, _issues: Issue[], t
     lines.push(theme.fg("dim", "No active issue."));
     lines.push(`${theme.fg("accent", "/issue new")}  — create an issue`);
     lines.push(`${theme.fg("accent", "/issue list")} — pick an issue to work on`);
+    lines.push(`${theme.fg("accent", "/triage")}     — batch and prioritize issues`);
+    lines.push(`${theme.fg("accent", "/mega on|off")} — enable/disable workflow enforcement`);
+    lines.push(theme.fg("dim", "See ROADMAP.md and .megapowers/milestones.md for what's next."));
     return lines;
   }
 
