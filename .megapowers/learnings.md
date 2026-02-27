@@ -1,4 +1,13 @@
 
+## 2026-02-27 — 065-done-phase-refactor
+
+- The done phase's `blocking: true` flag prevents writing to CHANGELOG.md, docs/, or any non-.megapowers/ path during done-phase actions — done-phase wrap-up actions that need to write to the project must write to `.megapowers/` paths instead, or the done phase needs to not be blocking.
+- Pi loads extension modules at startup and caches them — code changes made during a session don't take effect until pi restarts; implementing features that affect the current session's tools is a bootstrapping problem.
+- When `handleTaskDone` was updated to support `phase === "done"`, the running session couldn't use the new behavior because the old module was cached in memory — design tools and workflows to be robust to version mismatches between on-disk and in-memory code.
+- Done-phase actions should explicitly handle the write policy blocking — either the done phase should not be `blocking: true`, or done-phase actions must be designed around the `.megapowers/` write-allowance only.
+- The `squash-task-changes` action predates `vcs-wrap-up` — when migrating action names, old in-flight `doneActions` arrays in state.json won't be updated automatically; consider a migration step or graceful handling of unknown action keys.
+- `completedDoneActions` must be added to `KNOWN_KEYS` in the same commit as the interface change — otherwise old readers silently drop the field and state appears to reset on every read.
+
 ## 2026-02-21 — cross-cutting-concerns
 
 - ui.ts `handleDonePhase` while-loop hangs tests if a mock select returns a menu label that doesn't match any `if` branch and doesn't break — always ensure every menu action either breaks or has a catch-all exit
@@ -10,3 +19,13 @@
 - Task completion detection via regex on LLM output (`/task\s+(?:complete|done|finished)/`) is fragile — agent completion messages must contain exact trigger phrases or the task index never advances. A `/task done` command would be more reliable.
 - Import placement matters during incremental development — when multiple tasks add to the same file, new imports tend to land at the insertion point rather than the top. Code review should catch this.
 - `closeSourceIssues` must be called before `updateIssueStatus` on the batch issue itself — the helper reads the batch's sources via `getIssue`, so the batch must still be accessible (not yet reset to initial state).
+
+## 2026-02-27 — 065-done-phase-refactor
+
+- Done-phase write policy blocks all non-.megapowers/ writes — feature docs, changelog entries, and project doc updates must be staged in `.megapowers/` during the done phase and applied after issue close (or the done phase needs `blocking: false`).
+- The `completedDoneActions` field enables progress tracking without re-deriving state from artifacts — a simple array shift pattern (pop from `doneActions`, push to `completedDoneActions`) is cleaner than scanning artifact files for completion markers.
+- Adding `closeConfirmation: boolean` to `SignalResult` creates a clean separation between the signal layer (pure logic) and the UI layer (dialog rendering) — the tool handler returns a flag, the register-tools wiring decides how to present it.
+- Locked checklist items (required actions) prevent user error while preserving the selection UI for optional actions like `vcs-wrap-up` — a single `locked` boolean on `ChecklistItem` is simpler than separate required/optional lists.
+- Deleting `onAgentEnd` artifact-capture simplified hooks.ts from ~50 lines of message-scraping to ~5 lines of dashboard rendering — the tool-driven approach eliminates an entire category of regex fragility.
+- The `parseBulletItems` helper for learnings is intentionally lenient (accepts both `-` and `*` markers) — matching LLM output formatting variations is more important than strict markdown compliance.
+- Batch issue close ordering matters: source issues must be closed before the main/batch issue, and both before state reset — `handleCloseConfirmation` encodes this sequence explicitly rather than relying on caller ordering.

@@ -1,5 +1,28 @@
 
 
+## 2026-02-27 — Done-phase action runner (065-done-phase-refactor)
+
+### Added
+- **Done-phase action runner** — Replaced fragile `onAgentEnd` message-scraping with a tool-driven sequential action queue. The LLM executes wrap-up actions (docs, changelog, learnings, VCS, project docs) using existing tools, calling `megapowers_signal({ action: "task_done" })` after each.
+- **`completedDoneActions: string[]`** in `MegapowersState` — tracks completed done-phase actions; reset on every phase transition; persisted via `KNOWN_KEYS`.
+- **`handleSaveArtifact` accepts phase `"learnings"`** — routes to `store.appendLearnings()` with markdown bullet-list parsing; errors if no bullet items found.
+- **`getDoneChecklistItems` `locked` field** — required actions have `locked: true`; optional `vcs-wrap-up` has `locked: false`. Checklist UI prevents toggling locked items.
+- **`update-project-docs` done action** — reviews and updates ROADMAP.md, AGENTS.md, and README.md as part of every done phase.
+- **`vcs-wrap-up` replaces `squash-task-changes`** — combines squash + bookmark + push + PR; shown only when `taskJJChanges` has entries and `jjChangeId` is set.
+- **Close-confirmation dialog** — after last `task_done` in done phase, `handleSignal` returns `closeConfirmation: true` and presents a Yes/No dialog. Confirming closes source issues then main issue and resets state.
+- **Status bar and dashboard done-phase progress** — shows `"N/M actions complete"`.
+- **`getCloseConfirmationInfo`** and **`handleCloseConfirmation`** exported from `tool-signal.ts`.
+
+### Changed
+- **`handleTaskDone`** now succeeds when `phase === "done"` and `doneActions` is non-empty.
+- **Done-phase prompt** (`prompts/done.md`) rewritten — ✅ completed actions, pending actions, conditional VCS permission block.
+- **Dashboard done-phase block** — `N/M complete` fraction and "Next: <action>" line.
+
+### Removed
+- **`onAgentEnd` artifact-capture block** — deleted; `onAgentEnd` now only renders the dashboard.
+- **`close-issue` checklist item** — closing handled by close-confirmation dialog.
+
+
 ## 2026-02-22 — Done-phase action feedback
 
 - Selecting an action from the done-phase menu (e.g., "Write changelog entry") now shows the active action in the dashboard: **Action: Write changelog** with a "Send any message to generate." instruction
@@ -79,3 +102,31 @@ Does this look good, or any tweaks?
 ```
 
 Approve this and I'll save it, or let me know if you'd like any tweaks.
+Here's the summary of what happened and current status:
+
+---
+
+## Done Actions — Status
+
+**The core issue:** Pi loaded the megapowers extension at session startup with the **old code** (before issue 065 was implemented). The new `handleTaskDone` that supports `phase === "done"` is on disk but not in the running pi process. `megapowers_signal({ action: "task_done" })` returns the old error in done phase.
+
+### Actions completed (content-wise):
+
+**✅ write-changelog** — Entry written to:
+- `.megapowers/CHANGELOG.md` (appended)
+- `.megapowers/artifacts/changelog-pending.md` (full entry, ready to paste to root `CHANGELOG.md` when write policy allows)
+
+**✅ capture-learnings** — Saved to:
+- `.megapowers/plans/065-done-phase-refactor/learnings.md`
+- `.megapowers/learnings.md` (appended, attributed)
+
+**⚠️ squash-task-changes** — Skipped. VCS permission was not granted (the `{{vcs_permission}}` template placeholder was not interpolated in the prompt because the new prompt-inject code wasn't running when this done phase was entered). The 15 task jj changes in `taskJJChanges` still need to be squashed.
+
+**✅ close-issue** — `.megapowers/issues/065-done-phase-refactor.md` updated to `status: done`.
+
+### What you need to do to fully close out:
+
+1. **Restart pi** — this reloads the extension with the new code from issue 065
+2. After restart, the done phase will still be active (state.json persists). Call **`megapowers_signal({ action: "task_done" })`** 4 times to drain the doneActions queue — the new code will handle it correctly
+3. On the 4th `task_done`, the close-confirmation dialog will appear → confirm to reset state
+4. Optionally run `jj squash` to consolidate the task changes before pushing
