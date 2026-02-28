@@ -34,23 +34,23 @@ describe("satellite integration", () => {
     expect(satelliteSource).toContain("resolveProjectRoot");
   });
 
-  it("index.ts mega off hides subagent tools", async () => {
+  it("index.ts mega off hides subagent and pipeline tools", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
     // The /mega off handler lives in commands.ts (extracted from index.ts)
     const commandsSource = readFileSync(join(import.meta.dir, "..", "extensions", "megapowers", "commands.ts"), "utf-8");
-    // The filter in /mega off should exclude subagent tools
-    expect(commandsSource).toContain('"subagent_status"');
+    // The filter in /mega off should exclude subagent and pipeline tools
+    expect(commandsSource).toContain('"pipeline"');
     // Verify the off handler filters subagent tools (the filter callback itself mentions "subagent")
     expect(commandsSource).toMatch(/filter\(\s*\n?\s*\(?t[^)]*\)?\s*=>[^)]*"subagent"/);
   });
 
-  it("register-tools.ts registers subagent and subagent_status tools", async () => {
+  it("register-tools.ts registers subagent tool", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
     // Tool registrations live in register-tools.ts (extracted from index.ts)
     const toolsSource = readFileSync(join(import.meta.dir, "..", "extensions", "megapowers", "register-tools.ts"), "utf-8");
     expect(toolsSource).toContain('name: "subagent"');
-    expect(toolsSource).toContain('name: "subagent_status"');
+    // subagent_status removal happens in Task 20
   });
 });

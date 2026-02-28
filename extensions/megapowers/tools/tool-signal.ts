@@ -240,27 +240,6 @@ function handleReviewApprove(cwd: string): SignalResult {
   };
 }
 
-// ---------------------------------------------------------------------------
-// phase_back
-// ---------------------------------------------------------------------------
-
-function handlePhaseBack(cwd: string, jj?: JJ): SignalResult {
-  const state = readState(cwd);
-
-  const targetByPhase: Partial<Record<Phase, Phase>> = {
-    review: "plan",
-    verify: "implement",
-    "code-review": "implement",
-  };
-
-  const target = state.phase ? targetByPhase[state.phase] : undefined;
-  if (!target) {
-    return { error: "phase_back can only be used from review, verify, or code-review." };
-  }
-
-  return handlePhaseNext(cwd, jj, target);
-}
-
 
 // ---------------------------------------------------------------------------
 // phase_next
