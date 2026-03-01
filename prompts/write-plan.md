@@ -94,10 +94,11 @@ For **prompt or skill changes**: use `[no-test]` but include a subagent verifica
 
 ## Saving
 
-When the plan is complete, save it:
+When the plan is complete, save it to `.megapowers/plans/{{issue_slug}}/plan.md`:
 ```
-megapowers_save_artifact({ phase: "plan", content: "<full plan content>" })
+write({ path: ".megapowers/plans/{{issue_slug}}/plan.md", content: "<full plan content>" })
 ```
+(Use `edit` for incremental revisions.)
 Then advance with `megapowers_signal({ action: "phase_next" })`.
 
 ## Project Learnings

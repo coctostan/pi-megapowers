@@ -246,6 +246,24 @@ describe("handleSignal", () => {
       expect(result.message).toContain("plan");
       expect(readState(tmp).phase).toBe("plan");
     });
+
+    it("versions review.md and plan.md before transitioning review → plan (AC13)", () => {
+      writeArtifact(tmp, "001-test", "plan.md", "plan v0");
+      writeArtifact(tmp, "001-test", "review.md", "review v0");
+      setState(tmp, { phase: "review", reviewApproved: true });
+
+      const result = handleSignal(tmp, "phase_back");
+      expect(result.error).toBeUndefined();
+      expect(readState(tmp).phase).toBe("plan");
+
+      const dir = join(tmp, ".megapowers", "plans", "001-test");
+      expect(readFileSync(join(dir, "plan.v1.md"), "utf-8")).toBe("plan v0");
+      expect(readFileSync(join(dir, "review.v1.md"), "utf-8")).toBe("review v0");
+
+      // originals remain
+      expect(readFileSync(join(dir, "plan.md"), "utf-8")).toBe("plan v0");
+      expect(readFileSync(join(dir, "review.md"), "utf-8")).toBe("review v0");
+    });
     it("clears reviewApproved when going back to plan (AC2)", () => {
       writeArtifact(tmp, "001-test", "plan.md", "# Plan\n");
       setState(tmp, { phase: "review", reviewApproved: true });
@@ -265,6 +283,32 @@ describe("handleSignal", () => {
       expect(result.error).toBeUndefined();
       expect(result.message).toContain("implement");
       expect(readState(tmp).phase).toBe("implement");
+    });
+
+    it("versions verify.md before transitioning verify → implement (AC14)", () => {
+      writeArtifact(tmp, "001-test", "verify.md", "verify v0");
+      setState(tmp, { phase: "verify" });
+
+      const result = handleSignal(tmp, "phase_back");
+      expect(result.error).toBeUndefined();
+      expect(readState(tmp).phase).toBe("implement");
+
+      const dir = join(tmp, ".megapowers", "plans", "001-test");
+      expect(readFileSync(join(dir, "verify.v1.md"), "utf-8")).toBe("verify v0");
+      expect(readFileSync(join(dir, "verify.md"), "utf-8")).toBe("verify v0");
+    });
+
+    it("versions code-review.md before transitioning code-review → implement (AC15)", () => {
+      writeArtifact(tmp, "001-test", "code-review.md", "cr v0");
+      setState(tmp, { phase: "code-review" });
+
+      const result = handleSignal(tmp, "phase_back");
+      expect(result.error).toBeUndefined();
+      expect(readState(tmp).phase).toBe("implement");
+
+      const dir = join(tmp, ".megapowers", "plans", "001-test");
+      expect(readFileSync(join(dir, "code-review.v1.md"), "utf-8")).toBe("cr v0");
+      expect(readFileSync(join(dir, "code-review.md"), "utf-8")).toBe("cr v0");
     });
 
     // --- Error paths: no backward transition (AC5, AC6) ---

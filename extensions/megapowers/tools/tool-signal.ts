@@ -1,4 +1,5 @@
 // extensions/megapowers/tools/tool-signal.ts
+import { join } from "node:path";
 import { readState, writeState } from "../state/state-io.js";
 import { advancePhase } from "../policy/phase-advance.js";
 import { deriveTasks } from "../state/derived.js";
@@ -6,6 +7,7 @@ import { transition, type Phase } from "../state/state-machine.js";
 import { inspectTaskChange, createTaskChange, buildTaskCompletionReport } from "../task-coordinator.js";
 import { getWorkflowConfig } from "../workflows/registry.js";
 import type { JJ } from "../jj.js";
+import { versionArtifact } from "../artifacts/version-artifact.js";
 
 export interface SignalResult {
   message?: string;
@@ -280,6 +282,19 @@ function handlePhaseBack(cwd: string, jj?: JJ): SignalResult {
   // Note: reviewApproved is reset by transition() in state-machine.ts
   // when to === "plan". No explicit intermediate write needed here.
 
+  const planDir = join(cwd, ".megapowers", "plans", state.activeIssue);
+
+  // Auto-version artifacts on backward transitions (AC13-AC16)
+  if (backwardTransition.from === "review" && backwardTransition.to === "plan") {
+    versionArtifact(planDir, "review.md");
+    versionArtifact(planDir, "plan.md");
+  }
+  if (backwardTransition.from === "verify" && backwardTransition.to === "implement") {
+    versionArtifact(planDir, "verify.md");
+  }
+  if (backwardTransition.from === "code-review" && backwardTransition.to === "implement") {
+    versionArtifact(planDir, "code-review.md");
+  }
   const result = advancePhase(cwd, backwardTransition.to, jj);
   if (!result.ok) {
     return { error: result.error };

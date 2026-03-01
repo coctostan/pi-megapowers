@@ -272,63 +272,70 @@ describe("full regression verification (Task 16)", () => {
 });
 
 describe("deriveToolInstructions", () => {
-  it("returns save_artifact + phase_next for phase with artifact (spec)", () => {
+  it("returns write + concrete artifact path + phase_next for phases with artifacts (spec) (AC5/AC7)", () => {
     const phase = featureWorkflow.phases.find(p => p.name === "spec")!;
-    const instructions = deriveToolInstructions(phase);
-    expect(instructions).toContain("megapowers_save_artifact");
-    expect(instructions).toContain('"spec"');
+    const instructions = deriveToolInstructions(phase, "001-test");
+    expect(instructions).toContain("write");
+    expect(instructions).toContain(".megapowers/plans/001-test/spec.md");
     expect(instructions).toContain("phase_next");
+    expect(instructions).not.toContain("megapowers_save_artifact");
   });
 
-  it("derives save phase name from artifact filename base, not phase name", () => {
+  it("derives artifact path from artifact filename, not phase name (diagnose → diagnosis.md)", () => {
     const phase = bugfixWorkflow.phases.find(p => p.name === "diagnose")!;
-    const instructions = deriveToolInstructions(phase);
-    expect(instructions).toContain("megapowers_save_artifact");
-    expect(instructions).toContain('"diagnosis"');
-    expect(instructions).not.toContain('"diagnose"');
+    const instructions = deriveToolInstructions(phase, "001-test");
+    expect(instructions).toContain("write");
+    expect(instructions).toContain(".megapowers/plans/001-test/diagnosis.md");
+    expect(instructions).not.toContain(".megapowers/plans/001-test/diagnose.md");
+    expect(instructions).not.toContain("megapowers_save_artifact");
   });
-
   it("returns TDD instructions for implement phase (tdd, no artifact)", () => {
     const phase = featureWorkflow.phases.find(p => p.name === "implement")!;
-    const instructions = deriveToolInstructions(phase);
+    const instructions = deriveToolInstructions(phase, "001-test");
     expect(instructions).toContain("task_done");
     expect(instructions).toContain("test");
+    expect(instructions).not.toContain("megapowers_save_artifact");
   });
-
   it("returns review_approve for review phase (needsReviewApproval)", () => {
     const phase = featureWorkflow.phases.find(p => p.name === "review")!;
-    const instructions = deriveToolInstructions(phase);
+    const instructions = deriveToolInstructions(phase, "001-test");
     expect(instructions).toContain("review_approve");
+    expect(instructions).not.toContain("megapowers_save_artifact");
   });
 
-  it("returns save_artifact + phase_next for brainstorm (has artifact, open-ended)", () => {
+  it("returns write + path + phase_next for brainstorm (has artifact, open-ended)", () => {
     const phase = featureWorkflow.phases.find(p => p.name === "brainstorm")!;
-    const instructions = deriveToolInstructions(phase);
-    expect(instructions).toContain("megapowers_save_artifact");
-    expect(instructions).toContain('"brainstorm"');
+    const instructions = deriveToolInstructions(phase, "001-test");
+    expect(instructions).toContain("write");
+    expect(instructions).toContain(".megapowers/plans/001-test/brainstorm.md");
     expect(instructions).toContain("phase_next");
+    expect(instructions).not.toContain("megapowers_save_artifact");
   });
 
-  it("returns save_artifact guidance for terminal phase (done)", () => {
+  it("returns write guidance for terminal phase (done) with no phase_next (AC6)", () => {
     const phase = featureWorkflow.phases.find(p => p.name === "done")!;
-    const instructions = deriveToolInstructions(phase, { isTerminal: true });
-    expect(instructions).toContain("megapowers_save_artifact");
+    const instructions = deriveToolInstructions(phase, "001-test", { isTerminal: true });
+    expect(instructions).toContain("write");
+    expect(instructions).toContain(".megapowers/plans/001-test/");
     expect(instructions).not.toContain("phase_next");
+    expect(instructions).not.toContain("megapowers_save_artifact");
   });
 
-  it("returns save_artifact + phase_next for reproduce phase (has artifact)", () => {
+  it("returns write + path + phase_next for reproduce phase (has artifact)", () => {
     const phase = bugfixWorkflow.phases.find(p => p.name === "reproduce")!;
-    const instructions = deriveToolInstructions(phase);
-    expect(instructions).toContain("megapowers_save_artifact");
-    expect(instructions).toContain('"reproduce"');
+    const instructions = deriveToolInstructions(phase, "001-test");
+    expect(instructions).toContain("write");
+    expect(instructions).toContain(".megapowers/plans/001-test/reproduce.md");
     expect(instructions).toContain("phase_next");
+    expect(instructions).not.toContain("megapowers_save_artifact");
   });
 
-  it("returns save_artifact + phase_next for code-review phase (artifact + tdd)", () => {
+  it("returns write + path + phase_next for code-review phase (artifact + tdd)", () => {
     const phase = featureWorkflow.phases.find(p => p.name === "code-review")!;
-    const instructions = deriveToolInstructions(phase);
-    expect(instructions).toContain("megapowers_save_artifact");
-    expect(instructions).toContain('"code-review"');
+    const instructions = deriveToolInstructions(phase, "001-test");
+    expect(instructions).toContain("write");
+    expect(instructions).toContain(".megapowers/plans/001-test/code-review.md");
     expect(instructions).toContain("phase_next");
+    expect(instructions).not.toContain("megapowers_save_artifact");
   });
 });

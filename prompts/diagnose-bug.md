@@ -101,8 +101,9 @@ Repeat until you have a confirmed root cause with evidence.
 
 ## Saving
 
-When the diagnosis is complete, save it:
+When the diagnosis is complete, save it to `.megapowers/plans/{{issue_slug}}/diagnosis.md`:
 ```
-megapowers_save_artifact({ phase: "diagnosis", content: "<full report>" })
+write({ path: ".megapowers/plans/{{issue_slug}}/diagnosis.md", content: "<full report>" })
 ```
+(Use `edit` for incremental revisions.)
 Then advance with `megapowers_signal({ action: "phase_next" })`.

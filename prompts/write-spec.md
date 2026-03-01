@@ -42,8 +42,9 @@ Anything unresolved. **This section must be empty to advance to planning.** If y
 - **Present the spec to the user for review before saving** — the spec is a contract, both parties must agree
 
 ## Saving
-When the user approves the spec, save it:
+When the user approves the spec, save it to `.megapowers/plans/{{issue_slug}}/spec.md`:
 ```
-megapowers_save_artifact({ phase: "spec", content: "<full spec content>" })
+write({ path: ".megapowers/plans/{{issue_slug}}/spec.md", content: "<full spec content>" })
 ```
+(Use `edit` for incremental revisions.)
 Then advance to the next phase with `megapowers_signal({ action: "phase_next" })`.

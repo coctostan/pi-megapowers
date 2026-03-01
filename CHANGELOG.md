@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Changed
+- **Artifact persistence: `megapowers_save_artifact` removed — use `write`/`edit` directly** — The custom tool is no longer registered. Artifacts are saved with direct `write`/`edit` calls to `.megapowers/plans/<issue-slug>/<phase>.md`. Prompt templates and the protocol doc updated accordingly. (#086)
+
+### Added
+- **`versionArtifact(planDir, filename)`** — Auto-versioning utility called on backward phase transitions. On `phase_back`, existing artifacts are copied to `<basename>.v{N}.md` before the transition executes, preserving revision history without manual intervention. (#086)
+- **`deriveToolInstructions(phase, issueSlug)`** — Generates phase-specific artifact-save instructions with the concrete file path interpolated (e.g. `.megapowers/plans/042-my-feature/spec.md`). (#086)
+
+### Removed
+- **`megapowers_save_artifact` tool** — Calling it now returns an unknown tool error. Supersedes issue #041. (#086)
+
+
 ### Added
 - **`megapowers_signal` actions: `tests_failed` / `tests_passed`** — Explicit LLM-driven TDD RED/GREEN signals replace implicit bash command sniffing. The LLM runs tests any way it likes (compound commands, piped, make targets), reads the output, and calls the appropriate signal. `tests_failed` transitions `tddTaskState` from `test-written` to `impl-allowed`; `tests_passed` is a no-op acknowledgment. Both valid in `implement` and `code-review` phases. Satellite sessions get a parallel `megapowers_signal` tool using in-memory `satelliteTddState`.
 

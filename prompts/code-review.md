@@ -92,11 +92,12 @@ ready / needs-fixes / needs-rework
 ## After Review
 
 ### If **ready**
-Save the report and advance:
+Save the report to `.megapowers/plans/{{issue_slug}}/code-review.md` and advance:
 ```
-megapowers_save_artifact({ phase: "code-review", content: "<full report>" })
+write({ path: ".megapowers/plans/{{issue_slug}}/code-review.md", content: "<full report>" })
 megapowers_signal({ action: "phase_next" })
 ```
+(Use `edit` for incremental revisions.)
 
 ### If **needs-fixes**
 Small, contained issues (naming, missing error handling, minor bugs). Fix them now:
@@ -107,6 +108,6 @@ Small, contained issues (naming, missing error handling, minor bugs). Fix them n
 
 ### If **needs-rework**
 Structural problems that can't be patched (wrong abstraction, missing component, broken architecture). Don't try to fix inline:
-1. Save the review report with detailed findings via `megapowers_save_artifact({ phase: "code-review", content: "..." })`
+1. Save the review report with detailed findings by writing `.megapowers/plans/{{issue_slug}}/code-review.md` using `write`/`edit`
 2. Call `megapowers_signal({ action: "phase_back" })` to go back to the implement phase
 3. For fundamental design issues requiring plan changes, inform the user and ask them to manually switch back to the plan phase (do not reference slash commands in this prompt).

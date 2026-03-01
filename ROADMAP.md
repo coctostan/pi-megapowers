@@ -8,28 +8,29 @@
 - **Issue triage & batching** — LLM-driven grouping of related issues
 - **State refactor** — Disk-first architecture, derived data from artifacts
 - **Subagent robustness** — jj prerequisite checks, agent optimization, phase-aware context (#060)
+- **Agent context & awareness** — Prompt quality, TDD edge cases, baseline context (#050)
+- **Generalized state machine** — WorkflowConfig-driven phases and transitions (#071)
+- **Phase transition UX** — Killed popup, streamlined transitions (#072)
+- **Subagent pipeline** — Workspace squash, structured handoff, rich UI, per-task chains (#067, #074, #075, #076)
+- **Codebase restructure** — Directory reorganization, command extraction, LLM tool exposure (#070, #043)
+- **UX foundation** — jj dialog fix, save_artifact versioning, interactive UX, feedback & visibility (#041, #042, #051, #061)
+- **Backward phase transitions** — LLM tools and slash commands for phase rollback (#069)
+- **Prompt-test task type** — TDD for prompts and skills (#068)
+- **Prompt/skill audit workflow** — New workflow type for non-code work (#062)
 
-## Current: Stability & UX
+## Current: M1 (1 remaining) + M3 + M4
 
-| Issue | Description |
-|-------|-------------|
-| #041 | save_artifact overwrite protection + user feedback |
-| #050 | Agent context & awareness — prompt quality, TDD edge cases, baseline context |
-| #051 | UX feedback & visibility — progress indicators, notifications |
-| #061 | jj mismatch dialog frozen — select widget doesn't accept input |
+| Issue | Milestone | Description |
+|-------|-----------|-------------|
+| #073 | M1 | /mp command hub — unified entry point for all commands |
+| #066 | M3 | Merge plan + review into iterative loop (absorbs #059 plan versioning) |
+| #087 | M4 | Done phase + VCS — artifact capture, squash, and push (#065 + #083) |
 
-## Next: Architecture & Features
+## Later: M5 Issue Management + M6 Init System
 
-| Issue | Description |
-|-------|-------------|
-| #043 | Extract slash commands from index.ts, expose workflow as LLM tools |
-| #058 | Issue management UX — create tool, LLM-driven creation, list improvements |
-| #062 | Prompt/skill audit workflow — new workflow shape for prompt engineering |
-
-## Later
-
-| Issue | Description |
-|-------|-------------|
-| #042 | Multi-select done menu + prompt injection visibility |
-| #052 | Project lifecycle — onboarding, roadmap updates, branching |
-| #059 | Workflow iteration — context management, plan-review versioning |
+| Issue | Milestone | Description |
+|-------|-----------|-------------|
+| #084 | M5 | Issue management — create, list, sort, archive, priority (#058 + #077) |
+| #085 | M6 | Foundation content — doc audit + greenfield templates (#081 + #082) |
+| #086 | M6 | Init engine — workflow system + doc lifecycle (#078 + #079) |
+| #080 | M6 | Clean context windows (absorbs #059 context mgmt) |

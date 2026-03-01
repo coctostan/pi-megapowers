@@ -7,7 +7,7 @@ Issue: {{issue_slug}}
 
 ## Version Control
 
-This project uses **jj** (Jujutsu). A dedicated change is created automatically per phase — you don't need to manage branches or worktrees. Artifacts are committed when you save them via `megapowers_save_artifact`.
+This project uses **jj** (Jujutsu). A dedicated change is created automatically per phase — you don't need to manage branches or worktrees. Artifacts are committed when you save them with `write`/`edit` under `.megapowers/plans/{{issue_slug}}/`.
 
 ## Instructions
 
@@ -56,10 +56,11 @@ Validate each section with the user before moving to the next.
 
 ## Saving
 
-When the design is agreed on, save the summary:
+When the design is agreed on, save the summary to `.megapowers/plans/{{issue_slug}}/brainstorm.md`:
 ```
-megapowers_save_artifact({ phase: "brainstorm", content: "<full summary>" })
+write({ path: ".megapowers/plans/{{issue_slug}}/brainstorm.md", content: "<full summary>" })
 ```
+(Use `edit` instead when revising an existing artifact.)
 Then advance to the spec phase with `megapowers_signal({ action: "phase_next" })`. The spec will convert this design into testable acceptance criteria.
 
 ## Key Principles

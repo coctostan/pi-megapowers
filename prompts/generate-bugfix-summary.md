@@ -47,7 +47,8 @@ What tests were added to prevent recurrence.
 List of files added or modified with one-line descriptions.
 ```
 
-Present the summary to the user for review. When approved, save it:
+Present the summary to the user for review. When approved, save it to `.megapowers/plans/{{issue_slug}}/bugfix-summary.md`:
 ```
-megapowers_save_artifact({ phase: "bugfix-summary", content: "<approved summary>" })
+write({ path: ".megapowers/plans/{{issue_slug}}/bugfix-summary.md", content: "<approved summary>" })
 ```
+(Use `edit` for incremental revisions.)

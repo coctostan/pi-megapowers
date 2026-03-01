@@ -43,10 +43,11 @@ Append a changelog entry to `CHANGELOG.md`. Format:
 Use `bash` to append or a write tool to update the file.
 
 ### capture-learnings
-Reflect on the implementation: what was learned, what was surprising, what to do differently. Write 3–7 bullet-point learnings. Save via:
+Reflect on the implementation: what was learned, what was surprising, what to do differently. Write 3–7 bullet-point learnings to `.megapowers/plans/{{issue_slug}}/learnings.md`:
 ```
-megapowers_save_artifact({ phase: "learnings", content: "<markdown bullet list>" })
+write({ path: ".megapowers/plans/{{issue_slug}}/learnings.md", content: "<markdown bullet list>" })
 ```
+(Use `edit` for incremental revisions.)
 
 ### squash-task-changes
 Run `jj squash --into @-` via bash to consolidate per-task jj changes into the phase change. Confirm the squash completed without error.

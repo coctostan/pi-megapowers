@@ -43,7 +43,8 @@ Testing approach, notable test cases, coverage notes.
 List of files added or modified with one-line descriptions.
 ```
 
-Present the document to the user for review. When approved, save it:
+Present the document to the user for review. When approved, save it to `.megapowers/plans/{{issue_slug}}/docs.md`:
 ```
-megapowers_save_artifact({ phase: "docs", content: "<approved document>" })
+write({ path: ".megapowers/plans/{{issue_slug}}/docs.md", content: "<approved document>" })
 ```
+(Use `edit` for incremental revisions.)

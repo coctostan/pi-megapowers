@@ -101,8 +101,9 @@ Do not silently move to diagnose if you believe the behavior is correct.
 
 ## Saving
 
-When the reproduction is documented, save it:
+When the reproduction is documented, save it to `.megapowers/plans/{{issue_slug}}/reproduce.md`:
 ```
-megapowers_save_artifact({ phase: "reproduce", content: "<full report>" })
+write({ path: ".megapowers/plans/{{issue_slug}}/reproduce.md", content: "<full report>" })
 ```
+(Use `edit` for incremental revisions.)
 Then advance with `megapowers_signal({ action: "phase_next" })`.

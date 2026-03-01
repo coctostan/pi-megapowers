@@ -11,10 +11,9 @@ Call this to signal state transitions:
 - `{ action: "tests_failed" }` — Signal that tests failed (RED in TDD cycle — unlocks production code writes)
 - `{ action: "tests_passed" }` — Signal that tests passed (GREEN in TDD cycle)
 
-### `megapowers_save_artifact`
-Call this to save phase output:
-- `{ phase: "<phase>", content: "<full content>" }` — Save artifact for the current phase
-- Valid phases: `brainstorm`, `spec`, `plan`, `reproduce`, `diagnosis`, `verify`, `code-review`, `learnings`
+### Artifact Persistence
+Save phase output by writing files directly under `.megapowers/plans/<issue-slug>/` using `write` (or `edit` for incremental updates).
+- Example: `.megapowers/plans/<issue-slug>/spec.md`
 - Always save your work before advancing to the next phase
 
 ### Version Control

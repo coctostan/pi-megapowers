@@ -37,14 +37,14 @@ describe("buildInjectedPrompt", () => {
     const result = buildInjectedPrompt(tmp);
     expect(result).not.toBeNull();
     expect(result).toContain("megapowers_signal");
-    expect(result).toContain("megapowers_save_artifact");
+    expect(result).toContain("Artifact Persistence");
   });
 
-  it("includes phase-specific tool instructions for spec phase (AC42)", () => {
+  it("includes phase-specific tool instructions for spec phase (AC19)", () => {
     setState(tmp, { phase: "spec", megaEnabled: true });
     const result = buildInjectedPrompt(tmp);
-    expect(result).toContain("megapowers_save_artifact");
-    expect(result).toContain("spec");
+    expect(result).toContain("write");
+    expect(result).toContain(".megapowers/plans/001-test/spec.md");
   });
 
   it("includes phase-specific tool instructions for implement phase (AC42)", () => {
@@ -129,7 +129,7 @@ describe("done phase — doneActions prompt injection (AC16, AC17)", () => {
     expect(result).toContain("capture-learnings");
   });
 
-  it("instructs capture-learnings to use megapowers_save_artifact with phase learnings (AC17)", () => {
+  it("instructs capture-learnings to write .megapowers/plans/001-test/learnings.md (AC17)", () => {
     setState(tmp, {
       phase: "done",
       megaEnabled: true,
@@ -137,7 +137,7 @@ describe("done phase — doneActions prompt injection (AC16, AC17)", () => {
     });
     const result = buildInjectedPrompt(tmp);
     expect(result).toContain("learnings");
-    expect(result).toContain('phase: "learnings"');
+    expect(result).toContain(".megapowers/plans/001-test/learnings.md");
   });
 
   it("instructs close-issue with explicit steps (AC17)", () => {
@@ -192,7 +192,7 @@ describe("buildInjectedPrompt — idle mode", () => {
     expect(result).not.toBeNull();
     expect(result).toContain("Megapowers Protocol");
     expect(result).toContain("megapowers_signal");
-    expect(result).toContain("megapowers_save_artifact");
+    expect(result).toContain("Artifact Persistence");
   });
 
   it("includes open issues list with id, title, milestone, and priority (AC4)", () => {

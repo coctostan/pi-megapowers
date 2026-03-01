@@ -81,8 +81,9 @@ pass / fail
 
 ## Saving
 
-When the verification report is complete, save it:
+When the verification report is complete, save it to `.megapowers/plans/{{issue_slug}}/verify.md`:
 ```
-megapowers_save_artifact({ phase: "verify", content: "<full report>" })
+write({ path: ".megapowers/plans/{{issue_slug}}/verify.md", content: "<full report>" })
 ```
+(Use `edit` for incremental revisions.)
 Then advance with `megapowers_signal({ action: "phase_next" })`.

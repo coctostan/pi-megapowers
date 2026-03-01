@@ -25,7 +25,8 @@ Write a concise changelog entry suitable for a project CHANGELOG.md. Format:
 
 Keep it to 3–5 bullets. Focus on what users or developers consuming this project will observe, not on internal implementation choices.
 
-Present the entry to the user for review. When approved, save it:
+Present the entry to the user for review. When approved, save it to `.megapowers/plans/{{issue_slug}}/changelog.md`:
 ```
-megapowers_save_artifact({ phase: "changelog", content: "<approved entry>" })
+write({ path: ".megapowers/plans/{{issue_slug}}/changelog.md", content: "<approved entry>" })
 ```
+(Use `edit` for incremental revisions.)

@@ -34,7 +34,8 @@ Focus on:
 - Write policy tests must cover both `canWrite()` pure function and `evaluateWriteOverride()` integration
 - jj workspace squash must happen before workspace forget — order matters
 
-Format your response as a markdown list. Present the learnings to the user for review. When they approve (or edit), save them:
+Format your response as a markdown list. Present the learnings to the user for review. When they approve (or edit), save them to `.megapowers/plans/{{issue_slug}}/learnings.md`:
 ```
-megapowers_save_artifact({ phase: "learnings", content: "<approved markdown list>" })
+write({ path: ".megapowers/plans/{{issue_slug}}/learnings.md", content: "<approved markdown list>" })
 ```
+(Use `edit` for incremental revisions.)

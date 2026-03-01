@@ -157,7 +157,7 @@ export function buildInjectedPrompt(cwd: string, store?: Store, _jj?: JJ): strin
     const phaseConfig = config.phases.find(p => p.name === state.phase);
     if (phaseConfig) {
       const isTerminal = config.phases[config.phases.length - 1].name === state.phase;
-      const toolInstructions = deriveToolInstructions(phaseConfig, { isTerminal });
+      const toolInstructions = deriveToolInstructions(phaseConfig, state.activeIssue, { isTerminal });
       if (toolInstructions) parts.push(toolInstructions.trim());
     }
   }

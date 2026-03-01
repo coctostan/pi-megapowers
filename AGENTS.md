@@ -17,8 +17,7 @@ Disk-first, tool-first. Every handler reads state from disk via `readState(cwd)`
 
 ## custom tools
 
-- **`megapowers_signal`** — state transitions: `task_done`, `review_approve`, `phase_next`
-- **`megapowers_save_artifact`** — persist phase artifacts to disk
+- **`megapowers_signal`** — state transitions: `task_done`, `review_approve`, `phase_next`, `phase_back`, `tests_failed`, `tests_passed`
 - **`pipeline`** — dispatch implement→verify→review pipeline for a plan task in an isolated jj workspace; supports pause/resume with guidance
 - **`subagent`** — one-shot subagent dispatch for ad-hoc tasks; squashes changes back on success
 
@@ -39,7 +38,7 @@ Disk-first, tool-first. Every handler reads state from disk via `readState(cwd)`
 
 ## tests
 
-`bun test` — 601 tests across 48 files. Each module has a corresponding `.test.ts`. Tests are pure (no pi dependency).
+`bun test` — tests across 48+ files. Each module has a corresponding `.test.ts`. Tests are pure (no pi dependency).
 
 ## known issues
 

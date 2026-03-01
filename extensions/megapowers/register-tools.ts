@@ -6,7 +6,6 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import { readState } from "./state/state-io.js";
 import { showDoneChecklist } from "./ui.js";
 import { handleSignal } from "./tools/tool-signal.js";
-import { handleSaveArtifact } from "./tools/tool-artifact.js";
 import { createBatchHandler } from "./tools/tools.js";
 import { handleOneshotTool } from "./subagent/oneshot-tool.js";
 import { PiSubagentsDispatcher } from "./subagent/pi-subagents-dispatcher.js";
@@ -52,24 +51,6 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
     },
   });
 
-  // --- Tools: megapowers_save_artifact ---
-
-  pi.registerTool({
-    name: "megapowers_save_artifact",
-    label: "Save Artifact",
-    description: "Save a phase artifact to disk. Use phase names: spec, plan, brainstorm, reproduce, diagnosis, verify, code-review.",
-    parameters: Type.Object({
-      phase: Type.String(),
-      content: Type.String(),
-    }),
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const result = handleSaveArtifact(ctx.cwd, params.phase, params.content);
-      if (result.error) {
-        return { content: [{ type: "text", text: `Error: ${result.error}` }], details: undefined };
-      }
-      return { content: [{ type: "text", text: result.message ?? "Artifact saved." }], details: undefined };
-    },
-  });
 
   // --- Tools: create_batch ---
 
