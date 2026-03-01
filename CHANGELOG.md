@@ -6,6 +6,9 @@
 - **Artifact persistence: `megapowers_save_artifact` removed — use `write`/`edit` directly** — The custom tool is no longer registered. Artifacts are saved with direct `write`/`edit` calls to `.megapowers/plans/<issue-slug>/<phase>.md`. Prompt templates and the protocol doc updated accordingly. (#086)
 
 ### Added
+- **`parseFrontmatterEntity<T>` / `serializeEntity`** — Generic frontmatter parser + serializer backed by gray-matter + zod. Returns discriminated `ParseResult<T>` with typed `ParseError` (`yaml` | `missing_frontmatter` | `validation`) and per-field error paths. (#066)
+- **Plan schemas** — `PlanTaskSchema`, `PlanSummarySchema`, `PlanReviewSchema` with inferred TypeScript types and exported enum helpers. Foundation for structured plan-review iteration. (#066)
+- **Plan store** — `writePlanTask`, `readPlanTask`, `listPlanTasks`, `writePlanSummary`, `readPlanSummary`, `writePlanReview`, `readPlanReview` — file I/O for plan entities under `.megapowers/plans/{slug}/`. Creates directories automatically; reads return `null`/empty on missing files; `listPlanTasks` detects duplicate IDs. (#066)
 - **`versionArtifact(planDir, filename)`** — Auto-versioning utility called on backward phase transitions. On `phase_back`, existing artifacts are copied to `<basename>.v{N}.md` before the transition executes, preserving revision history without manual intervention. (#086)
 - **`deriveToolInstructions(phase, issueSlug)`** — Generates phase-specific artifact-save instructions with the concrete file path interpolated (e.g. `.megapowers/plans/042-my-feature/spec.md`). (#086)
 
