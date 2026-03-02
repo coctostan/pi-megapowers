@@ -19,21 +19,17 @@ import type { PlanTask } from "../extensions/megapowers/state/plan-schemas.js";
 
 describe("Issue #088: phase_next bypasses plan review gate", () => {
   let tmp: string;
-
   beforeEach(() => {
     tmp = mkdtempSync(join(tmpdir(), "repro-088-"));
   });
-
   afterEach(() => {
     rmSync(tmp, { recursive: true, force: true });
   });
-
   function writeArtifact(issue: string, filename: string, content: string) {
     const dir = join(tmp, ".megapowers", "plans", issue);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, filename), content);
   }
-
   function setState(overrides: Partial<MegapowersState>) {
     writeState(tmp, {
       ...createInitialState(),
@@ -43,28 +39,21 @@ describe("Issue #088: phase_next bypasses plan review gate", () => {
     });
   }
 
-  it("BUG: phase_next advances plan→implement even when planMode is 'draft' (no review happened)", () => {
-    // State: we're in plan phase, planMode is "draft" (review hasn't happened yet)
+  it("phase_next rejects plan→implement when planMode is 'draft' (no review happened)", () => {
     setState({
       phase: "plan",
       planMode: "draft",
       planIteration: 1,
       reviewApproved: false,
     });
-    // plan.md exists (the only gate currently checked)
     writeArtifact("001-test", "plan.md", "### Task 1: Do something\n");
 
     const result = advancePhase(tmp);
 
-    // BUG: This PASSES — plan→implement succeeds without review
-    // EXPECTED: This should FAIL because planMode is still "draft"
-    // If the bug is fixed, result.ok should be false
-    expect(result.ok).toBe(true); // <-- This documents the bug: it should be false
-    expect(result.newPhase).toBe("implement");
+    expect(result.ok).toBe(false);
   });
 
-  it("BUG: phase_next advances plan→implement even when planMode is 'revise' (after revise, before re-review)", () => {
-    // State: revise cycle — review happened once, sent back for revisions
+  it("phase_next rejects plan→implement when planMode is 'revise' (after revise, before re-review)", () => {
     setState({
       phase: "plan",
       planMode: "revise",
@@ -75,12 +64,10 @@ describe("Issue #088: phase_next bypasses plan review gate", () => {
 
     const result = advancePhase(tmp);
 
-    // BUG: This PASSES — skips the second review entirely
-    expect(result.ok).toBe(true); // <-- Should be false
-    expect(result.newPhase).toBe("implement");
+    expect(result.ok).toBe(false);
   });
 
-  it("BUG: gate check for plan→implement only checks requireArtifact, not review approval", () => {
+  it("gate check for plan→implement blocks when planMode is draft", () => {
     const store = createStore(tmp);
     const state: MegapowersState = {
       ...createInitialState(),
@@ -93,11 +80,24 @@ describe("Issue #088: phase_next bypasses plan review gate", () => {
     };
     store.ensurePlanDir("001-test");
     store.writePlanFile("001-test", "plan.md", "### Task 1: Do something\n");
-
     const result = checkGate(state, "implement", store, tmp);
 
-    // BUG: Gate passes because it only checks requireArtifact(plan.md)
-    expect(result.pass).toBe(true); // <-- Should be false
+    expect(result.pass).toBe(false);
+  });
+
+  it("phase_next allows plan→implement when planMode is null (review completed)", () => {
+    setState({
+      phase: "plan",
+      planMode: null,
+      planIteration: 1,
+      reviewApproved: false,
+    });
+    writeArtifact("001-test", "plan.md", "### Task 1: Do something\n");
+
+    const result = advancePhase(tmp);
+
+    expect(result.ok).toBe(true);
+    expect(result.newPhase).toBe("implement");
   });
 });
 

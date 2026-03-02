@@ -19,6 +19,10 @@ export interface RequireReviewApprovedGate {
   type: "requireReviewApproved";
 }
 
+export interface RequirePlanApprovedGate {
+  type: "requirePlanApproved";
+}
+
 export interface AllTasksCompleteGate {
   type: "allTasksComplete";
 }
@@ -36,6 +40,7 @@ export type GateConfig =
   | RequireArtifactGate
   | NoOpenQuestionsGate
   | RequireReviewApprovedGate
+  | RequirePlanApprovedGate
   | AllTasksCompleteGate
   | AlwaysPassGate
   | CustomGate;

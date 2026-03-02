@@ -32,10 +32,10 @@ describe("feature workflow config", () => {
   });
 
 
-  it("has plan → implement transition with requireArtifact gate", () => {
+  it("has plan → implement transition with requireArtifact + requirePlanApproved gates", () => {
     const t = featureWorkflow.transitions.find(t => t.from === "plan" && t.to === "implement");
     expect(t).toBeDefined();
-    expect(t!.gates).toEqual([{ type: "requireArtifact", file: "plan.md" }]);
+    expect(t!.gates).toEqual([{ type: "requireArtifact", file: "plan.md" }, { type: "requirePlanApproved" }]);
   });
 
   it("has no transitions referencing review phase", () => {
