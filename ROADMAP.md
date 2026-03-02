@@ -3,7 +3,8 @@
 ## Completed
 
 - **M0: Restructure** — Directory reorganization (#070), slash command extraction (#043)
-- **Core platform** — State machine (#071), jj integration, TUI, feature + bugfix workflows
+- **Core platform** — State machine (#071), TUI, feature + bugfix workflows
+- **jj removal** — Replaced jj (Jujutsu) with git worktrees; resolved #061 (dialog frozen), #083 (jj VCS layer) (#091)
 - **TDD enforcement** — Blocks production writes until tests written and failing
 - **Phase transition UX** — Killed popup (#072), backward transitions (#069)
 - **Subagent pipeline** — Workspace squash (#067), per-task implement→verify→review chain (#076)
@@ -16,7 +17,6 @@
 
 | Issue | Pri | Description |
 |-------|-----|-------------|
-| #061  | P1  | jj change mismatch dialog frozen — select widget doesn't accept input |
 | #051  | P2  | UX feedback, visibility & transparency (absorbs #042) |
 | #073  | P2  | /mp command hub & issue management UX (absorbs #058) |
 
@@ -26,7 +26,7 @@
 |-------|-----------|-------------|
 | #074  | M2  | Subagent structured handoff & rich UI (absorbs #075) |
 | #059  | M3  | Workflow iteration quality — context management and plan-review versioning |
-| #083  | M4  | Comprehensive VCS integration — git + jj (absorbs #064) |
+| #083  | M4  | Comprehensive VCS integration — git branching & PR workflow (absorbs #064) |
 
 ## Later: M5–M6
 
