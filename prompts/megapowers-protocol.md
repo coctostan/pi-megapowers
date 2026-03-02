@@ -3,25 +3,38 @@
 You have access to these megapowers tools:
 
 ### `megapowers_signal`
-Call this to signal state transitions:
-- `{ action: "phase_next" }` — Advance to the next workflow phase
-- `{ action: "phase_back" }` — Go back one phase using workflow-defined backward transitions (verify→implement, code-review→implement)
-- `{ action: "task_done" }` — Mark the current implementation task as complete
-- `{ action: "review_approve" }` — ⚠️ **Deprecated.** Plan review is now handled by the `megapowers_plan_review` tool within the plan phase.
-- `{ action: "tests_failed" }` — Signal that tests failed (RED in TDD cycle — unlocks production code writes)
-- `{ action: "tests_passed" }` — Signal that tests passed (GREEN in TDD cycle)
+Call this for workflow/TDD signals:
+- `{ action: "phase_next" }` — Advance to the next workflow phase (when allowed by gates)
+- `{ action: "phase_back" }` — Move back via workflow-defined backward transitions (e.g. verify→implement, code-review→implement)
+- `{ action: "task_done" }` — Mark the current implementation task complete
+- `{ action: "tests_failed" }` — Record RED in TDD (unlocks production writes)
+- `{ action: "tests_passed" }` — Record GREEN in TDD
+- `{ action: "plan_draft_done" }` — Submit plan draft/revision for review (plan mode: draft/revise → review)
+
+Do **not** use `{ action: "review_approve" }` (deprecated).
+
+### `megapowers_plan_task`
+Use this during plan **draft/revise** mode to create/update structured plan tasks.
+
+### `megapowers_plan_review`
+Use this during plan **review** mode to submit verdict:
+- `{ verdict: "approve", ... }` — approves plan and advances to implement
+- `{ verdict: "revise", ... }` — requests revisions and returns to revise mode
+
+Do not bypass plan review by forcing `phase_next` from plan.
 
 ### Artifact Persistence
 Save phase output by writing files directly under `.megapowers/plans/<issue-slug>/` using `write` (or `edit` for incremental updates).
 - Example: `.megapowers/plans/<issue-slug>/spec.md`
-- Always save your work before advancing to the next phase
+- Always save work before advancing phases
 
 ### Version Control
-Version control is managed automatically via jj. **Do not run jj or git commands.** Phase changes, bookmarks, and commits are handled by the system.
+Version control is managed automatically via jj. **Do not run jj or git commands unless the active phase prompt explicitly asks for VCS evidence or a selected done action requires it.**
 
 ### Error Handling
 When a megapowers tool returns an error:
 1. READ the error message — it tells you exactly what's wrong
 2. FIX the issue described
 3. RETRY the tool call
+
 Do NOT work around errors by editing state files directly. Do NOT edit `.megapowers/state.json`.

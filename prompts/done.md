@@ -28,19 +28,19 @@ Execute the following wrap-up actions in order:
 For each action listed above:
 
 ### generate-docs
-Generate a feature document summarizing what was built and why. Write it to `docs/features/{{issue_slug}}.md` (create the directory if needed). Use the spec, plan, verify artifacts and inspect actual changed files via `jj diff` or `git diff` to get the real file list.
+Generate a feature document summarizing what was built and why. Use the spec, plan, and verify artifacts, and inspect actual changed files via `jj diff` or `git diff` when needed. Present the full document in your response; the system persists it to `.megapowers/docs/{{issue_slug}}.md`.
 
 ### generate-bugfix-summary
-Generate a bugfix summary document. Write it to `docs/bugfixes/{{issue_slug}}.md`. Include: root cause, fix approach, files changed, how to verify the fix.
+Generate a bugfix summary document including root cause, fix approach, files changed, and how to verify the fix. Present the full summary in your response; the system persists it to `.megapowers/docs/{{issue_slug}}.md`.
 
 ### write-changelog
-Append a changelog entry to `CHANGELOG.md`. Format:
+Generate a changelog entry intended for `.megapowers/CHANGELOG.md`. Format:
 ```
 ## [Unreleased]
 ### <Added|Fixed|Changed>
 - <description> (#<issue-number>)
 ```
-Use `bash` to append or a write tool to update the file.
+Return only the entry block; the system appends it automatically.
 
 ### capture-learnings
 Reflect on the implementation: what was learned, what was surprising, what to do differently. Write 3–7 bullet-point learnings to `.megapowers/plans/{{issue_slug}}/learnings.md`:

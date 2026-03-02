@@ -66,9 +66,9 @@ No issues.
 List any acceptance criteria not covered by any task.
 
 ### Verdict
-- **pass** — plan is ready for implementation
+- **approve** — plan is ready for implementation
 - **revise** — specific tasks need adjustment (list what and why above)
-- **rethink** — fundamental issue (wrong approach, missing acceptance criteria)
+- **rethink** — fundamental issue (wrong approach, missing acceptance criteria). Submit this as `verdict: "revise"` with high-level corrective guidance.
 
 ## Project Conventions
 Check `AGENTS.md` for the project's language, test framework, and test runner. If not documented there, infer from the codebase. Verify that tasks use the correct file extensions, test locations, and run commands for this project.
