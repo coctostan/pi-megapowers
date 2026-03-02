@@ -19,3 +19,8 @@ megapowers_plan_task({ id: N, depends_on: [1, 2], files_to_modify: [...] })
 
 **For body changes** (implementation details, test code):
 Use `read` + `edit` to make surgical changes to existing task files.
+
+## When Done
+
+After all revisions are complete, call `megapowers_signal({ action: "plan_draft_done" })` to resubmit for review.
+Do not use direct phase-advance actions here — the plan must pass review before advancing to implement.
