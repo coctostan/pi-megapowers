@@ -25,6 +25,12 @@ export function evaluateGate(
       }
       return { pass: true };
     }
+    case "requirePlanApproved": {
+      if (state.planMode !== null) {
+        return { pass: false, message: `Plan review not complete (planMode: ${state.planMode}). Call plan_draft_done to submit for review.` };
+      }
+      return { pass: true };
+    }
     case "noOpenQuestions": {
       if (!state.activeIssue) return { pass: true };
       const content = store.readPlanFile(state.activeIssue, gate.file);

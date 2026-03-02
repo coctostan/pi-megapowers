@@ -119,3 +119,4 @@ Both actions complete. Now **close-issue** — reporting the full list of comple
 **Issue `087-close-issue-does-not-clear-active-issue` is ready to close.**
 
 You can run `/issue close` to finalize, or select a new issue to continue.
+Yes — `.megapowers/docs/090-plan-review-bypass-and-task-derivation-f.md` exists and contains the full verification report summary. It's the 14th entry in that directory.

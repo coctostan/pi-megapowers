@@ -14,7 +14,7 @@ export const bugfixWorkflow: WorkflowConfig = {
   transitions: [
     { from: "reproduce", to: "diagnose", gates: [{ type: "requireArtifact", file: "reproduce.md" }] },
     { from: "diagnose", to: "plan", gates: [{ type: "requireArtifact", file: "diagnosis.md" }] },
-    { from: "plan", to: "implement", gates: [{ type: "requireArtifact", file: "plan.md" }] },
+    { from: "plan", to: "implement", gates: [{ type: "requireArtifact", file: "plan.md" }, { type: "requirePlanApproved" }] },
     { from: "implement", to: "verify", gates: [{ type: "allTasksComplete" }] },
     { from: "verify", to: "done", gates: [{ type: "alwaysPass" }] },
     { from: "verify", to: "implement", gates: [], backward: true },
