@@ -61,10 +61,10 @@ describe("spec → plan", () => {
   });
 });
 
-describe("plan → review / implement", () => {
+describe("plan → implement", () => {
   it("fails when plan.md does not exist", () => {
     const store = createStore(tmp);
-    const result = checkGate(makeState({ phase: "plan" }), "review", store);
+    const result = checkGate(makeState({ phase: "plan" }), "implement", store);
     expect(result.pass).toBe(false);
     expect(result.reason).toContain("plan.md");
   });
@@ -78,15 +78,8 @@ describe("plan → review / implement", () => {
   });
 });
 
-describe("review → implement", () => {
-  it("fails when review not approved", () => {
-    const store = createStore(tmp);
-    const result = checkGate(makeState({ phase: "review", reviewApproved: false }), "implement", store);
-    expect(result.pass).toBe(false);
-    expect(result.reason).toContain("approved");
-  });
-
-  it("passes when review approved", () => {
+describe("review phase compatibility", () => {
+  it("falls back to allow-by-default when no transition is defined", () => {
     const store = createStore(tmp);
     const result = checkGate(makeState({ phase: "review", reviewApproved: true }), "implement", store);
     expect(result.pass).toBe(true);
@@ -182,7 +175,7 @@ describe("no active phase or issue", () => {
 });
 
 describe("backward transitions pass without gates", () => {
-  it("review → plan always passes", () => {
+  it("review → plan falls back to allow-by-default when no transition is defined", () => {
     const store = createStore(tmp);
     const result = checkGate(makeState({ phase: "review" }), "plan", store);
     expect(result.pass).toBe(true);

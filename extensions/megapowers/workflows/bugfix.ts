@@ -7,7 +7,6 @@ export const bugfixWorkflow: WorkflowConfig = {
     { name: "reproduce", artifact: "reproduce.md", openEnded: true, promptTemplate: "reproduce-bug.md", guidance: "Send a message to reproduce the bug." },
     { name: "diagnose", artifact: "diagnosis.md", openEnded: true, promptTemplate: "diagnose-bug.md", guidance: "Send a message to diagnose the root cause." },
     { name: "plan", artifact: "plan.md", blocking: true, promptTemplate: "write-plan.md", guidance: "Send a message to generate the plan." },
-    { name: "review", needsReviewApproval: true, blocking: true, promptTemplate: "review-plan.md", guidance: "Send a message to review the plan." },
     { name: "implement", tdd: true, promptTemplate: "implement-task.md" },
     { name: "verify", artifact: "verify.md", blocking: true, promptTemplate: "verify.md", guidance: "Send a message to verify the implementation." },
     { name: "done", blocking: true },
@@ -15,10 +14,7 @@ export const bugfixWorkflow: WorkflowConfig = {
   transitions: [
     { from: "reproduce", to: "diagnose", gates: [{ type: "requireArtifact", file: "reproduce.md" }] },
     { from: "diagnose", to: "plan", gates: [{ type: "requireArtifact", file: "diagnosis.md" }] },
-    { from: "plan", to: "review", gates: [{ type: "requireArtifact", file: "plan.md" }] },
     { from: "plan", to: "implement", gates: [{ type: "requireArtifact", file: "plan.md" }] },
-    { from: "review", to: "implement", gates: [{ type: "requireReviewApproved" }] },
-    { from: "review", to: "plan", gates: [], backward: true },
     { from: "implement", to: "verify", gates: [{ type: "allTasksComplete" }] },
     { from: "verify", to: "done", gates: [{ type: "alwaysPass" }] },
     { from: "verify", to: "implement", gates: [], backward: true },

@@ -52,8 +52,8 @@ describe("advancePhase", () => {
     expect(result.error).toContain("spec.md");
   });
 
-  it("advances to implement and sets currentTaskIndex to 0 when no tasks completed", () => {
-    setState({ phase: "review", reviewApproved: true });
+  it("advances plan→implement and sets currentTaskIndex to 0 when no tasks completed", () => {
+    setState({ phase: "plan" });
     writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n\n### Task 3: C\n");
     const result = advancePhase(tmp);
     expect(result.ok).toBe(true);
@@ -62,7 +62,7 @@ describe("advancePhase", () => {
   });
 
   it("sets currentTaskIndex to first incomplete when some tasks done", () => {
-    setState({ phase: "review", reviewApproved: true, completedTasks: [1] });
+    setState({ phase: "plan", completedTasks: [1] });
     writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n\n### Task 3: C\n");
     const result = advancePhase(tmp);
     expect(result.ok).toBe(true);
@@ -71,7 +71,7 @@ describe("advancePhase", () => {
   });
 
   it("sets currentTaskIndex to first incomplete when middle task is done", () => {
-    setState({ phase: "review", reviewApproved: true, completedTasks: [2] });
+    setState({ phase: "plan", completedTasks: [2] });
     writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n\n### Task 3: C\n");
     const result = advancePhase(tmp);
     expect(result.ok).toBe(true);
@@ -80,7 +80,7 @@ describe("advancePhase", () => {
   });
 
   it("sets currentTaskIndex to first incomplete when first two tasks done", () => {
-    setState({ phase: "review", reviewApproved: true, completedTasks: [1, 2] });
+    setState({ phase: "plan", completedTasks: [1, 2] });
     writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n\n### Task 3: C\n");
     const result = advancePhase(tmp);
     expect(result.ok).toBe(true);
@@ -88,9 +88,10 @@ describe("advancePhase", () => {
     expect(readState(tmp).currentTaskIndex).toBe(2);
   });
 
-  it("resets reviewApproved when advancing to plan (backward)", () => {
-    setState({ phase: "review", reviewApproved: true });
-    const result = advancePhase(tmp, "plan");
+  it("resets reviewApproved when advancing spec→plan", () => {
+    setState({ phase: "spec", reviewApproved: true });
+    writeArtifact("001-test", "spec.md", "# Spec\n\n## Acceptance Criteria\n1. Works\n\n## Open Questions\nNone\n");
+    const result = advancePhase(tmp);
     expect(result.ok).toBe(true);
     expect(readState(tmp).reviewApproved).toBe(false);
   });
@@ -98,9 +99,9 @@ describe("advancePhase", () => {
   it("advances to specific target when provided", () => {
     setState({ phase: "plan" });
     writeArtifact("001-test", "plan.md", "# Plan\n");
-    const result = advancePhase(tmp, "review");
+    const result = advancePhase(tmp, "implement");
     expect(result.ok).toBe(true);
-    expect(result.newPhase).toBe("review");
+    expect(result.newPhase).toBe("implement");
   });
 
   it("rejects when no active issue", () => {
@@ -160,8 +161,8 @@ describe("advancePhase", () => {
       expect(result.newPhase).toBe("done");
     });
 
-    it("from review, default target is implement (skips backward plan)", () => {
-      setState({ phase: "review", reviewApproved: true });
+    it("from plan, default target is implement", () => {
+      setState({ phase: "plan" });
       writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n");
       const result = advancePhase(tmp);
       expect(result.ok).toBe(true);
@@ -191,11 +192,11 @@ describe("advancePhase", () => {
       expect(result.error).toContain("spec.md");
     });
 
-    it("review → implement gate still rejects without reviewApproved", () => {
-      setState({ phase: "review", reviewApproved: false });
+    it("plan → implement gate still rejects without plan.md", () => {
+      setState({ phase: "plan" });
       const result = advancePhase(tmp);
       expect(result.ok).toBe(false);
-      expect(result.error).toContain("review");
+      expect(result.error).toContain("plan.md");
     });
   });
 
@@ -219,7 +220,7 @@ describe("advancePhase", () => {
     }
 
     it("returns ok when jj is provided and advancing to implement (AC19)", () => {
-      setState({ phase: "review", reviewApproved: true });
+      setState({ phase: "plan" });
       writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n");
       const jj = mockJJ();
       const result = advancePhase(tmp, undefined, jj);
@@ -241,7 +242,7 @@ describe("advancePhase", () => {
     });
 
     it("does not fail when jj operations throw (non-fatal)", () => {
-      setState({ phase: "review", reviewApproved: true });
+      setState({ phase: "plan" });
       writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n");
       const jj: JJ = {
         ...mockJJ(),
@@ -253,7 +254,7 @@ describe("advancePhase", () => {
     });
 
     it("is a no-op when not a jj repo", () => {
-      setState({ phase: "review", reviewApproved: true });
+      setState({ phase: "plan" });
       writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n");
       const jj = mockJJ({ isJJ: false });
       const result = advancePhase(tmp, undefined, jj);

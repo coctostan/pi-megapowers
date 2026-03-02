@@ -1,6 +1,6 @@
 You are reviewing code quality. Verification already confirmed the feature works — now evaluate whether the code is good.
 
-> **Workflow:** brainstorm → spec → plan → review → implement → verify → **code-review** → done
+> **Workflow:** brainstorm → spec → plan → implement → verify → **code-review** → done
 
 ## Context
 Issue: {{issue_slug}}

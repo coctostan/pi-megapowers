@@ -10,7 +10,7 @@ const STATE_FILE = "state.json";
 /** Keys allowed in MegapowersState — everything else is stripped on read. */
 const KNOWN_KEYS: ReadonlySet<string> = new Set([
   "version", "activeIssue", "workflow", "phase", "phaseHistory",
-  "reviewApproved", "currentTaskIndex", "completedTasks",
+  "reviewApproved", "planMode", "planIteration", "currentTaskIndex", "completedTasks",
   "tddTaskState", "taskJJChanges", "jjChangeId", "doneActions", "megaEnabled",
 ]);
 

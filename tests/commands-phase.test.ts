@@ -44,13 +44,12 @@ describe("handlePhaseCommand with target", () => {
     expect(notices.some(n => n.includes("Phase advanced"))).toBe(true);
   });
 
-  it("/phase plan transitions review → plan", async () => {
-    seed(tmp, "review");
+  it("/phase implement transitions plan → implement", async () => {
+    seed(tmp, "plan");
     const notices: string[] = [];
     const ctx = { cwd: tmp, hasUI: true, ui: { notify: (m: string) => notices.push(m) } };
-
-    await handlePhaseCommand("plan", ctx, makeDeps());
-    expect(readState(tmp).phase).toBe("plan");
+    await handlePhaseCommand("implement", ctx, makeDeps());
+    expect(readState(tmp).phase).toBe("implement");
   });
 
   it("/phase with no arg shows status (existing behavior preserved)", async () => {
@@ -63,12 +62,9 @@ describe("handlePhaseCommand with target", () => {
   });
 
   it("/phase next still works (existing behavior preserved)", async () => {
-    seed(tmp, "review");
-    // review→implement requires reviewApproved
-    writeState(tmp, { ...readState(tmp), reviewApproved: true });
+    seed(tmp, "plan");
     const notices: string[] = [];
     const ctx = { cwd: tmp, hasUI: true, ui: { notify: (m: string) => notices.push(m) } };
-
     await handlePhaseCommand("next", ctx, makeDeps());
     expect(readState(tmp).phase).toBe("implement");
   });

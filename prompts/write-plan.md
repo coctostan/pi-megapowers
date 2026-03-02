@@ -1,6 +1,6 @@
 You are writing a step-by-step implementation plan from a spec. Each task maps 1:1 to a test. A developer with zero context about this codebase should be able to execute any task from this plan alone.
 
-> **Workflow:** brainstorm → spec → **plan** → review → implement → verify → code-review → done
+> **Workflow:** brainstorm → spec → **plan** → implement → verify → code-review → done
 
 ## Context
 Issue: {{issue_slug}}
@@ -92,14 +92,21 @@ For **prompt or skill changes**: use `[no-test]` but include a subagent verifica
 - **YAGNI** — no tasks for speculative features
 - **DRY** — extract shared code into utilities, don't duplicate
 
-## Saving
+## Saving Tasks
+For each task, call the `megapowers_plan_task` tool with structured parameters:
 
-When the plan is complete, save it to `.megapowers/plans/{{issue_slug}}/plan.md`:
 ```
-write({ path: ".megapowers/plans/{{issue_slug}}/plan.md", content: "<full plan content>" })
+megapowers_plan_task({
+  id: 1,
+  title: "Task title",
+  description: "Full task body — TDD steps, code blocks, implementation details (markdown)",
+  depends_on: [2, 3],
+  no_test: false,
+  files_to_modify: ["path/to/existing.ts"],
+  files_to_create: ["path/to/new.ts"]
+})
 ```
-(Use `edit` for incremental revisions.)
-Then advance with `megapowers_signal({ action: "phase_next" })`.
+After all tasks are saved, call `megapowers_signal({ action: "plan_draft_done" })` to submit for review.
 
 ## Project Learnings
 {{learnings}}

@@ -1,6 +1,6 @@
 You are reproducing a bug. Your job is to confirm the bug exists, understand when it triggers, and document it precisely. Do NOT diagnose or fix — just reproduce.
 
-> **Workflow:** **reproduce** → diagnose → plan → review → implement → verify → done
+> **Workflow:** **reproduce** → diagnose → plan → implement → verify → done
 
 ## Context
 Issue: {{issue_slug}}

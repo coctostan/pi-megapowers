@@ -22,6 +22,14 @@ function getAssistantText(message: AssistantMessage): string {
 
 // --- Hook handlers ---
 
+export async function onContext(_event: any, ctx: any, _deps: Deps): Promise<any> {
+  const state = readState(ctx.cwd);
+  if (!state.megaEnabled) return;
+  const sessionContext = ctx.sessionManager.buildSessionContext();
+  return { messages: sessionContext.messages };
+}
+
+
 export async function onSessionStart(_event: any, ctx: any, deps: Deps): Promise<void> {
   const { store, jj, ui, pi } = deps;
 
@@ -87,7 +95,7 @@ export async function onToolCall(event: any, ctx: any, _deps: Deps): Promise<any
   const filePath: string | undefined = (event.input as any)?.path;
   if (!filePath) return;
 
-  const decision = evaluateWriteOverride(ctx.cwd, filePath);
+  const decision = evaluateWriteOverride(ctx.cwd, filePath, toolName as "write" | "edit");
   if (!decision.allowed) {
     return { block: true, reason: decision.reason };
   }
@@ -99,7 +107,7 @@ export async function onToolResult(event: any, ctx: any, _deps: Deps): Promise<v
   if ((toolName === "write" || toolName === "edit") && !event.isError) {
     const filePath: string | undefined = (event.input as any)?.path;
     if (filePath) {
-      const decision = evaluateWriteOverride(ctx.cwd, filePath);
+      const decision = evaluateWriteOverride(ctx.cwd, filePath, toolName as "write" | "edit");
       if (decision.updateTddState) {
         recordTestFileWritten(ctx.cwd);
       }

@@ -8,7 +8,7 @@ import {
   handleTddCommand, handleTaskCommand, handleReviewCommand,
   type RuntimeDeps,
 } from "./commands.js";
-import { onSessionStart, onBeforeAgentStart, onToolCall, onToolResult, onAgentEnd } from "./hooks.js";
+import { onContext, onSessionStart, onBeforeAgentStart, onToolCall, onToolResult, onAgentEnd } from "./hooks.js";
 
 // --- Extension ---
 
@@ -31,6 +31,8 @@ export default function megapowers(pi: ExtensionAPI): void {
 
   pi.on("session_start", async (event, ctx) => onSessionStart(event, ctx, ensureDeps(runtimeDeps, pi, ctx.cwd)));
   pi.on("before_agent_start", async (event, ctx) => onBeforeAgentStart(event, ctx, ensureDeps(runtimeDeps, pi, ctx.cwd)));
+  pi.on("context", async (event, ctx) => onContext(event, ctx, ensureDeps(runtimeDeps, pi, ctx.cwd)));
+
   pi.on("tool_call", async (event, ctx) => onToolCall(event, ctx, ensureDeps(runtimeDeps, pi, ctx.cwd)));
   pi.on("tool_result", async (event, ctx) => onToolResult(event, ctx, ensureDeps(runtimeDeps, pi, ctx.cwd)));
   pi.on("agent_end", async (event, ctx) => onAgentEnd(event, ctx, ensureDeps(runtimeDeps, pi, ctx.cwd)));

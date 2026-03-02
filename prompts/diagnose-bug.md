@@ -1,6 +1,6 @@
 You are diagnosing a bug. The reproduction is done — now find the root cause. Do NOT fix the bug yet. Just diagnose.
 
-> **Workflow:** reproduce → **diagnose** → plan → review → implement → verify → done
+> **Workflow:** reproduce → **diagnose** → plan → implement → verify → done
 
 ## Context
 Issue: {{issue_slug}}

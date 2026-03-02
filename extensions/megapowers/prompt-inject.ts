@@ -134,8 +134,20 @@ export function buildInjectedPrompt(cwd: string, store?: Store, _jj?: JJ): strin
     if (!vars.files_changed) vars.files_changed = "";
   }
 
-  // Phase prompt template (skip done phase unless doneActions is set)
-  if (state.phase !== "done") {
+  // Phase prompt template (plan-mode aware; skip done phase unless doneActions is set)
+  if (state.phase === "plan" && state.planMode) {
+    const PLAN_MODE_TEMPLATES: Record<"draft" | "review" | "revise", string> = {
+      draft: "write-plan.md",
+      review: "review-plan.md",
+      revise: "revise-plan.md",
+    };
+    const templateName = PLAN_MODE_TEMPLATES[state.planMode];
+    const template = loadPromptFile(templateName);
+    if (template) {
+      const phasePrompt = interpolatePrompt(template, vars);
+      if (phasePrompt) parts.push(phasePrompt);
+    }
+  } else if (state.phase !== "done") {
     const template = getPhasePromptTemplate(state.phase);
     if (template) {
       const phasePrompt = interpolatePrompt(template, vars);

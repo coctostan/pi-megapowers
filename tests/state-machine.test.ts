@@ -6,6 +6,7 @@ import {
   canTransition,
   transition,
   OPEN_ENDED_PHASES,
+  MAX_PLAN_ITERATIONS,
   type MegapowersState,
   type Phase,
   type PlanTask,
@@ -28,6 +29,32 @@ describe("createInitialState", () => {
   });
 });
 
+describe("createInitialState — planMode and planIteration", () => {
+  it("returns planMode: null", () => {
+    const state = createInitialState();
+    expect(state.planMode).toBeNull();
+  });
+
+  it("returns planIteration: 0", () => {
+    const state = createInitialState();
+    expect(state.planIteration).toBe(0);
+  });
+});
+
+describe("MAX_PLAN_ITERATIONS", () => {
+  it("is exported and equals 4", () => {
+    expect(MAX_PLAN_ITERATIONS).toBe(4);
+  });
+});
+
+describe("Phase type — backward compat", () => {
+  it("'review' is still a valid Phase value for backward compat", () => {
+    const phase: Phase = "review";
+    expect(phase).toBe("review");
+  });
+});
+
+
 describe("getValidTransitions — feature mode", () => {
   it("brainstorm can go to spec", () => {
     const ts = getValidTransitions("feature", "brainstorm");
@@ -39,17 +66,12 @@ describe("getValidTransitions — feature mode", () => {
     expect(ts).toEqual(["plan"]);
   });
 
-  it("plan can go to review or implement", () => {
+  it("plan can go directly to implement", () => {
     const ts = getValidTransitions("feature", "plan");
-    expect(ts).toContain("review");
+    expect(ts).toEqual(["implement"]);
     expect(ts).toContain("implement");
   });
 
-  it("review can go to implement or plan (backward)", () => {
-    const ts = getValidTransitions("feature", "review");
-    expect(ts).toContain("implement");
-    expect(ts).toContain("plan");
-  });
 
   it("implement can go to verify", () => {
     const ts = getValidTransitions("feature", "implement");
@@ -86,9 +108,9 @@ describe("getValidTransitions — bugfix mode", () => {
     expect(ts).toEqual(["plan"]);
   });
 
-  it("plan can go to review or implement", () => {
+  it("plan can go directly to implement", () => {
     const ts = getValidTransitions("bugfix", "plan");
-    expect(ts).toContain("review");
+    expect(ts).toEqual(["implement"]);
     expect(ts).toContain("implement");
   });
 });
@@ -151,6 +173,52 @@ describe("transition", () => {
   });
 });
 
+describe("transition — planMode hooks", () => {
+  it("sets planMode to 'draft' and planIteration to 1 when entering plan phase", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "spec",
+      planMode: null,
+      planIteration: 0,
+    };
+
+    const next = transition(state, "plan" as Phase);
+    expect(next.planMode).toBe("draft");
+    expect(next.planIteration).toBe(1);
+  });
+
+  it("resets planMode to null when leaving plan phase (plan → implement)", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "plan",
+      planMode: "review",
+      planIteration: 2,
+    };
+
+    const next = transition(state, "implement" as Phase);
+    expect(next.planMode).toBeNull();
+  });
+
+  it("preserves planMode when transitioning within non-plan phases", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "implement",
+      planMode: null,
+      planIteration: 0,
+    };
+
+    const next = transition(state, "verify" as Phase);
+    expect(next.planMode).toBeNull();
+  });
+});
+
+
 describe("createInitialState — new fields", () => {
   it("includes completedTasks and currentTaskIndex", () => {
     const state = createInitialState();
@@ -166,8 +234,7 @@ describe("transition — taskJJChanges reset", () => {
       ...createInitialState(),
       activeIssue: "001-test",
       workflow: "feature",
-      phase: "review",
-      reviewApproved: true,
+      phase: "plan",
       taskJJChanges: { 1: "old-change", 2: "old-change-2" },
     };
 
@@ -180,7 +247,7 @@ describe("transition — taskJJChanges reset", () => {
       ...createInitialState(),
       activeIssue: "001-test",
       workflow: "feature",
-      phase: "review",
+      phase: "plan",
       currentTaskIndex: 7,
       taskJJChanges: { 1: "old-change" },
     };
@@ -209,15 +276,6 @@ describe("transition — taskJJChanges reset", () => {
 });
 
 describe("transition — backward transitions", () => {
-  it("allows review → plan (revise)", () => {
-    const state = createInitialState();
-    state.workflow = "feature";
-    state.phase = "review";
-    state.activeIssue = "001-test";
-    const next = transition(state, "plan");
-    expect(next.phase).toBe("plan");
-    expect(next.reviewApproved).toBe(false);
-  });
 
   it("allows verify → implement (fix failures)", () => {
     const state = createInitialState();

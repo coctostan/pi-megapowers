@@ -57,16 +57,45 @@ describe("buildInjectedPrompt", () => {
     expect(result).toContain("task_done");
   });
 
-  it("includes phase-specific tool instructions for review phase (AC42)", () => {
-    setState(tmp, { phase: "review", megaEnabled: true });
-    const result = buildInjectedPrompt(tmp);
-    expect(result).toContain("review_approve");
-  });
 
   it("includes phase_next instructions for brainstorm phase (AC42)", () => {
     setState(tmp, { phase: "brainstorm", megaEnabled: true });
     const result = buildInjectedPrompt(tmp);
     expect(result).toContain("phase_next");
+  });
+});
+
+describe("buildInjectedPrompt — plan mode routing", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "prompt-inject-plan-mode-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("loads write-plan.md when planMode is draft", () => {
+    setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1, megaEnabled: true });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).not.toBeNull();
+    expect(result).toContain("You are writing a step-by-step implementation plan");
+  });
+
+  it("loads review-plan.md when planMode is review", () => {
+    setState(tmp, { phase: "plan", planMode: "review", planIteration: 1, megaEnabled: true });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).not.toBeNull();
+    expect(result).toContain("You are reviewing an implementation plan before it goes to implementation.");
+    expect(result).not.toContain("You are writing a step-by-step implementation plan");
+  });
+
+  it("does not load write-plan.md when planMode is revise", () => {
+    setState(tmp, { phase: "plan", planMode: "revise", planIteration: 2, megaEnabled: true });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).not.toBeNull();
+    expect(result).not.toContain("You are writing a step-by-step implementation plan");
   });
 });
 

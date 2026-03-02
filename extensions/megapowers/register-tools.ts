@@ -6,6 +6,8 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import { readState } from "./state/state-io.js";
 import { showDoneChecklist } from "./ui.js";
 import { handleSignal } from "./tools/tool-signal.js";
+import { handlePlanTask } from "./tools/tool-plan-task.js";
+import { handlePlanReview } from "./tools/tool-plan-review.js";
 import { createBatchHandler } from "./tools/tools.js";
 import { handleOneshotTool } from "./subagent/oneshot-tool.js";
 import { PiSubagentsDispatcher } from "./subagent/pi-subagents-dispatcher.js";
@@ -17,7 +19,7 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
   pi.registerTool({
     name: "megapowers_signal",
     label: "Megapowers Signal",
-    description: "Signal a megapowers state transition. Actions: task_done (mark current implement task complete), review_approve (approve plan in review phase), phase_next (advance to next workflow phase), phase_back (go back to previous phase — e.g. verify→implement, code-review→implement, review→plan; errors if no backward transition exists), tests_failed (mark RED after a failing test run), tests_passed (acknowledge GREEN after a passing test run).",
+    description: "Signal a megapowers state transition. Actions: task_done (mark current implement task complete), plan_draft_done (signal draft is complete — transitions planMode from draft/revise to review and starts a new session), phase_next (advance to the next workflow phase), phase_back (go back one phase — e.g. verify→implement, code-review→implement; errors if no backward transition exists), tests_failed (mark RED after a failing test run), tests_passed (acknowledge GREEN after a passing test run). Note: review_approve is deprecated — use the megapowers_plan_review tool instead.",
     parameters: Type.Object({
       action: Type.Union([
         Type.Literal("task_done"),
@@ -26,6 +28,7 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
         Type.Literal("phase_back"),
         Type.Literal("tests_failed"),
         Type.Literal("tests_passed"),
+        Type.Literal("plan_draft_done"),
       ]),
       target: Type.Optional(Type.String({ description: "Target phase for phase_next (enables backward transitions)" })),
     }),
@@ -35,6 +38,11 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
       if (result.error) {
         return { content: [{ type: "text", text: `Error: ${result.error}` }], details: undefined };
       }
+      if (result.triggerNewSession) {
+        const parent = ctx.sessionManager?.getSessionFile?.();
+        (ctx.sessionManager as any)?.newSession?.({ parentSession: parent ?? undefined });
+      }
+
       // AC11: Show done checklist when phase_next advances to done
       // Trigger is here ONLY — not in hooks.ts — to prevent duplicate presentation
       if (params.action === "phase_next") {
@@ -47,6 +55,56 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
       if (ctx.hasUI) {
         ui.renderDashboard(ctx, readState(ctx.cwd), store);
       }
+      return { content: [{ type: "text", text: result.message ?? "OK" }], details: undefined };
+    },
+  });
+
+  // --- Tools: megapowers_plan_task ---
+
+  pi.registerTool({
+    name: "megapowers_plan_task",
+    label: "Plan Task",
+    description: "Save or update a plan task. During draft mode, creates new tasks. During revise mode, updates existing tasks (partial — only provided fields are merged).",
+    parameters: Type.Object({
+      id: Type.Number({ description: "Task ID (1-based, sequential)" }),
+      title: Type.Optional(Type.String({ description: "Short task title" })),
+      description: Type.Optional(Type.String({ description: "Full task body — TDD steps, code blocks, implementation details (markdown)" })),
+      depends_on: Type.Optional(Type.Array(Type.Number(), { description: "IDs of tasks this depends on" })),
+      no_test: Type.Optional(Type.Boolean({ description: "true if this task doesn't need TDD" })),
+      files_to_modify: Type.Optional(Type.Array(Type.String(), { description: "Existing files this task changes" })),
+      files_to_create: Type.Optional(Type.Array(Type.String(), { description: "New files this task creates" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const result = handlePlanTask(ctx.cwd, params);
+      if (result.error) {
+        return { content: [{ type: "text", text: `Error: ${result.error}` }], details: undefined };
+      }
+      return { content: [{ type: "text", text: result.message ?? "OK" }], details: undefined };
+    },
+  });
+
+  // --- Tools: megapowers_plan_review ---
+
+  pi.registerTool({
+    name: "megapowers_plan_review",
+    label: "Plan Review",
+    description: "Submit plan review verdict. Approves the plan or requests revisions with per-task feedback.",
+    parameters: Type.Object({
+      verdict: StringEnum(["approve", "revise"] as const),
+      feedback: Type.String({ description: "Review feedback — per-task assessment, issues found, suggestions (markdown)" }),
+      approved_tasks: Type.Optional(Type.Array(Type.Number(), { description: "Task IDs that pass review" })),
+      needs_revision_tasks: Type.Optional(Type.Array(Type.Number(), { description: "Task IDs that need revision" })),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const result = handlePlanReview(ctx.cwd, params);
+      if (result.error) {
+        return { content: [{ type: "text", text: `Error: ${result.error}` }], details: undefined };
+      }
+      if (result.triggerNewSession) {
+        const parent = ctx.sessionManager?.getSessionFile?.();
+        (ctx.sessionManager as any)?.newSession?.({ parentSession: parent ?? undefined });
+      }
+
       return { content: [{ type: "text", text: result.message ?? "OK" }], details: undefined };
     },
   });

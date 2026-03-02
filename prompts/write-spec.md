@@ -1,6 +1,6 @@
 You are writing an executable specification. Convert the brainstorm design into a structured document with testable acceptance criteria.
 
-> **Workflow:** brainstorm → **spec** → plan → review → implement → verify → code-review → done
+> **Workflow:** brainstorm → **spec** → plan → implement → verify → code-review → done
 
 ## Context
 Issue: {{issue_slug}}
