@@ -4,16 +4,20 @@ import {
   buildTaskChangeDescription,
   parseTaskDiffFiles,
   buildTaskCompletionReport,
-  createTaskChange,
-  inspectTaskChange,
 } from "../extensions/megapowers/task-coordinator.js";
-import type { JJ } from "../extensions/megapowers/jj.js";
 
 describe("dead exports", () => {
   it("does not export deprecated task change helpers", () => {
     expect(taskCoordinator.shouldCreateTaskChange).toBeUndefined();
     expect(taskCoordinator.abandonTaskChange).toBeUndefined();
     expect(taskCoordinator.squashTaskChanges).toBeUndefined();
+  });
+});
+
+describe("task-coordinator jj removals", () => {
+  it("does not export createTaskChange or inspectTaskChange", () => {
+    expect((taskCoordinator as any).createTaskChange).toBeUndefined();
+    expect((taskCoordinator as any).inspectTaskChange).toBeUndefined();
   });
 });
 
@@ -32,13 +36,13 @@ describe("buildTaskChangeDescription", () => {
 });
 
 describe("parseTaskDiffFiles", () => {
-  it("extracts file paths from jj diff --summary output", () => {
+  it("extracts file paths from git diff --summary output", () => {
     const output = `M src/auth.ts\nA tests/auth.test.ts`;
     const files = parseTaskDiffFiles(output);
     expect(files).toEqual(["src/auth.ts", "tests/auth.test.ts"]);
   });
 
-  it("extracts file paths from jj diff --stat output", () => {
+  it("extracts file paths from git diff --stat output", () => {
     const output = `src/auth.ts    | 10 ++++++----\ntests/auth.test.ts |  5 +++++\n2 files changed, 11 insertions(+), 4 deletions(-)`;
     const files = parseTaskDiffFiles(output);
     expect(files).toEqual(["src/auth.ts", "tests/auth.test.ts"]);
@@ -87,82 +91,3 @@ describe("buildTaskCompletionReport", () => {
   });
 });
 
-describe("createTaskChange (AC19/AC20)", () => {
-  function mockJJ(overrides: Partial<JJ> = {}): JJ {
-    return {
-      isJJRepo: async () => true,
-      getCurrentChangeId: async () => "current-id",
-      getChangeDescription: async () => "",
-      hasConflicts: async () => false,
-      newChange: async () => "new-id",
-      describe: async () => {},
-      squash: async () => {},
-      bookmarkSet: async () => {},
-      log: async () => "",
-      diff: async () => "",
-      abandon: async () => {},
-      squashInto: async () => {},
-      ...overrides,
-    };
-  }
-
-  it("creates a new jj change with formatted description", async () => {
-    let createdDesc: string | null = null;
-    let createdParent: string | undefined;
-    const jj = mockJJ({
-      newChange: async (desc: string, parent?: string) => {
-        createdDesc = desc;
-        createdParent = parent;
-        return "task-change-id";
-      },
-    });
-    const result = await createTaskChange(jj, "001-auth", 3, "Add retry logic", "parent-change");
-    expect(result.changeId).toBe("task-change-id");
-    expect(createdDesc).toBe("mega(001-auth): task-3 — Add retry logic");
-    expect(createdParent).toBe("parent-change");
-  });
-
-  it("returns null changeId when jj.newChange returns null", async () => {
-    const jj = mockJJ({
-      newChange: async () => null,
-    });
-    const result = await createTaskChange(jj, "001-auth", 1, "Setup");
-    expect(result.changeId).toBeNull();
-  });
-});
-
-describe("inspectTaskChange (AC20)", () => {
-  function mockJJ(overrides: Partial<JJ> = {}): JJ {
-    return {
-      isJJRepo: async () => true,
-      getCurrentChangeId: async () => "current-id",
-      getChangeDescription: async () => "",
-      hasConflicts: async () => false,
-      newChange: async () => "new-id",
-      describe: async () => {},
-      squash: async () => {},
-      bookmarkSet: async () => {},
-      log: async () => "",
-      diff: async () => "",
-      abandon: async () => {},
-      squashInto: async () => {},
-      ...overrides,
-    };
-  }
-
-  it("returns files and hasDiffs from jj diff output", async () => {
-    const jj = mockJJ({
-      diff: async () => "M src/auth.ts\nA tests/auth.test.ts",
-    });
-    const inspection = await inspectTaskChange(jj, "change-abc");
-    expect(inspection.hasDiffs).toBe(true);
-    expect(inspection.files).toEqual(["src/auth.ts", "tests/auth.test.ts"]);
-  });
-
-  it("returns hasDiffs=false for empty diff", async () => {
-    const jj = mockJJ({ diff: async () => "" });
-    const inspection = await inspectTaskChange(jj, "change-abc");
-    expect(inspection.hasDiffs).toBe(false);
-    expect(inspection.files).toEqual([]);
-  });
-});

@@ -7,6 +7,7 @@ import { handlePipelineTool } from "../extensions/megapowers/subagent/pipeline-t
 import { writeState, readState } from "../extensions/megapowers/state/state-io.js";
 import { createInitialState } from "../extensions/megapowers/state/state-machine.js";
 import type { Dispatcher } from "../extensions/megapowers/subagent/dispatcher.js";
+import { type ExecGit } from "../extensions/megapowers/subagent/pipeline-workspace.js";
 
 function setup(plan: string) {
   const tmp = mkdtempSync(join(tmpdir(), "pipe-tool-"));
@@ -54,13 +55,32 @@ describe("handlePipelineTool", () => {
     expect(r.error).toContain("depends");
   });
 
+  it("handlePipelineTool accepts ExecGit and surfaces workspace creation failure", async () => {
+    tmp = setup(`# Plan\n\n### Task 1: Do thing\n\nDo it.\n`);
+
+    const validInput = { taskIndex: 1 };
+    const mockDispatcher: Dispatcher = {
+      async dispatch() {
+        return { exitCode: 0, messages: [], filesChanged: [], testsPassed: null };
+      },
+    };
+
+    const execGit: ExecGit = async (args) => {
+      if (args.includes("worktree") && args.includes("add")) throw new Error("git worktree failed (exit 128)");
+      return { stdout: "", stderr: "" };
+    };
+
+    const result = await handlePipelineTool(tmp, validInput, mockDispatcher, execGit);
+    expect(result.error).toBeDefined();
+  });
+
   it("on completed pipeline, squashes workspace and marks the specified task done even with null TDD state", async () => {
     tmp = setup(`# Plan\n\n### Task 1: First\n\nX\n\n### Task 2: Second\n\nY\n`);
 
-    const jjCalls: any[] = [];
-    const execJJ = async (args: string[], opts?: any) => {
-      jjCalls.push({ args, opts });
-      return { code: 0, stdout: "", stderr: "" };
+    const gitCalls: any[] = [];
+    const execGit = async (args: string[]) => {
+      gitCalls.push({ args });
+      return { stdout: "", stderr: "" };
     };
 
     const dispatcher: Dispatcher = {
@@ -95,11 +115,11 @@ describe("handlePipelineTool", () => {
       },
     };
 
-    const r = await handlePipelineTool(tmp, { taskIndex: 2 }, dispatcher, execJJ);
+    const r = await handlePipelineTool(tmp, { taskIndex: 2 }, dispatcher, execGit);
     expect(r.error).toBeUndefined();
     expect(r.result?.status).toBe("completed");
 
-    expect(jjCalls.some((c) => c.args[0] === "squash")).toBe(true);
+    expect(gitCalls.some((c) => c.args.includes("worktree") && c.args.includes("remove"))).toBe(true);
 
     const state = readState(tmp);
     expect(state.completedTasks).toContain(2);
@@ -108,12 +128,12 @@ describe("handlePipelineTool", () => {
   it("paused pipeline returns log + diff + errorSummary (AC27) and resume reuses workspace", async () => {
     tmp = setup(`# Plan\n\n### Task 1: Do thing\n\nDo it.\n`);
 
-    const jjCalls: any[] = [];
-    const execJJ = async (args: string[], opts?: any) => {
-      jjCalls.push({ args, opts });
-      if (args[0] === "diff" && args[1] === "--summary") return { code: 0, stdout: "M src/file.ts\n", stderr: "" };
-      if (args[0] === "diff") return { code: 0, stdout: "diff --git a/src/file.ts b/src/file.ts\n+new code", stderr: "" };
-      return { code: 0, stdout: "", stderr: "" };
+    const gitCalls: any[] = [];
+    const execGit = async (args: string[]) => {
+      gitCalls.push({ args });
+      if (args.includes("--stat")) return { stdout: "src/file.ts | 1 +\n", stderr: "" };
+      if (args.includes("diff") && args.includes("--cached") && !args.includes("--stat")) return { stdout: "diff --git a/src/file.ts b/src/file.ts\n+new code", stderr: "" };
+      return { stdout: "", stderr: "" };
     };
 
     const dispatcher: Dispatcher = {
@@ -134,7 +154,7 @@ describe("handlePipelineTool", () => {
       },
     };
 
-    const first = await handlePipelineTool(tmp, { taskIndex: 1 }, dispatcher, execJJ);
+    const first = await handlePipelineTool(tmp, { taskIndex: 1 }, dispatcher, execGit);
     expect(first.result?.status).toBe("paused");
 
     expect(first.paused).toBeDefined();
@@ -144,12 +164,12 @@ describe("handlePipelineTool", () => {
     expect((first.paused?.log ?? []).length).toBeGreaterThan(0);
     expect(first.paused?.diff).toContain("diff --git");
 
-    const adds = jjCalls.filter((c) => c.args[0] === "workspace" && c.args[1] === "add").length;
+    const adds = gitCalls.filter((c) => c.args.includes("worktree") && c.args.includes("add")).length;
 
-    const second = await handlePipelineTool(tmp, { taskIndex: 1, resume: true, guidance: "try again" }, dispatcher, execJJ);
+    const second = await handlePipelineTool(tmp, { taskIndex: 1, resume: true, guidance: "try again" }, dispatcher, execGit);
     expect(second.result?.status).toBe("paused");
 
-    const addsAfter = jjCalls.filter((c) => c.args[0] === "workspace" && c.args[1] === "add").length;
+    const addsAfter = gitCalls.filter((c) => c.args.includes("worktree") && c.args.includes("add")).length;
     expect(addsAfter).toBe(adds);
   });
 });

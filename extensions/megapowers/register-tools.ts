@@ -33,8 +33,8 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
       target: Type.Optional(Type.String({ description: "Target phase for phase_next (enables backward transitions)" })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const { store, jj, ui } = ensureDeps(runtimeDeps, pi, ctx.cwd);
-      const result = handleSignal(ctx.cwd, params.action, jj, params.target);
+      const { store, ui } = ensureDeps(runtimeDeps, pi, ctx.cwd);
+      const result = handleSignal(ctx.cwd, params.action, params.target);
       if (result.error) {
         return { content: [{ type: "text", text: `Error: ${result.error}` }], details: undefined };
       }
@@ -139,16 +139,17 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
   pi.registerTool({
     name: "subagent",
     label: "Subagent",
-    description: "Run a one-shot subagent task in an isolated jj workspace and squash changes back on success.",
+    description: "Run a one-shot subagent task in an isolated workspace and squash changes back on success.",
     parameters: Type.Object({
       task: Type.String({ description: "Task description for the subagent" }),
       agent: Type.Optional(Type.String({ description: "Agent name (default: worker)" })),
       timeoutMs: Type.Optional(Type.Number({ description: "Timeout in milliseconds" })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const execJJ = async (args: string[], opts?: { cwd?: string }) => {
-        const r = await pi.exec("jj", args, opts?.cwd ? { cwd: opts.cwd } : undefined);
-        return { code: r.code, stdout: r.stdout, stderr: r.stderr };
+      const execGit = async (args: string[]) => {
+        const r = await pi.exec("git", args);
+        if (r.code !== 0) throw new Error(`git ${args[0]} failed (exit ${r.code}): ${r.stderr}`);
+        return { stdout: r.stdout, stderr: r.stderr };
       };
 
       const { discoverAgents } = await import("pi-subagents/agents.js");
@@ -156,7 +157,7 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
       const { agents } = discoverAgents(ctx.cwd, "both");
       const dispatcher = new PiSubagentsDispatcher({ runSync, runtimeCwd: ctx.cwd, agents });
 
-      const r = await handleOneshotTool(ctx.cwd, params, dispatcher, execJJ);
+      const r = await handleOneshotTool(ctx.cwd, params, dispatcher, execGit);
       if (r.error) return { content: [{ type: "text", text: `Error: ${r.error}` }], details: undefined };
 
       return { content: [{ type: "text", text: JSON.stringify(r, null, 2) }], details: undefined };
@@ -168,16 +169,17 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
   pi.registerTool({
     name: "pipeline",
     label: "Pipeline",
-    description: "Run the implement → verify → review pipeline for a plan task in an isolated jj workspace. When resuming a paused pipeline, guidance is required.",
+    description: "Run the implement → verify → review pipeline for a plan task in an isolated workspace. When resuming a paused pipeline, guidance is required.",
     parameters: Type.Object({
       taskIndex: Type.Number({ description: "Task index to run" }),
       resume: Type.Optional(Type.Boolean({ description: "Resume a paused pipeline" })),
       guidance: Type.Optional(Type.String({ description: "Required when resume is true — actionable direction for retry" })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const execJJ = async (args: string[], opts?: { cwd?: string }) => {
-        const r = await pi.exec("jj", args, opts?.cwd ? { cwd: opts.cwd } : undefined);
-        return { code: r.code, stdout: r.stdout, stderr: r.stderr };
+      const execGit = async (args: string[]) => {
+        const r = await pi.exec("git", args);
+        if (r.code !== 0) throw new Error(`git ${args[0]} failed (exit ${r.code}): ${r.stderr}`);
+        return { stdout: r.stdout, stderr: r.stderr };
       };
 
       const { discoverAgents } = await import("pi-subagents/agents.js");
@@ -189,7 +191,7 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
         ctx.cwd,
         { taskIndex: params.taskIndex, resume: params.resume, guidance: params.guidance },
         dispatcher,
-        execJJ,
+        execGit,
       );
 
       if (r.error) return { content: [{ type: "text", text: `Error: ${r.error}` }], details: undefined };

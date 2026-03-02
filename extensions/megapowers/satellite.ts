@@ -26,7 +26,7 @@ export function isSatelliteMode(ctx: SatelliteDetectionContext): boolean {
 
 /**
  * Resolve the project root for state reads.
- * In satellite mode (subagent), the cwd is the jj workspace dir which
+ * In satellite mode (subagent), the cwd is the git worktree dir which
  * doesn't have .megapowers/state.json. Walks up the directory tree to find it.
  * MEGA_PROJECT_ROOT takes priority if set.
  */
@@ -55,7 +55,7 @@ export function resolveProjectRoot(
  * Set up satellite mode.
  * Called from index.ts when isSatelliteMode() returns true.
  *
- * Satellite (subagent) sessions run in isolated jj workspaces.
+ * Satellite (subagent) sessions run in isolated git worktrees.
  * In this architecture, TDD is guided by prompts and audited after the implement step,
  * not enforced via write-blocking tool hooks.
  */

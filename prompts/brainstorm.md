@@ -7,7 +7,7 @@ Issue: {{issue_slug}}
 
 ## Version Control
 
-This project uses **jj** (Jujutsu). A dedicated change is created automatically per phase — you don't need to manage branches or worktrees. Artifacts are committed when you save them with `write`/`edit` under `.megapowers/plans/{{issue_slug}}/`.
+Version control is managed automatically per phase — you don't need to manage branches or worktrees. Artifacts are committed when you save them with `write`/`edit` under `.megapowers/plans/{{issue_slug}}/`.
 
 ## Instructions
 

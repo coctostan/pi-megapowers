@@ -293,3 +293,12 @@ describe("derived.ts refactor verification", () => {
     expect(source).not.toContain('=== "bugfix"');
   });
 });
+
+it("buildInjectedPrompt signature no longer includes _jj", () => {
+  const source = readFileSync(
+    join(process.cwd(), "extensions", "megapowers", "prompt-inject.ts"),
+    "utf-8",
+  );
+  expect(source).not.toContain("_jj?:");
+  expect(source).toContain("export function buildInjectedPrompt(cwd: string, store?: Store)");
+});

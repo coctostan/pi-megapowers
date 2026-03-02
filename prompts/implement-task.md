@@ -27,9 +27,9 @@ Work directly in this session. TDD is enforced via tdd-guard.
 ### Delegate to subagent (when available)
 If the `subagent` tool is available and there are independent remaining tasks, delegate them for parallel execution.
 **How subagents work:**
-- Each subagent runs in its own **jj workspace** (isolated copy)
+- Each subagent runs in its own **git worktree** (isolated copy)
 - The subagent receives task description, plan context, spec, and learnings
-- Workspace/jj management is automatic
+- Workspace management is automatic
 **How to invoke:**
 - `subagent({ agent: "worker", task: "Implement Task N: <description>. Follow TDD: write failing test, make it pass, refactor. Files: <files>. Plan context: <task section>", taskIndex: N })`
 **After dispatching:**

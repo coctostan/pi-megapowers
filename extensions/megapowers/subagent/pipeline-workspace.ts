@@ -1,85 +1,113 @@
-import { join, dirname } from "node:path";
-import { existsSync, rmSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 
-export interface ExecJJResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
-
-export type ExecJJ = (args: string[], opts?: { cwd?: string }) => Promise<ExecJJResult>;
+// AC13
+export type ExecGit = (args: string[]) => Promise<{ stdout: string; stderr: string }>;
 
 export function pipelineWorkspaceName(pipelineId: string): string {
   return `mega-${pipelineId}`;
 }
 
+// AC21
 export function pipelineWorkspacePath(projectRoot: string, pipelineId: string): string {
-  return join(projectRoot, ".megapowers", "subagents", pipelineId, "workspace");
+  return join(projectRoot, ".megapowers", "workspaces", pipelineId);
 }
 
-export async function createPipelineWorkspace(projectRoot: string, pipelineId: string, execJJ: ExecJJ) {
+function inDir(cwd: string, args: string[]): string[] {
+  return ["-C", cwd, ...args];
+}
+
+// AC14
+export async function createPipelineWorkspace(projectRoot: string, pipelineId: string, execGit: ExecGit) {
   const workspaceName = pipelineWorkspaceName(pipelineId);
   const workspacePath = pipelineWorkspacePath(projectRoot, pipelineId);
-  // Ensure parent directory exists — jj workspace add does not create intermediates
-  // Best-effort: if this path is not writable in tests/sandbox, execJJ will surface the real error.
+
   try {
-    mkdirSync(dirname(workspacePath), { recursive: true });
+    mkdirSync(join(projectRoot, ".megapowers", "workspaces"), { recursive: true });
   } catch {
-    // no-op
+    // best effort; execGit surfaces actionable errors
   }
 
-  const r = await execJJ(["workspace", "add", "--name", workspaceName, workspacePath]);
-  if (r.code !== 0) {
-    return { workspaceName, workspacePath, error: r.stderr || `jj workspace add failed (code ${r.code})` };
+  try {
+    await execGit(inDir(projectRoot, ["worktree", "add", "--detach", workspacePath]));
+    return { workspaceName, workspacePath };
+  } catch (err: any) {
+    return { workspaceName, workspacePath, error: err?.message ?? "git worktree add failed" };
   }
-
-  return { workspaceName, workspacePath };
 }
 
-export async function squashPipelineWorkspace(projectRoot: string, pipelineId: string, execJJ: ExecJJ) {
-  const workspaceName = pipelineWorkspaceName(pipelineId);
-
-  const squash = await execJJ(["squash", "--from", `${workspaceName}@`]);
-  if (squash.code !== 0) return { error: squash.stderr || `squash failed (code ${squash.code})` };
-
-  const forget = await execJJ(["workspace", "forget", workspaceName]);
-  if (forget.code !== 0) return { error: forget.stderr || `workspace forget failed (code ${forget.code})` };
-
-  return {};
-}
-
-export async function cleanupPipelineWorkspace(projectRoot: string, pipelineId: string, execJJ: ExecJJ) {
-  const workspaceName = pipelineWorkspaceName(pipelineId);
+// AC15 + AC16
+export async function squashPipelineWorkspace(projectRoot: string, pipelineId: string, execGit: ExecGit) {
   const workspacePath = pipelineWorkspacePath(projectRoot, pipelineId);
 
-  const forget = await execJJ(["workspace", "forget", workspaceName]);
+  try {
+    await execGit(inDir(workspacePath, ["add", "-A"]));
+    const diff = await execGit(inDir(workspacePath, ["diff", "--cached", "HEAD"]));
 
-  if (existsSync(workspacePath)) rmSync(workspacePath, { recursive: true, force: true });
+    if (!diff.stdout.trim()) {
+      // nothing to apply; remove worktree
+      try {
+        await execGit(inDir(projectRoot, ["worktree", "remove", "--force", workspacePath]));
+      } catch {
+        // ignore cleanup failure
+      }
+      return {};
+    }
 
-  if (forget.code !== 0) {
-    return { error: forget.stderr || `workspace forget failed (code ${forget.code})` };
+    const patchPath = join(tmpdir(), `mega-squash-${pipelineId}.patch`);
+    writeFileSync(patchPath, diff.stdout);
+
+    // apply in main working directory (AC15)
+    await execGit(["apply", "--allow-empty", patchPath]);
+
+    // remove worktree after successful apply
+    try {
+      await execGit(inDir(projectRoot, ["worktree", "remove", "--force", workspacePath]));
+    } catch {
+      // ignore cleanup failure
+    }
+
+    return {};
+  } catch (err: any) {
+    // AC16: preserve worktree for inspection on failure
+    return { error: err?.message ?? "git squash failed" };
   }
+}
 
-  return {};
+// AC17
+export async function cleanupPipelineWorkspace(projectRoot: string, pipelineId: string, execGit: ExecGit) {
+  const workspacePath = pipelineWorkspacePath(projectRoot, pipelineId);
+
+  try {
+    await execGit(inDir(projectRoot, ["worktree", "remove", "--force", workspacePath]));
+    return {};
+  } catch (err: any) {
+    return { error: err?.message ?? "git worktree remove failed" };
+  }
 }
 
 function parseSummaryFiles(summary: string): string[] {
+  // git diff --stat output is lines like: "path/to/file | 3 ++-"
+  // Only include lines that contain "| N" (file stat lines); skip summary lines like "2 files changed, ..."
   return summary
     .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean)
-    .map((l) => l.replace(/^[A-Z]\s+/, ""));
+    .filter((l) => /\|\s*\d/.test(l))
+    .map((l) => l.split("|")[0].trim())
+    .filter(Boolean);
 }
 
+// AC18
 export async function getWorkspaceDiff(
   workspaceCwd: string,
-  execJJ: ExecJJ,
+  execGit: ExecGit,
 ): Promise<{ filesChanged: string[]; diff: string }> {
-  const summary = await execJJ(["diff", "--summary"], { cwd: workspaceCwd });
-  const full = await execJJ(["diff"], { cwd: workspaceCwd });
+  await execGit(inDir(workspaceCwd, ["add", "-A"]));
+  const stat = await execGit(inDir(workspaceCwd, ["diff", "--cached", "HEAD", "--stat"]));
+  const full = await execGit(inDir(workspaceCwd, ["diff", "--cached", "HEAD"]));
 
   return {
-    filesChanged: parseSummaryFiles(summary.stdout),
+    filesChanged: parseSummaryFiles(stat.stdout),
     diff: full.stdout,
   };
 }

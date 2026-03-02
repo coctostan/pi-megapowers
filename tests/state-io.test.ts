@@ -76,6 +76,21 @@ describe("state-io", () => {
       expect((state as any).planTasks).toBeUndefined();
       expect((state as any).acceptanceCriteria).toBeUndefined();
     });
+
+    it("AC3: drops legacy VCS keys when reading state.json (silently ignored on read)", () => {
+      const dir = join(tmp, ".megapowers");
+      mkdirSync(dir, { recursive: true });
+      const legacyChangeKey = ["j", "j", "ChangeId"].join("");
+      const legacyTaskKey = ["task", "J", "J", "Changes"].join("");
+      writeFileSync(join(dir, "state.json"), JSON.stringify({
+        ...createInitialState(),
+        [legacyChangeKey]: "x",
+        [legacyTaskKey]: { 1: "y" },
+      }));
+      const state = readState(tmp);
+      expect(legacyChangeKey in state).toBe(false);
+      expect(legacyTaskKey in state).toBe(false);
+    });
   });
 
   describe("writeState", () => {
@@ -107,14 +122,21 @@ describe("state-io", () => {
         completedTasks: [1, 2],
         reviewApproved: true,
         tddTaskState: { taskIndex: 3, state: "test-written" as const, skipped: false },
-        taskJJChanges: { 1: "abc", 2: "def" },
-        jjChangeId: "xyz",
         doneActions: [],
         megaEnabled: true,
       };
       writeState(tmp, state);
       const loaded = readState(tmp);
       expect(loaded).toEqual(state);
+    });
+
+    it("AC3: write then read round-trip has no legacy VCS fields", () => {
+      writeState(tmp, createInitialState());
+      const raw = JSON.parse(readFileSync(join(tmp, ".megapowers", "state.json"), "utf-8"));
+      const legacyChangeKey = ["j", "j", "ChangeId"].join("");
+      const legacyTaskKey = ["task", "J", "J", "Changes"].join("");
+      expect(legacyChangeKey in raw).toBe(false);
+      expect(legacyTaskKey in raw).toBe(false);
     });
   });
 

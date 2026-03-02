@@ -1,9 +1,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { MegapowersState, Phase, PlanTask, WorkflowType } from "./state/state-machine.js";
 import type { Issue, Store } from "./state/store.js";
-import type { JJ } from "./jj.js";
 import { getFirstPhase } from "./state/state-machine.js";
-import { formatChangeDescription } from "./jj.js";
 import { readState, writeState } from "./state/state-io.js";
 import { deriveTasks } from "./state/derived.js";
 import { showChecklistUI } from "./ui-checklist.js";
@@ -69,16 +67,6 @@ export function getDoneChecklistItems(state: MegapowersState): DoneChecklistItem
 
   items.push({ key: "write-changelog", label: "Write changelog entry", defaultChecked: true });
   items.push({ key: "capture-learnings", label: "Capture learnings", defaultChecked: true });
-
-  const hasTaskChanges =
-    Object.keys(state.taskJJChanges).length > 0 && Boolean(state.jjChangeId);
-  if (hasTaskChanges) {
-    items.push({
-      key: "squash-task-changes",
-      label: "Squash task changes into phase change",
-      defaultChecked: true,
-    });
-  }
 
   items.push({ key: "close-issue", label: "Close issue", defaultChecked: true });
 
@@ -188,10 +176,6 @@ export function renderDashboardLines(state: MegapowersState, _issues: Issue[], t
     lines.push(theme.fg("dim", "Send any message to execute wrap-up actions."));
   }
 
-  if (state.jjChangeId) {
-    lines.push(`${theme.fg("accent", "jj:")} ${theme.fg("dim", state.jjChangeId)}`);
-  }
-
   return lines;
 }
 
@@ -224,7 +208,6 @@ export interface MegapowersUI {
     ctx: ExtensionContext,
     state: MegapowersState,
     store: Store,
-    jj: JJ,
     args: string
   ): Promise<MegapowersState>;
 
@@ -233,7 +216,6 @@ export interface MegapowersUI {
     ctx: ExtensionContext,
     state: MegapowersState,
     store: Store,
-    jj: JJ,
   ): Promise<MegapowersState>;
 }
 
@@ -256,7 +238,7 @@ export function createUI(): MegapowersUI {
       }
     },
 
-    async handleIssueCommand(ctx, state, store, jj, args) {
+    async handleIssueCommand(ctx, state, store, args) {
       const parts = args.trim().split(/\s+/);
       const subcommand = parts[0] || "list";
 
@@ -280,20 +262,11 @@ export function createUI(): MegapowersUI {
           phase: firstPhase,
           phaseHistory: [],
           reviewApproved: false,
-          jjChangeId: null,
           currentTaskIndex: 0,
           completedTasks: [],
           tddTaskState: null,
-          taskJJChanges: {},
           doneActions: [],
         };
-
-        // Create jj change if in a jj repo
-        if (await jj.isJJRepo()) {
-          const desc = formatChangeDescription(issue.slug, firstPhase);
-          const changeId = await jj.newChange(desc, "main");
-          if (changeId) newState.jjChangeId = changeId;
-        }
 
         writeState(ctx.cwd, newState);
         store.updateIssueStatus(issue.slug, "in-progress");
@@ -316,7 +289,7 @@ export function createUI(): MegapowersUI {
         if (!choice) return state;
 
         if (choice.startsWith("+")) {
-          return this.handleIssueCommand(ctx, state, store, jj, "new");
+          return this.handleIssueCommand(ctx, state, store, "new");
         }
 
         // Parse slug from selection
@@ -334,19 +307,11 @@ export function createUI(): MegapowersUI {
           phase: firstPhase,
           phaseHistory: [],
           reviewApproved: false,
-          jjChangeId: null,
           currentTaskIndex: 0,
           completedTasks: [],
           tddTaskState: null,
-          taskJJChanges: {},
           doneActions: [],
         };
-
-        if (await jj.isJJRepo()) {
-          const desc = formatChangeDescription(selected.slug, firstPhase);
-          const changeId = await jj.newChange(desc, "main");
-          if (changeId) newState.jjChangeId = changeId;
-        }
 
         writeState(ctx.cwd, newState);
         store.updateIssueStatus(selected.slug, "in-progress");
@@ -361,7 +326,7 @@ export function createUI(): MegapowersUI {
 
 
 
-    async handleTriageCommand(ctx, state, store, jj) {
+    async handleTriageCommand(ctx, state, store) {
       const allIssues = store.listIssues();
       const openIssues = allIssues.filter(i => i.status !== "done" && i.sources.length === 0);
 
@@ -407,19 +372,11 @@ export function createUI(): MegapowersUI {
         phase: firstPhase,
         phaseHistory: [],
         reviewApproved: false,
-        jjChangeId: null,
         currentTaskIndex: 0,
         completedTasks: [],
         tddTaskState: null,
-        taskJJChanges: {},
         doneActions: [],
       };
-
-      if (await jj.isJJRepo()) {
-        const desc = formatChangeDescription(issue.slug, firstPhase);
-        const changeId = await jj.newChange(desc, "main");
-        if (changeId) newState.jjChangeId = changeId;
-      }
 
       writeState(ctx.cwd, newState);
       store.updateIssueStatus(issue.slug, "in-progress");

@@ -16,7 +16,7 @@ Check `AGENTS.md` for the project's language, style conventions, and test framew
 
 ## Instructions
 
-Review all code changes for this issue. Use the project's VCS to get the diff (`jj diff`, `git diff`, etc.) or inspect the changed files listed in the verification report.
+Review all code changes for this issue. Use the project's VCS to get the diff (`git diff`, etc.) or inspect the changed files listed in the verification report.
 
 If subagents implemented some tasks, **review their code with the same rigor** — do not assume subagent work is correct because it passed tests.
 

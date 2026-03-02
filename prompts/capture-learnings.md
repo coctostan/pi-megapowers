@@ -32,7 +32,7 @@ Focus on:
 - Rate limiter tests need a fake clock — real timers cause flaky failures
 - The token service requires mocking via dependency injection, not module stubbing
 - Write policy tests must cover both `canWrite()` pure function and `evaluateWriteOverride()` integration
-- jj workspace squash must happen before workspace forget — order matters
+- When consolidating worktree changes, apply the patch before removing the worktree — order matters
 
 Format your response as a markdown list. Present the learnings to the user for review. When they approve (or edit), save them to `.megapowers/plans/{{issue_slug}}/learnings.md`:
 ```

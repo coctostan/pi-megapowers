@@ -120,3 +120,23 @@ Both actions complete. Now **close-issue** — reporting the full list of comple
 
 You can run `/issue close` to finalize, or select a new issue to continue.
 Yes — `.megapowers/docs/090-plan-review-bypass-and-task-derivation-f.md` exists and contains the full verification report summary. It's the 14th entry in that directory.
+All three wrap-up actions complete. Here's what was done:
+
+---
+
+### ✅ Wrap-up Complete — #091 remove-jj-dependency
+
+**Actions executed:**
+
+1. **write-changelog** — Appended a `### Changed` entry to `CHANGELOG.md` summarising the jj removal: files deleted, state field changes, `git worktree`-based isolation, `ExecGit` type rename.
+
+2. **capture-learnings** — Wrote 7 learnings to `.megapowers/plans/091-remove-jj-dependency/learnings.md`:
+   - `git -C <dir>` as clean CWD override pattern
+   - Patch-based squash design and the "preserve worktree on failure" invariant
+   - `KNOWN_KEYS` allowlist as self-documenting forward-compat migration strategy
+   - State field removal requires auditing test helpers, not just production code
+   - Dead exports accumulate invisibly — requires explicit grep checks post-migration
+   - Latent `parseSummaryFiles` bug: unused return values still need unit test coverage
+   - `git diff --binary` gap for binary files
+
+3. **close-issue** — Run `/issue close` to mark issue #091 as done, or select a new issue to continue.

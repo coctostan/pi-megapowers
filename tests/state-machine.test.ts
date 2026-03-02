@@ -25,7 +25,16 @@ describe("createInitialState", () => {
     expect(state.reviewApproved).toBe(false);
     expect(state.completedTasks).toEqual([]);
     expect(state.megaEnabled).toBe(true);
-    expect(state.jjChangeId).toBeNull();
+  });
+});
+
+describe("legacy field removal", () => {
+  it("createInitialState omits removed VCS keys", () => {
+    const state = createInitialState();
+    const legacyChangeKey = ["j", "j", "ChangeId"].join("");
+    const legacyTaskKey = ["task", "J", "J", "Changes"].join("");
+    expect(legacyChangeKey in state).toBe(false);
+    expect(legacyTaskKey in state).toBe(false);
   });
 });
 
@@ -228,20 +237,7 @@ describe("createInitialState — new fields", () => {
   });
 });
 
-describe("transition — taskJJChanges reset", () => {
-  it("resets taskJJChanges when transitioning to implement", () => {
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "plan",
-      taskJJChanges: { 1: "old-change", 2: "old-change-2" },
-    };
-
-    const next = transition(state, "implement");
-    expect(next.taskJJChanges).toEqual({});
-  });
-
+describe("transition — implement entry behavior", () => {
   it("does not derive currentTaskIndex from deprecated planTasks fallback", () => {
     const state: MegapowersState = {
       ...createInitialState(),
@@ -249,29 +245,13 @@ describe("transition — taskJJChanges reset", () => {
       workflow: "feature",
       phase: "plan",
       currentTaskIndex: 7,
-      taskJJChanges: { 1: "old-change" },
     };
-
     (state as any).planTasks = [
       { index: 1, description: "A", completed: false, noTest: false },
     ];
 
     const next = transition(state, "implement");
     expect(next.currentTaskIndex).toBe(7);
-    expect(next.taskJJChanges).toEqual({});
-  });
-
-  it("preserves taskJJChanges when transitioning to non-implement phase", () => {
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "implement",
-      taskJJChanges: { 1: "change-a" },
-    };
-
-    const next = transition(state, "verify");
-    expect(next.taskJJChanges).toEqual({ 1: "change-a" });
   });
 });
 

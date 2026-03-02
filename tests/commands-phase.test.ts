@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join as joinPath } from "node:path";
 import { handlePhaseCommand } from "../extensions/megapowers/commands.js";
 import { writeState, readState } from "../extensions/megapowers/state/state-io.js";
 import { createInitialState } from "../extensions/megapowers/state/state-machine.js";
@@ -22,7 +23,6 @@ function seed(tmp: string, phase: any, workflow = "feature") {
 
 function makeDeps(): any {
   return {
-    jj: undefined,
     store: { listIssues: () => [] } as any,
     ui: { renderDashboard: () => {} } as any,
     pi: { getActiveTools: () => [], setActiveTools: () => {} } as any,
@@ -68,4 +68,11 @@ describe("handlePhaseCommand with target", () => {
     await handlePhaseCommand("next", ctx, makeDeps());
     expect(readState(tmp).phase).toBe("implement");
   });
+});
+
+it("commands.ts no longer references legacy VCS deps", () => {
+  const source = readFileSync(joinPath(process.cwd(), "extensions/megapowers/commands.ts"), "utf-8");
+  const legacyFactory = ["create", "J", "J"].join("");
+  expect(source).not.toContain(legacyFactory);
+  expect(source).not.toContain("deps.jj");
 });

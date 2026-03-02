@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { isSatelliteMode } from "../extensions/megapowers/satellite.js";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 describe("isSatelliteMode", () => {
   it("returns false when TTY is attached and no subagent signal", () => {
@@ -29,5 +30,10 @@ describe("satellite module cleanup", () => {
     const source = readFileSync("extensions/megapowers/satellite.ts", "utf8");
     expect(source).not.toContain("loadSatelliteState");
     expect(source).not.toContain("createStore");
+  });
+
+  it("dispatcher.ts does not mention jj workspace", () => {
+    const source = readFileSync(join(process.cwd(), "extensions/megapowers/subagent/dispatcher.ts"), "utf-8");
+    expect(source).not.toContain("jj workspace");
   });
 });

@@ -1,11 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { advancePhase } from "../extensions/megapowers/policy/phase-advance.js";
 import { readState, writeState } from "../extensions/megapowers/state/state-io.js";
 import { createInitialState, type MegapowersState } from "../extensions/megapowers/state/state-machine.js";
-import type { JJ } from "../extensions/megapowers/jj.js";
 import { featureWorkflow } from "../extensions/megapowers/workflows/feature.js";
 
 describe("advancePhase", () => {
@@ -200,65 +199,22 @@ describe("advancePhase", () => {
     });
   });
 
-  describe("jj integration", () => {
-    function mockJJ(opts: { isJJ?: boolean; newChangeId?: string } = {}): JJ {
-      const { isJJ = true, newChangeId = "mock-change-id" } = opts;
-      return {
-        isJJRepo: async () => isJJ,
-        getCurrentChangeId: async () => "current-id",
-        getChangeDescription: async () => "",
-        hasConflicts: async () => false,
-        newChange: async () => newChangeId,
-        describe: async () => {},
-        squash: async () => {},
-        bookmarkSet: async () => {},
-        log: async () => "",
-        diff: async () => "",
-        abandon: async () => {},
-        squashInto: async () => {},
-      };
-    }
+  it("AC8: phase-advance has no jj import or jj parameter", () => {
+    const source = readFileSync(join(process.cwd(), "extensions/megapowers/policy/phase-advance.ts"), "utf-8");
+    expect(source).not.toContain("from \"../jj.js\"");
+    expect(source).not.toMatch(/advancePhase\([^)]*jj\??/);
+  });
 
-    it("returns ok when jj is provided and advancing to implement (AC19)", () => {
-      setState({ phase: "plan" });
-      writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n");
-      const jj = mockJJ();
-      const result = advancePhase(tmp, undefined, jj);
-      expect(result.ok).toBe(true);
+  it("AC8: advancePhase can still advance spec → plan without jj", () => {
+    writeArtifact("001-test", "spec.md", "# Spec\n\nNo open questions.\n");
+    setState({
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "spec",
     });
 
-    it("squashes task changes when advancing to done (AC21)", async () => {
-      setState({ phase: "code-review", jjChangeId: "issue-change" });
-      writeArtifact("001-test", "code-review.md", "# Review\n");
-      let squashedInto: string | null = null;
-      const jj: JJ = {
-        ...mockJJ(),
-        squashInto: async (id: string) => { squashedInto = id; },
-      };
-      advancePhase(tmp, "done", jj);
-      // Wait for async jj ops to complete
-      await new Promise(r => setTimeout(r, 50));
-      expect(squashedInto).toBe("issue-change");
-    });
-
-    it("does not fail when jj operations throw (non-fatal)", () => {
-      setState({ phase: "plan" });
-      writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n");
-      const jj: JJ = {
-        ...mockJJ(),
-        newChange: async () => { throw new Error("jj broken"); },
-        describe: async () => { throw new Error("jj broken"); },
-      };
-      const result = advancePhase(tmp, undefined, jj);
-      expect(result.ok).toBe(true);
-    });
-
-    it("is a no-op when not a jj repo", () => {
-      setState({ phase: "plan" });
-      writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n");
-      const jj = mockJJ({ isJJ: false });
-      const result = advancePhase(tmp, undefined, jj);
-      expect(result.ok).toBe(true);
-    });
+    const result = advancePhase(tmp);
+    expect(result.ok).toBe(true);
+    expect(result.newPhase).toBe("plan");
   });
 });
