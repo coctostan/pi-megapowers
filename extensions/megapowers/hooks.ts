@@ -1,5 +1,6 @@
 import type { Deps } from "./commands.js";
 import { readState, writeState } from "./state/state-io.js";
+import { createInitialState } from "./state/state-machine.js";
 import { checkJJAvailability } from "./jj.js";
 import { JJ_INSTALL_MESSAGE, JJ_INIT_MESSAGE } from "./jj-messages.js";
 import { buildInjectedPrompt } from "./prompt-inject.js";
@@ -122,23 +123,42 @@ export async function onAgentEnd(event: any, ctx: any, deps: Deps): Promise<void
 
   const phase = state.phase;
 
-  // Done-phase artifact capture (when LLM generates content from done actions prompt)
+  // Done-phase artifact capture / close-issue handler
   if (phase === "done" && state.doneActions.length > 0) {
     const doneAction = state.doneActions[0];
-    const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
-    if (lastAssistant) {
-      const text = getAssistantText(lastAssistant);
-      if (text && text.length > 100) {
-        if (doneAction === "generate-docs" || doneAction === "generate-bugfix-summary") {
-          store.writeFeatureDoc(state.activeIssue, text);
-          if (ctx.hasUI) ctx.ui.notify(`Feature doc saved to .megapowers/docs/${state.activeIssue}.md`, "info");
+    // Handle close-issue immediately — no LLM text needed
+    if (doneAction === "close-issue") {
+      store.updateIssueStatus(state.activeIssue!, "done");
+      writeState(ctx.cwd, { ...createInitialState(), megaEnabled: state.megaEnabled });
+      // Return early: state fully reset to idle. renderDashboard would receive
+      // the stale pre-reset snapshot; next session start reads fresh idle state from disk.
+      return;
+    }
+
+    const contentCaptureActions = ["generate-docs", "generate-bugfix-summary", "write-changelog"];
+    const isContentCapture = contentCaptureActions.includes(doneAction);
+
+    if (isContentCapture) {
+      // Content-capture actions: only process when LLM produces substantial text
+      const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
+      if (lastAssistant) {
+        const text = getAssistantText(lastAssistant);
+        if (text && text.length > 100) {
+          if (doneAction === "generate-docs" || doneAction === "generate-bugfix-summary") {
+            store.writeFeatureDoc(state.activeIssue!, text);
+            if (ctx.hasUI) ctx.ui.notify(`Feature doc saved to .megapowers/docs/${state.activeIssue}.md`, "info");
+          }
+          if (doneAction === "write-changelog") {
+            store.appendChangelog(text);
+            if (ctx.hasUI) ctx.ui.notify("Changelog entry appended to .megapowers/CHANGELOG.md", "info");
+          }
+          writeState(ctx.cwd, { ...state, doneActions: state.doneActions.filter((a) => a !== doneAction) });
         }
-        if (doneAction === "write-changelog") {
-          store.appendChangelog(text);
-          if (ctx.hasUI) ctx.ui.notify("Changelog entry appended to .megapowers/CHANGELOG.md", "info");
-        }
-        writeState(ctx.cwd, { ...state, doneActions: state.doneActions.filter(a => a !== doneAction) });
       }
+    } else {
+      // Non-content-capture actions (e.g. capture-learnings, squash-task-changes):
+      // always consume from the queue regardless of LLM text length
+      writeState(ctx.cwd, { ...state, doneActions: state.doneActions.filter((a) => a !== doneAction) });
     }
   }
 

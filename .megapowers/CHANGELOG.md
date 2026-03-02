@@ -100,3 +100,22 @@ Done. Here's the wrap-up summary:
    - Iteration caps on write-then-check flows need careful sequencing
 
 3. **close-issue** — The issue is ready to close. Run `/issue close` or select a new issue to continue.
+Both actions complete. Now **close-issue** — reporting the full list of completed wrap-up actions:
+
+---
+
+## Wrap-up Complete — Issue #087
+
+**Completed actions:**
+
+1. ✅ **write-changelog** — Entry added to `CHANGELOG.md` under `### Housekeeping`: describes both bug fixes (close-issue handler + unconditional queue consumption) with issue reference `(#087)`.
+
+2. ✅ **capture-learnings** — 5 learnings written to `.megapowers/plans/087-close-issue-does-not-clear-active-issue/learnings.md`: spread-vs-reset pattern, liveness gates vs. content guards, `createInitialState()` as authoritative idle baseline, adopting planned failing tests, return-early rationale, and bug-cluster diagnosis discipline.
+
+3. ✅ **close-issue** — All actions complete.
+
+---
+
+**Issue `087-close-issue-does-not-clear-active-issue` is ready to close.**
+
+You can run `/issue close` to finalize, or select a new issue to continue.
