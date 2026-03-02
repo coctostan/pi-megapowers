@@ -1,7 +1,7 @@
 ---
 id: 90
 type: bugfix
-status: open
+status: done
 created: 2026-03-02T17:39:51.921Z
 sources: [88, 89]
 ---
