@@ -154,24 +154,35 @@ describe("Issue #089: deriveTasks ignores task files", () => {
     expect(tasks[1].description).toBe("Build API");
   });
 
-  it("BUG: deriveTasks ignores task files even when they exist", () => {
+  it("deriveTasks reads task files when they exist (ignoring plan.md)", () => {
     const slug = "001-test";
     const planDir = join(tmp, ".megapowers", "plans", slug);
     mkdirSync(planDir, { recursive: true });
-
-    // Write task files (the new canonical format)
     const task1: PlanTask = { id: 1, title: "Set up schema", status: "approved" };
     const task2: PlanTask = { id: 2, title: "Build API", status: "approved" };
     writePlanTask(tmp, slug, task1, "Create tables for users and roles.");
     writePlanTask(tmp, slug, task2, "Build REST endpoints.");
-
-    // Write a plan.md with NO parseable tasks (or no plan.md at all)
     writeFileSync(join(planDir, "plan.md"), "# Plan\nSee task files.\n");
-
     const tasks = deriveTasks(tmp, slug);
 
-    // BUG: deriveTasks only reads plan.md, ignores task files
-    // Returns [] because plan.md has no parseable task headers
-    expect(tasks.length).toBe(0); // <-- Should find 2 tasks from task files
+    expect(tasks.length).toBe(2);
+    expect(tasks[0].index).toBe(1);
+    expect(tasks[0].description).toBe("Set up schema");
+    expect(tasks[1].index).toBe(2);
+    expect(tasks[1].description).toBe("Build API");
   });
+
+  it("deriveTasks falls back to plan.md when no task files exist", () => {
+    const slug = "002-fallback";
+    const planDir = join(tmp, ".megapowers", "plans", slug);
+    mkdirSync(planDir, { recursive: true });
+
+    writeFileSync(join(planDir, "plan.md"), "### Task 1: Do something\n### Task 2: Do another\n");
+
+    const tasks = deriveTasks(tmp, slug);
+    expect(tasks.length).toBe(2);
+    expect(tasks[0].index).toBe(1);
+    expect(tasks[1].index).toBe(2);
+});
+
 });
