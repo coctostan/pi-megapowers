@@ -190,18 +190,87 @@ describe("handleSignal", () => {
   // review_approve
   // ======================================================================
 
-  describe("review_approve", () => {
-    it("sets reviewApproved in state", () => {
-      setState(tmp, { phase: "review" });
+  describe("review_approve deprecation", () => {
+    it("returns deprecation error message", () => {
+      setState(tmp, { phase: "plan", planMode: "review", planIteration: 1 });
       const result = handleSignal(tmp, "review_approve");
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain("deprecated");
+      expect(result.error).toContain("megapowers_plan_review");
+    });
+  });
+
+  // ======================================================================
+  // plan_draft_done
+  // ======================================================================
+
+  describe("plan_draft_done signal", () => {
+    it("transitions planMode from draft to review", () => {
+      setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
+      const tasksDir = join(tmp, ".megapowers", "plans", "001-test", "tasks");
+      mkdirSync(tasksDir, { recursive: true });
+      writeFileSync(join(tasksDir, "task-001.md"), "---\nid: 1\ntitle: T\nstatus: draft\n---\nBody.");
+
+      const result = handleSignal(tmp, "plan_draft_done");
       expect(result.error).toBeUndefined();
-      expect(readState(tmp).reviewApproved).toBe(true);
+      expect(result.message).toContain("review mode");
+
+      const state = readState(tmp);
+      expect(state.planMode).toBe("review");
     });
 
-    it("returns error when megaEnabled is false", () => {
-      setState(tmp, { phase: "review", megaEnabled: false });
-      const result = handleSignal(tmp, "review_approve");
-      expect(result.error).toContain("disabled");
+    it("transitions planMode from revise to review", () => {
+      setState(tmp, { phase: "plan", planMode: "revise", planIteration: 2 });
+      const tasksDir = join(tmp, ".megapowers", "plans", "001-test", "tasks");
+      mkdirSync(tasksDir, { recursive: true });
+      writeFileSync(join(tasksDir, "task-001.md"), "---\nid: 1\ntitle: T\nstatus: draft\n---\nBody.");
+
+      const result = handleSignal(tmp, "plan_draft_done");
+      expect(result.error).toBeUndefined();
+
+      const state = readState(tmp);
+      expect(state.planMode).toBe("review");
+    });
+
+    it("returns error when not in plan phase", () => {
+      setState(tmp, { phase: "implement", planMode: null });
+      const result = handleSignal(tmp, "plan_draft_done");
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain("plan phase");
+    });
+
+    it("returns error when planMode is review", () => {
+      setState(tmp, { phase: "plan", planMode: "review", planIteration: 1 });
+      const result = handleSignal(tmp, "plan_draft_done");
+      expect(result.error).toBeDefined();
+    });
+
+    it("returns error when no task files exist", () => {
+      setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
+      const result = handleSignal(tmp, "plan_draft_done");
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain("task");
+    });
+
+    it("reports task count in success message", () => {
+      setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
+      const tasksDir = join(tmp, ".megapowers", "plans", "001-test", "tasks");
+      mkdirSync(tasksDir, { recursive: true });
+      writeFileSync(join(tasksDir, "task-001.md"), "---\nid: 1\ntitle: T1\nstatus: draft\n---\nB1.");
+      writeFileSync(join(tasksDir, "task-002.md"), "---\nid: 2\ntitle: T2\nstatus: draft\n---\nB2.");
+
+      const result = handleSignal(tmp, "plan_draft_done");
+      expect(result.message).toContain("2 tasks");
+    });
+
+    it("sets triggerNewSession flag", () => {
+      setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
+      const tasksDir = join(tmp, ".megapowers", "plans", "001-test", "tasks");
+      mkdirSync(tasksDir, { recursive: true });
+      writeFileSync(join(tasksDir, "task-001.md"), "---\nid: 1\ntitle: T\nstatus: draft\n---\nB.");
+
+      const result = handleSignal(tmp, "plan_draft_done");
+      expect(result.triggerNewSession).toBe(true);
     });
   });
 
@@ -238,37 +307,32 @@ describe("handleSignal", () => {
 
   describe("phase_back", () => {
     // --- Happy path: backward transitions ---
-    it("transitions review \u2192 plan (AC1, AC2)", () => {
+    it("returns error for review → plan (review phase removed from workflow)", () => {
       writeArtifact(tmp, "001-test", "plan.md", "# Plan\n");
       setState(tmp, { phase: "review", reviewApproved: true });
       const result = handleSignal(tmp, "phase_back");
-      expect(result.error).toBeUndefined();
-      expect(result.message).toContain("plan");
-      expect(readState(tmp).phase).toBe("plan");
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain("No backward transition");
+      expect(readState(tmp).phase).toBe("review");
     });
 
-    it("versions review.md and plan.md before transitioning review → plan (AC13)", () => {
+    it("does not version review.md/plan.md when review → plan is invalid", () => {
       writeArtifact(tmp, "001-test", "plan.md", "plan v0");
       writeArtifact(tmp, "001-test", "review.md", "review v0");
       setState(tmp, { phase: "review", reviewApproved: true });
-
       const result = handleSignal(tmp, "phase_back");
-      expect(result.error).toBeUndefined();
-      expect(readState(tmp).phase).toBe("plan");
-
+      expect(result.error).toBeDefined();
+      expect(readState(tmp).phase).toBe("review");
       const dir = join(tmp, ".megapowers", "plans", "001-test");
-      expect(readFileSync(join(dir, "plan.v1.md"), "utf-8")).toBe("plan v0");
-      expect(readFileSync(join(dir, "review.v1.md"), "utf-8")).toBe("review v0");
-
-      // originals remain
-      expect(readFileSync(join(dir, "plan.md"), "utf-8")).toBe("plan v0");
-      expect(readFileSync(join(dir, "review.md"), "utf-8")).toBe("review v0");
+      expect(() => readFileSync(join(dir, "plan.v1.md"), "utf-8")).toThrow();
+      expect(() => readFileSync(join(dir, "review.v1.md"), "utf-8")).toThrow();
     });
-    it("clears reviewApproved when going back to plan (AC2)", () => {
+    it("does not clear reviewApproved when review → plan transition is invalid", () => {
       writeArtifact(tmp, "001-test", "plan.md", "# Plan\n");
       setState(tmp, { phase: "review", reviewApproved: true });
-      handleSignal(tmp, "phase_back");
-      expect(readState(tmp).reviewApproved).toBe(false);
+      const result = handleSignal(tmp, "phase_back");
+      expect(result.error).toBeDefined();
+      expect(readState(tmp).reviewApproved).toBe(true);
     });
     it("transitions verify → implement (AC3)", () => {
       setState(tmp, { phase: "verify" });
@@ -345,11 +409,11 @@ describe("handleSignal", () => {
         expect(result.error).toContain("No backward transition");
       }
     });
-    it("bugfix review and verify have backward transitions after #084", () => {
+    it("bugfix review has no backward transition; verify still transitions to implement", () => {
       setState(tmp, { workflow: "bugfix", phase: "review" as any });
       const r1 = handleSignal(tmp, "phase_back");
-      expect(r1.error).toBeUndefined();
-      expect(r1.message).toContain("plan");
+      expect(r1.error).toBeDefined();
+      expect(r1.error).toContain("No backward transition");
       setState(tmp, { workflow: "bugfix", phase: "verify" as any });
       const r2 = handleSignal(tmp, "phase_back");
       expect(r2.error).toBeUndefined();

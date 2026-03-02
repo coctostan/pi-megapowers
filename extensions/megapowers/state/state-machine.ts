@@ -5,6 +5,9 @@ export type WorkflowType = "feature" | "bugfix";
 export type FeaturePhase = "brainstorm" | "spec" | "plan" | "review" | "implement" | "verify" | "code-review" | "done";
 export type BugfixPhase = "reproduce" | "diagnose" | "plan" | "review" | "implement" | "verify" | "done";
 export type Phase = FeaturePhase | BugfixPhase;
+export type PlanMode = "draft" | "review" | "revise" | null;
+
+export const MAX_PLAN_ITERATIONS = 4;
 
 export interface PhaseTransition {
   from: Phase | null;
@@ -44,6 +47,8 @@ export interface MegapowersState {
   phase: Phase | null;
   phaseHistory: PhaseTransition[];
   reviewApproved: boolean;
+  planMode: PlanMode;
+  planIteration: number;
   currentTaskIndex: number;
   completedTasks: number[];   // PlanTask.index values (1-based)
   tddTaskState: TddTaskState | null;
@@ -75,6 +80,8 @@ export function createInitialState(): MegapowersState {
     phase: null,
     phaseHistory: [],
     reviewApproved: false,
+    planMode: null,
+    planIteration: 0,
     currentTaskIndex: 0,
     completedTasks: [],
     tddTaskState: null,
@@ -120,9 +127,16 @@ export function transition(state: MegapowersState, to: Phase, tasks?: PlanTask[]
     ],
   };
 
-  // Reset review approval when entering plan (re-planning invalidates previous review)
+  // Reset review approval and initialize plan loop state when entering plan.
   if (to === "plan") {
     next.reviewApproved = false;
+    next.planMode = "draft";
+    next.planIteration = 1;
+  }
+
+  // Clear plan mode once leaving plan.
+  if (state.phase === "plan" && to !== "plan") {
+    next.planMode = null;
   }
 
   if (to === "implement" && tasks) {

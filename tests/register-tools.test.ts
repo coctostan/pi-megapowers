@@ -1,19 +1,24 @@
 import { describe, it, expect } from "bun:test";
 import { registerTools } from "../extensions/megapowers/register-tools.js";
 
-describe("registerTools", () => {
-  it("does not register megapowers_save_artifact (AC1)", () => {
-    const registered: string[] = [];
+describe("registerTools — plan loop tools", () => {
+  it("registers plan loop tools and extends megapowers_signal actions", () => {
+    const tools: Record<string, any> = {};
 
     const pi = {
       registerTool: (tool: any) => {
-        registered.push(tool.name);
+        tools[tool.name] = tool;
       },
     } as any;
 
     registerTools(pi, {} as any);
 
-    expect(registered).toContain("megapowers_signal");
-    expect(registered).not.toContain("megapowers_save_artifact");
+    expect(Object.keys(tools)).toContain("megapowers_signal");
+    expect(Object.keys(tools)).toContain("megapowers_plan_task");
+    expect(Object.keys(tools)).toContain("megapowers_plan_review");
+    expect(Object.keys(tools)).not.toContain("megapowers_save_artifact");
+
+    const signalParams = JSON.stringify(tools.megapowers_signal.parameters);
+    expect(signalParams).toContain("plan_draft_done");
   });
 });

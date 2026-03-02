@@ -82,3 +82,21 @@ Does this look good, or any tweaks?
 - **`phase_back` signal**: `megapowers_signal({ action: "phase_back" })` is now a real, callable action — it navigates backward through the workflow (review→plan, verify→implement, code-review→implement) without needing manual state edits.
 - **Issue model gains `milestone` and `priority` fields**: parsed from frontmatter; existing issues default to `milestone: ""` and `priority: 0` with no migration required.
 - **Prompt template corrections**: stale `/phase implement` and `/phase plan` slash commands replaced with `megapowers_signal({ action: "phase_back" })` in `verify.md`, `code-review.md`, and `review-plan.md`; `learnings` added to the valid artifact phases list in `megapowers-protocol.md`.
+Done. Here's the wrap-up summary:
+
+---
+
+**Completed wrap-up actions for #085:**
+
+1. **write-changelog** — Added entry under `## [Unreleased] / ### Changed` in `CHANGELOG.md` describing the plan-review iterative loop, the two new tools, `review_approve` deprecation, and the `plan.md` bridge.
+
+2. **capture-learnings** — Wrote 7 learnings to `.megapowers/plans/085-plan-review-iterative-loop-wiring/learnings.md`:
+   - Template variables that can't be populated become silent UX landmines
+   - Internal dev notes in tool return values leak into LLM-visible output
+   - `{ error: string }` branches need explicit handling at every call site
+   - Tool schema descriptions are part of LLM UX and must be kept current
+   - Redundant state mutations obscure ownership and intent
+   - Code review catches prompt template bugs that unit tests miss
+   - Iteration caps on write-then-check flows need careful sequencing
+
+3. **close-issue** — The issue is ready to close. Run `/issue close` or select a new issue to continue.

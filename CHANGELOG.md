@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Changed
+- **Plan-review iterative loop wiring** — Replaces the split `plan` + `review` workflow phases with a single `plan` phase containing an internal draft → review → revise cycle. Two new tools (`megapowers_plan_task`, `megapowers_plan_review`) handle structured task data without regex parsing. Each mode transition triggers `newSession()` to eliminate role bias. On approval, a backward-compatible `plan.md` is generated for downstream consumers. `review_approve` signal deprecated in favour of `megapowers_plan_review`. (#085)
 - **Artifact persistence: `megapowers_save_artifact` removed — use `write`/`edit` directly** — The custom tool is no longer registered. Artifacts are saved with direct `write`/`edit` calls to `.megapowers/plans/<issue-slug>/<phase>.md`. Prompt templates and the protocol doc updated accordingly. (#086)
 
 ### Added

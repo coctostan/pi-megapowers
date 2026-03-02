@@ -1,6 +1,6 @@
 You are verifying whether the implementation satisfies the spec. Evidence before claims, always.
 
-> **Workflow:** brainstorm → spec → plan → review → implement → **verify** → code-review → done
+> **Workflow:** brainstorm → spec → plan → implement → **verify** → code-review → done
 
 ## Context
 Issue: {{issue_slug}}

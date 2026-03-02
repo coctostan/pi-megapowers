@@ -1,6 +1,6 @@
 You are brainstorming a new feature with the user. Your job is to understand what they want and help them think through the design — without writing any code.
 
-> **Workflow:** brainstorm → spec → plan → review → implement → verify → code-review → done
+> **Workflow:** **brainstorm** → spec → plan → implement → verify → code-review → done
 
 ## Context
 Issue: {{issue_slug}}

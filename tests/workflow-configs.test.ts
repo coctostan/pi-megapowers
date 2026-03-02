@@ -11,9 +11,9 @@ describe("feature workflow config", () => {
     expect(featureWorkflow.name).toBe("feature");
   });
 
-  it("has 8 phases in correct order", () => {
+  it("has 7 phases in correct order", () => {
     const phaseNames = featureWorkflow.phases.map(p => p.name);
-    expect(phaseNames).toEqual(["brainstorm", "spec", "plan", "review", "implement", "verify", "code-review", "done"]);
+    expect(phaseNames).toEqual(["brainstorm", "spec", "plan", "implement", "verify", "code-review", "done"]);
   });
 
   it("has brainstorm → spec transition with alwaysPass gate", () => {
@@ -31,11 +31,6 @@ describe("feature workflow config", () => {
     ]);
   });
 
-  it("has plan → review transition with requireArtifact gate", () => {
-    const t = featureWorkflow.transitions.find(t => t.from === "plan" && t.to === "review");
-    expect(t).toBeDefined();
-    expect(t!.gates).toEqual([{ type: "requireArtifact", file: "plan.md" }]);
-  });
 
   it("has plan → implement transition with requireArtifact gate", () => {
     const t = featureWorkflow.transitions.find(t => t.from === "plan" && t.to === "implement");
@@ -43,17 +38,19 @@ describe("feature workflow config", () => {
     expect(t!.gates).toEqual([{ type: "requireArtifact", file: "plan.md" }]);
   });
 
-  it("has review → implement transition with requireReviewApproved gate", () => {
-    const t = featureWorkflow.transitions.find(t => t.from === "review" && t.to === "implement");
-    expect(t).toBeDefined();
-    expect(t!.gates).toEqual([{ type: "requireReviewApproved" }]);
+  it("has no transitions referencing review phase", () => {
+    const reviewTransitions = featureWorkflow.transitions.filter(
+      t => t.from === "review" || t.to === "review",
+    );
+    expect(reviewTransitions).toEqual([]);
   });
 
-  it("has review → plan as backward transition", () => {
-    const t = featureWorkflow.transitions.find(t => t.from === "review" && t.to === "plan");
-    expect(t).toBeDefined();
-    expect(t!.backward).toBe(true);
+  it("has no review entry in phases array", () => {
+    const hasReview = featureWorkflow.phases.some(p => p.name === "review");
+    expect(hasReview).toBe(false);
   });
+
+
 
   it("has implement → verify transition with allTasksComplete gate", () => {
     const t = featureWorkflow.transitions.find(t => t.from === "implement" && t.to === "verify");
@@ -102,13 +99,9 @@ describe("feature workflow config", () => {
 
   it("marks blocking phases correctly", () => {
     const blockingPhases = featureWorkflow.phases.filter(p => p.blocking).map(p => p.name);
-    expect(blockingPhases).toEqual(expect.arrayContaining(["brainstorm", "spec", "plan", "review", "verify", "done"]));
+    expect(blockingPhases).toEqual(expect.arrayContaining(["brainstorm", "spec", "plan", "verify", "done"]));
   });
 
-  it("marks review phase with needsReviewApproval", () => {
-    const p = featureWorkflow.phases.find(p => p.name === "review");
-    expect(p!.needsReviewApproval).toBe(true);
-  });
 
   it("declares artifact on brainstorm phase", () => {
     const p = featureWorkflow.phases.find(p => p.name === "brainstorm");
@@ -125,9 +118,9 @@ describe("bugfix workflow config", () => {
     expect(bugfixWorkflow.name).toBe("bugfix");
   });
 
-  it("has 7 phases in correct order", () => {
+  it("has 6 phases in correct order", () => {
     const phaseNames = bugfixWorkflow.phases.map(p => p.name);
-    expect(phaseNames).toEqual(["reproduce", "diagnose", "plan", "review", "implement", "verify", "done"]);
+    expect(phaseNames).toEqual(["reproduce", "diagnose", "plan", "implement", "verify", "done"]);
   });
 
   it("has reproduce → diagnose transition with requireArtifact gate for reproduce.md", () => {
@@ -142,17 +135,14 @@ describe("bugfix workflow config", () => {
     expect(t!.gates).toEqual([{ type: "requireArtifact", file: "diagnosis.md" }]);
   });
 
-  it("has review → implement transition with requireReviewApproved gate", () => {
-    const t = bugfixWorkflow.transitions.find(t => t.from === "review" && t.to === "implement");
-    expect(t).toBeDefined();
-    expect(t!.gates).toEqual([{ type: "requireReviewApproved" }]);
+  it("has no transitions referencing review phase", () => {
+    const reviewTransitions = bugfixWorkflow.transitions.filter(
+      t => t.from === "review" || t.to === "review",
+    );
+    expect(reviewTransitions).toEqual([]);
   });
 
-  it("has review → plan as backward transition", () => {
-    const t = bugfixWorkflow.transitions.find(t => t.from === "review" && t.to === "plan");
-    expect(t).toBeDefined();
-    expect(t!.backward).toBe(true);
-  });
+
 
   it("has verify → implement as backward transition", () => {
     const t = bugfixWorkflow.transitions.find(t => t.from === "verify" && t.to === "implement");
@@ -179,10 +169,6 @@ describe("bugfix workflow config", () => {
     expect(openEnded).toContain("diagnose");
   });
 
-  it("marks review phase with needsReviewApproval", () => {
-    const p = bugfixWorkflow.phases.find(p => p.name === "review");
-    expect(p!.needsReviewApproval).toBe(true);
-  });
 
   it("declares artifact on reproduce phase", () => {
     const p = bugfixWorkflow.phases.find(p => p.name === "reproduce");
@@ -201,9 +187,9 @@ describe("bugfix workflow config", () => {
     expect(diagnose!.blocking).toBeFalsy();
   });
 
-  it("marks plan, review, verify, done as blocking", () => {
+  it("marks plan, verify, done as blocking", () => {
     const blockingPhases = bugfixWorkflow.phases.filter(p => p.blocking).map(p => p.name);
-    expect(blockingPhases).toEqual(expect.arrayContaining(["plan", "review", "verify", "done"]));
+    expect(blockingPhases).toEqual(expect.arrayContaining(["plan", "verify", "done"]));
     expect(blockingPhases).not.toContain("reproduce");
     expect(blockingPhases).not.toContain("diagnose");
   });
@@ -296,11 +282,9 @@ describe("deriveToolInstructions", () => {
     expect(instructions).toContain("test");
     expect(instructions).not.toContain("megapowers_save_artifact");
   });
-  it("returns review_approve for review phase (needsReviewApproval)", () => {
-    const phase = featureWorkflow.phases.find(p => p.name === "review")!;
-    const instructions = deriveToolInstructions(phase, "001-test");
-    expect(instructions).toContain("review_approve");
-    expect(instructions).not.toContain("megapowers_save_artifact");
+  it("feature workflow has no review phase (no review_approve path)", () => {
+    const phase = featureWorkflow.phases.find(p => p.name === "review");
+    expect(phase).toBeUndefined();
   });
 
   it("returns write + path + phase_next for brainstorm (has artifact, open-ended)", () => {

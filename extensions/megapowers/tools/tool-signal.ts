@@ -1,6 +1,7 @@
 // extensions/megapowers/tools/tool-signal.ts
 import { join } from "node:path";
 import { readState, writeState } from "../state/state-io.js";
+import { listPlanTasks } from "../state/plan-store.js";
 import { advancePhase } from "../policy/phase-advance.js";
 import { deriveTasks } from "../state/derived.js";
 import { transition, type Phase } from "../state/state-machine.js";
@@ -12,11 +13,20 @@ import { versionArtifact } from "../artifacts/version-artifact.js";
 export interface SignalResult {
   message?: string;
   error?: string;
+  triggerNewSession?: boolean;
 }
 
 export function handleSignal(
   cwd: string,
-  action: "task_done" | "review_approve" | "phase_next" | "phase_back" | string,
+  action:
+    | "task_done"
+    | "review_approve"
+    | "phase_next"
+    | "phase_back"
+    | "tests_failed"
+    | "tests_passed"
+    | "plan_draft_done"
+    | string,
   jj?: JJ,
   target?: string,
 ): SignalResult {
@@ -39,6 +49,8 @@ export function handleSignal(
       return handleTestsFailed(cwd);
     case "tests_passed":
       return handleTestsPassed(cwd);
+    case "plan_draft_done":
+      return handlePlanDraftDone(cwd);
     default:
       return { error: `Unknown signal action: ${String(action)}` };
   }
@@ -226,19 +238,43 @@ function handleTestsPassed(cwd: string): SignalResult {
 }
 
 // ---------------------------------------------------------------------------
+// plan_draft_done
+// ---------------------------------------------------------------------------
+
+function handlePlanDraftDone(cwd: string): SignalResult {
+  const state = readState(cwd);
+
+  if (state.phase !== "plan") {
+    return { error: "plan_draft_done can only be called during the plan phase." };
+  }
+
+  if (state.planMode !== "draft" && state.planMode !== "revise") {
+    return { error: `plan_draft_done requires planMode 'draft' or 'revise', got '${state.planMode}'.` };
+  }
+
+  const tasks = listPlanTasks(cwd, state.activeIssue!);
+  if (tasks.length === 0) {
+    return { error: "No task files found. Use megapowers_plan_task to create tasks before signaling draft done." };
+  }
+
+  writeState(cwd, { ...state, planMode: "review" });
+
+  return {
+    message:
+      `📝 Draft complete: ${tasks.length} task${tasks.length === 1 ? "" : "s"} saved\n` +
+      "  → Transitioning to review mode. newSession() should be called (see Task 18 wiring).",
+    triggerNewSession: true,
+  };
+}
+
+
+// ---------------------------------------------------------------------------
 // review_approve
 // ---------------------------------------------------------------------------
 
-function handleReviewApprove(cwd: string): SignalResult {
-  const state = readState(cwd);
-
-  if (!state.activeIssue) {
-    return { error: "No active issue." };
-  }
-
-  writeState(cwd, { ...state, reviewApproved: true });
+function handleReviewApprove(_cwd: string): SignalResult {
   return {
-    message: "Plan review approved. Call megapowers_signal with action 'phase_next' to advance to implement.",
+    error: "❌ review_approve is deprecated. Plan review is now handled by the megapowers_plan_review tool within the plan phase. The reviewer calls megapowers_plan_review({ verdict: \"approve\", ... }) to approve.",
   };
 }
 

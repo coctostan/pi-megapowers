@@ -1,6 +1,6 @@
 You are implementing a single task from the plan. Follow strict Red-Green-Refactor TDD.
 
-> **Workflow:** brainstorm → spec → plan → review → **implement** → verify → code-review → done
+> **Workflow:** brainstorm → spec → plan → **implement** → verify → code-review → done
 
 ## Context
 Issue: {{issue_slug}}

@@ -27,7 +27,11 @@ export interface WriteOverrideResult {
  * Evaluate whether a write/edit operation is permitted.
  * Reads current state from disk, applies write policy.
  */
-export function evaluateWriteOverride(cwd: string, filePath: string): WriteOverrideResult {
+export function evaluateWriteOverride(
+  cwd: string,
+  filePath: string,
+  toolName?: "write" | "edit",
+): WriteOverrideResult {
   const state = readState(cwd);
 
   // Derive noTest flag for current task
@@ -38,8 +42,15 @@ export function evaluateWriteOverride(cwd: string, filePath: string): WriteOverr
     taskIsNoTest = currentTask?.noTest ?? false;
   }
 
-  const decision = canWrite(state.phase, filePath, state.megaEnabled, taskIsNoTest, state.tddTaskState);
-
+  const decision = canWrite(
+    state.phase,
+    filePath,
+    state.megaEnabled,
+    taskIsNoTest,
+    state.tddTaskState,
+    state.planMode ?? undefined,
+    toolName,
+  );
   if (!decision.allowed) {
     return { allowed: false, reason: decision.reason };
   }

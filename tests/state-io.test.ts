@@ -118,6 +118,28 @@ describe("state-io", () => {
     });
   });
 
+  describe("KNOWN_KEYS roundtrip", () => {
+    it("preserves planMode and planIteration through write/read", () => {
+      const state = createInitialState();
+      state.planMode = "draft";
+      state.planIteration = 2;
+
+      writeState(tmp, state);
+
+      const loaded = readState(tmp);
+      expect(loaded.planMode).toBe("draft");
+      expect(loaded.planIteration).toBe(2);
+    });
+
+    it("strips unknown keys on read", () => {
+      const state = { ...createInitialState(), unknownField: "garbage" };
+      writeState(tmp, state as any);
+
+      const loaded = readState(tmp);
+      expect((loaded as any).unknownField).toBeUndefined();
+    });
+  });
+
   describe("thin schema", () => {
     it("initial state has completedTasks array, not planTasks", () => {
       const state = createInitialState();

@@ -1,6 +1,6 @@
 You are reviewing an implementation plan before it goes to implementation.
 
-> **Workflow:** brainstorm → spec → plan → **review** → implement → verify → code-review → done
+> **Workflow:** brainstorm → spec → **plan (review)** → implement → verify → code-review → done
 
 ## Context
 Issue: {{issue_slug}}
@@ -11,7 +11,8 @@ Issue: {{issue_slug}}
 > **Bugfix note:** In bugfix workflows, "Spec" above contains the **diagnosis** with "Fixed When" criteria. Evaluate plan coverage against those criteria and verify the plan includes a regression test for the original bug.
 
 ## Plan
-{{plan_content}}
+
+Task files are stored in `.megapowers/plans/{{issue_slug}}/tasks/`. Read them now before proceeding with the review — list the directory, then read each `task-NNN.md` file.
 
 ## Evaluate against these criteria:
 
@@ -78,8 +79,24 @@ Check `AGENTS.md` for the project's language, test framework, and test runner. I
 - Present findings to the user for confirmation before concluding
 
 ## After Review
-If the plan passes, approve it:
+
+Submit your verdict via the `megapowers_plan_review` tool:
+**To approve:**
 ```
-megapowers_signal({ action: "review_approve" })
+megapowers_plan_review({
+  verdict: "approve",
+  feedback: "Your overall assessment...",
+  approved_tasks: [1, 2, 3, ...],
+})
 ```
-If the plan needs revision, provide specific, actionable feedback on what must change. Once the feedback is clear, call `megapowers_signal({ action: "phase_back" })` to return to the plan phase for rework. Do not approve a plan that has unresolved issues.
+**To request revisions:**
+```
+megapowers_plan_review({
+  verdict: "revise",
+  feedback: "Per-task assessment, issues found, suggestions...",
+  approved_tasks: [1, 3],
+  needs_revision_tasks: [2, 4],
+})
+```
+
+Do not approve a plan that has unresolved issues.
