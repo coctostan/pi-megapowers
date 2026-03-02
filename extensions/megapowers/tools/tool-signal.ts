@@ -5,9 +5,7 @@ import { listPlanTasks } from "../state/plan-store.js";
 import { advancePhase } from "../policy/phase-advance.js";
 import { deriveTasks } from "../state/derived.js";
 import { transition, type Phase } from "../state/state-machine.js";
-import { inspectTaskChange, createTaskChange, buildTaskCompletionReport } from "../task-coordinator.js";
 import { getWorkflowConfig } from "../workflows/registry.js";
-import type { JJ } from "../jj.js";
 import { versionArtifact } from "../artifacts/version-artifact.js";
 
 export interface SignalResult {
@@ -27,7 +25,6 @@ export function handleSignal(
     | "tests_passed"
     | "plan_draft_done"
     | string,
-  jj?: JJ,
   target?: string,
 ): SignalResult {
   const state = readState(cwd);
@@ -38,13 +35,13 @@ export function handleSignal(
 
   switch (action) {
     case "task_done":
-      return handleTaskDone(cwd, jj);
+      return handleTaskDone(cwd);
     case "review_approve":
       return handleReviewApprove(cwd);
     case "phase_next":
-      return handlePhaseNext(cwd, jj, target);
+      return handlePhaseNext(cwd, target);
     case "phase_back":
-      return handlePhaseBack(cwd, jj);
+      return handlePhaseBack(cwd);
     case "tests_failed":
       return handleTestsFailed(cwd);
     case "tests_passed":
@@ -60,7 +57,7 @@ export function handleSignal(
 // task_done
 // ---------------------------------------------------------------------------
 
-function handleTaskDone(cwd: string, jj?: JJ): SignalResult {
+function handleTaskDone(cwd: string): SignalResult {
   const state = readState(cwd);
 
   if (!state.activeIssue || state.phase !== "implement") {
@@ -146,6 +143,7 @@ function handleTaskDone(cwd: string, jj?: JJ): SignalResult {
 
   // Advance to next task
   const nextIdx = nextIncompleteIdx >= 0 ? nextIncompleteIdx : state.currentTaskIndex;
+  const nextTask = tasks[nextIdx];
   const updatedState = {
     ...state,
     completedTasks,
@@ -154,51 +152,12 @@ function handleTaskDone(cwd: string, jj?: JJ): SignalResult {
   };
   writeState(cwd, updatedState);
 
-  // -----------------------------------------------------------------------
-  // AC20 — jj task change integration (async, non-fatal)
-  //
-  // Inspect the current task's change diff and create a change for the next task.
-  // Failures are caught and result in a warning appended to the message, not an error.
-  // -----------------------------------------------------------------------
-  const nextTask = tasks[nextIdx];
-  const issueSlug = state.activeIssue;
-  const currentChangeId = state.taskJJChanges[currentTask.index];
-
-  if (jj) {
-    (async () => {
-      try {
-        if (!await jj.isJJRepo()) return;
-
-        // Inspect current task's change
-        if (currentChangeId) {
-          await inspectTaskChange(jj, currentChangeId);
-        }
-
-        // Create change for next task
-        const result = await createTaskChange(
-          jj, issueSlug, nextTask.index, nextTask.description,
-        );
-        if (result.changeId) {
-          const s = readState(cwd);
-          writeState(cwd, {
-            ...s,
-            taskJJChanges: { ...s.taskJJChanges, [nextTask.index]: result.changeId },
-          });
-        }
-      } catch {
-        // jj failures are non-fatal (AC20)
-      }
-    })();
-  }
-
   const remaining = tasks.length - completedTasks.length;
   return {
     message: `Task ${currentTask.index} (${currentTask.description}) marked complete. ${remaining} task${remaining === 1 ? "" : "s"} remaining. Next: Task ${nextTask.index}: ${nextTask.description}`,
   };
 }
 
-// ---------------------------------------------------------------------------
-// tests_failed
 // ---------------------------------------------------------------------------
 
 function handleTestsFailed(cwd: string): SignalResult {
@@ -283,8 +242,8 @@ function handleReviewApprove(_cwd: string): SignalResult {
 // phase_next
 // ---------------------------------------------------------------------------
 
-function handlePhaseNext(cwd: string, jj?: JJ, target?: string): SignalResult {
-  const result = advancePhase(cwd, target as Phase | undefined, jj);
+function handlePhaseNext(cwd: string, target?: string): SignalResult {
+  const result = advancePhase(cwd, target as Phase | undefined);
   if (!result.ok) {
     return { error: result.error };
   }
@@ -297,7 +256,7 @@ function handlePhaseNext(cwd: string, jj?: JJ, target?: string): SignalResult {
 // phase_back
 // ---------------------------------------------------------------------------
 
-function handlePhaseBack(cwd: string, jj?: JJ): SignalResult {
+function handlePhaseBack(cwd: string): SignalResult {
   const state = readState(cwd);
 
   if (!state.activeIssue || !state.phase || !state.workflow) {
@@ -331,7 +290,7 @@ function handlePhaseBack(cwd: string, jj?: JJ): SignalResult {
   if (backwardTransition.from === "code-review" && backwardTransition.to === "implement") {
     versionArtifact(planDir, "code-review.md");
   }
-  const result = advancePhase(cwd, backwardTransition.to, jj);
+  const result = advancePhase(cwd, backwardTransition.to);
   if (!result.ok) {
     return { error: result.error };
   }

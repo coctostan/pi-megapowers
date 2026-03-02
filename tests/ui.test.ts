@@ -59,16 +59,12 @@ function createMockCtx(selectReturn?: string, cwd?: string) {
   };
 }
 
-function createMockJJ() {
-  return {
-    isJJRepo: async () => false,
-    describe: async () => {},
-    newChange: async () => null,
-    log: async () => [],
-    diff: async () => "",
-    abandon: async () => {},
-    squashInto: async (_id: string) => {},
-  };
+async function callIssueCommand(ui: any, ctx: any, state: any, store: any, args: string) {
+  return ui.handleIssueCommand(ctx, state, store, args);
+}
+
+async function callTriageCommand(ui: any, ctx: any, state: any, store: any) {
+  return ui.handleTriageCommand(ctx, state, store);
 }
 
 describe("renderDashboardLines — no active issue", () => {
@@ -124,6 +120,17 @@ describe("renderDashboardLines — active issue", () => {
     expect(joined).toContain("plan");
     expect(joined).toContain("1/2");
   });
+});
+
+it("renderDashboardLines does not show legacy VCS line", () => {
+  const state = {
+    ...createInitialState(),
+    activeIssue: "001-test",
+    workflow: "feature" as const,
+    phase: "implement" as const,
+  };
+  const lines = renderDashboardLines(state, [], plainTheme as any, []);
+  expect(lines.join("\n")).not.toContain("jj:");
 });
 
 describe("renderStatusText", () => {
@@ -234,29 +241,14 @@ describe("getDoneChecklistItems (AC12)", () => {
     expect(items.every((i) => i.defaultChecked === true)).toBe(true);
   });
 
-  it("includes squash option when taskJJChanges non-empty and jjChangeId set", () => {
+  it("getDoneChecklistItems never includes squash-task-changes", () => {
     const state: MegapowersState = {
       ...createInitialState(),
       activeIssue: "001-test",
       workflow: "feature",
       phase: "done",
-      taskJJChanges: { 1: "abc123" },
-      jjChangeId: "phase-change",
     };
-    const items = getDoneChecklistItems(state);
-    expect(items.map((i) => i.key)).toContain("squash-task-changes");
-  });
-
-  it("excludes squash option when taskJJChanges is empty", () => {
-    const state: MegapowersState = {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "done",
-      taskJJChanges: {},
-    };
-    const items = getDoneChecklistItems(state);
-    expect(items.map((i) => i.key)).not.toContain("squash-task-changes");
+    expect(getDoneChecklistItems(state).map((i) => i.key)).not.toContain("squash-task-changes");
   });
 
   it("each item has a non-empty key and label", () => {
@@ -604,8 +596,7 @@ describe("handleIssueCommand — new state fields", () => {
   it("new issue resets currentTaskIndex and completedTasks", async () => {
     const store = createStore(tmp);
     const ui = createUI();
-    const jj = createMockJJ();
-    const state = createInitialState();
+        const state = createInitialState();
 
     const ctx = createMockCtx(undefined, tmp);
     ctx.ui.input = async () => "Test issue";
@@ -614,7 +605,7 @@ describe("handleIssueCommand — new state fields", () => {
     };
     ctx.ui.editor = async () => "description";
 
-    const result = await ui.handleIssueCommand(ctx as any, state, store, jj as any, "new");
+    const result = await callIssueCommand(ui, ctx as any, state, store, "new");
 
     expect(result.activeIssue).toBeTruthy();
     expect(result.completedTasks).toEqual([]);
@@ -624,8 +615,7 @@ describe("handleIssueCommand — new state fields", () => {
   it("list activation resets completedTasks and currentTaskIndex", async () => {
     const store = createStore(tmp);
     const ui = createUI();
-    const jj = createMockJJ();
-    // Create an existing issue to select from list
+        // Create an existing issue to select from list
     const issue = store.createIssue("Existing feature", "feature", "desc");
 
     // Stale state from previous work
@@ -644,7 +634,7 @@ describe("handleIssueCommand — new state fields", () => {
       return items.find(i => i.startsWith("#")) ?? items[0];
     };
 
-    const result = await ui.handleIssueCommand(ctx as any, state, store, jj as any, "list");
+    const result = await callIssueCommand(ui, ctx as any, state, store, "list");
 
     expect(result.activeIssue).toBe(issue.slug);
     expect(result.completedTasks).toEqual([]);
@@ -654,8 +644,7 @@ describe("handleIssueCommand — new state fields", () => {
   it("new issue resets stale completedTasks and currentTaskIndex from previous issue", async () => {
     const store = createStore(tmp);
     const ui = createUI();
-    const jj = createMockJJ();
-    // Simulate stale state from a previous issue
+        // Simulate stale state from a previous issue
     const state: MegapowersState = {
       ...createInitialState(),
       activeIssue: "old-issue",
@@ -672,7 +661,7 @@ describe("handleIssueCommand — new state fields", () => {
     };
     ctx.ui.editor = async () => "description";
 
-    const result = await ui.handleIssueCommand(ctx as any, state, store, jj as any, "new");
+    const result = await callIssueCommand(ui, ctx as any, state, store, "new");
 
     expect(result.activeIssue).toBeTruthy();
     expect(result.activeIssue).not.toBe("old-issue");
@@ -683,8 +672,7 @@ describe("handleIssueCommand — new state fields", () => {
   it("new issue resets stale tddTaskState from previous issue", async () => {
     const store = createStore(tmp);
     const ui = createUI();
-    const jj = createMockJJ();
-    // Simulate stale TDD state (impl-allowed) from a previous issue
+        // Simulate stale TDD state (impl-allowed) from a previous issue
     const state: MegapowersState = {
       ...createInitialState(),
       activeIssue: "old-issue",
@@ -701,7 +689,7 @@ describe("handleIssueCommand — new state fields", () => {
     };
     ctx.ui.editor = async () => "description";
 
-    const result = await ui.handleIssueCommand(ctx as any, state, store, jj as any, "new");
+    const result = await callIssueCommand(ui, ctx as any, state, store, "new");
 
     expect(result.activeIssue).toBeTruthy();
     expect(result.activeIssue).not.toBe("old-issue");
@@ -711,8 +699,7 @@ describe("handleIssueCommand — new state fields", () => {
   it("list activation resets stale tddTaskState", async () => {
     const store = createStore(tmp);
     const ui = createUI();
-    const jj = createMockJJ();
-    const issue = store.createIssue("Another feature", "feature", "desc");
+        const issue = store.createIssue("Another feature", "feature", "desc");
 
     // Stale TDD state from previous issue
     const state: MegapowersState = {
@@ -729,22 +716,21 @@ describe("handleIssueCommand — new state fields", () => {
       return items.find(i => i.startsWith("#")) ?? items[0];
     };
 
-    const result = await ui.handleIssueCommand(ctx as any, state, store, jj as any, "list");
+    const result = await callIssueCommand(ui, ctx as any, state, store, "list");
 
     expect(result.activeIssue).toBe(issue.slug);
     expect(result.tddTaskState).toBeNull();
   });
 
-  it("new issue resets taskJJChanges", async () => {
+  it("new issue resets completedTasks", async () => {
     const store = createStore(tmp);
     const ui = createUI();
-    const jj = createMockJJ();
-    const state: MegapowersState = {
+        const state: MegapowersState = {
       ...createInitialState(),
       activeIssue: "old-issue",
       workflow: "feature",
       phase: "implement",
-      taskJJChanges: { 1: "stale-change" },
+      completedTasks: [1, 2],
     };
 
     const ctx = createMockCtx(undefined, tmp);
@@ -754,9 +740,9 @@ describe("handleIssueCommand — new state fields", () => {
     };
     ctx.ui.editor = async () => "description";
 
-    const result = await ui.handleIssueCommand(ctx as any, state, store, jj as any, "new");
+    const result = await callIssueCommand(ui, ctx as any, state, store, "new");
 
-    expect(result.taskJJChanges).toEqual({});
+    expect(result.completedTasks).toEqual([]);
   });
 });
 
@@ -776,8 +762,7 @@ describe("handleIssueCommand — list filtering", () => {
   it("issue list filters out done issues", async () => {
     const store = createStore(tmp);
     const ui = createUI();
-    const jj = createMockJJ();
-    const state = createInitialState();
+        const state = createInitialState();
 
     // Create 3 issues: mark 2 as done, leave 1 open
     const openIssue = store.createIssue("Open feature", "feature", "still open");
@@ -794,7 +779,7 @@ describe("handleIssueCommand — list filtering", () => {
       return null; // cancel — we just want to inspect the list
     };
 
-    await ui.handleIssueCommand(ctx as any, state, store, jj as any, "list");
+    await callIssueCommand(ui, ctx as any, state, store, "list");
 
     // Should show only the open issue (plus the "+ Create new issue..." option)
     const issueItems = selectItems.filter(i => i.startsWith("#"));
@@ -808,15 +793,14 @@ describe("handleIssueCommand — list filtering", () => {
   it("shows 'no issues' message when all issues are done", async () => {
     const store = createStore(tmp);
     const ui = createUI();
-    const jj = createMockJJ();
-    const state = createInitialState();
+        const state = createInitialState();
 
     // Create an issue and mark it done
     const issue = store.createIssue("Completed work", "feature", "done");
     store.updateIssueStatus(issue.slug, "done");
 
     const ctx = createMockCtx(undefined, tmp);
-    await ui.handleIssueCommand(ctx as any, state, store, jj as any, "list");
+    await callIssueCommand(ui, ctx as any, state, store, "list");
 
     // Should notify that there are no (open) issues
     expect(ctx._notifications.some(n => n.msg.toLowerCase().includes("no issues") || n.msg.toLowerCase().includes("no open"))).toBe(true);
@@ -825,8 +809,7 @@ describe("handleIssueCommand — list filtering", () => {
   it("shows in-progress issues in the list", async () => {
     const store = createStore(tmp);
     const ui = createUI();
-    const jj = createMockJJ();
-    const state = createInitialState();
+        const state = createInitialState();
 
     const inProgressIssue = store.createIssue("Active work", "feature", "working on it");
     store.updateIssueStatus(inProgressIssue.slug, "in-progress");
@@ -838,7 +821,7 @@ describe("handleIssueCommand — list filtering", () => {
       return null;
     };
 
-    await ui.handleIssueCommand(ctx as any, state, store, jj as any, "list");
+    await callIssueCommand(ui, ctx as any, state, store, "list");
 
     const issueItems = selectItems.filter(i => i.startsWith("#"));
     expect(issueItems.length).toBe(1);
@@ -920,8 +903,7 @@ describe("handleTriageCommand", () => {
     };
 
     const state = createInitialState();
-    const jj = createMockJJ();
-    const result = await uiInstance.handleTriageCommand(ctx as any, state, testStore, jj as any);
+        const result = await callTriageCommand(uiInstance, ctx as any, state, testStore);
 
     // Should have created a batch issue and activated it
     expect(result.activeIssue).toBeDefined();
@@ -943,8 +925,7 @@ describe("handleTriageCommand", () => {
     const ctx = createMockCtx(undefined, tmp);
 
     const state = createInitialState();
-    const jj = createMockJJ();
-    const result = await uiInstance.handleTriageCommand(ctx as any, state, testStore, jj as any);
+        const result = await callTriageCommand(uiInstance, ctx as any, state, testStore);
 
     expect(result.activeIssue).toBeNull();
   });
@@ -964,8 +945,7 @@ describe("handleTriageCommand", () => {
     };
 
     const state = createInitialState();
-    const jj = createMockJJ();
-    await uiInstance.handleTriageCommand(ctx as any, state, testStore, jj as any);
+        await callTriageCommand(uiInstance, ctx as any, state, testStore);
 
     // Should have displayed the open issues
     const displayedIssues = notifications.find(n => n.includes("Bug A") || n.includes("#001"));

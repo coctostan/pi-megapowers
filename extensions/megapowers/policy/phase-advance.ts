@@ -5,7 +5,6 @@ import { checkGate } from "./gates.js";
 import { createStore } from "../state/store.js";
 import { deriveTasks } from "../state/derived.js";
 import { getWorkflowConfig } from "../workflows/registry.js";
-import { formatChangeDescription, type JJ } from "../jj.js";
 
 export interface AdvanceResult {
   ok: boolean;
@@ -13,7 +12,7 @@ export interface AdvanceResult {
   error?: string;
 }
 
-export function advancePhase(cwd: string, targetPhase?: Phase, jj?: JJ): AdvanceResult {
+export function advancePhase(cwd: string, targetPhase?: Phase): AdvanceResult {
   const state = readState(cwd);
 
   if (!state.activeIssue || !state.phase || !state.workflow) {
@@ -57,37 +56,6 @@ export function advancePhase(cwd: string, targetPhase?: Phase, jj?: JJ): Advance
 
   writeState(cwd, newState);
 
-  // jj operations: async, non-fatal, fire-and-forget
-  if (jj) {
-    const issueSlug = state.activeIssue;
-    const fromPhase = state.phase;
-    const savedJJChangeId = state.jjChangeId;
-
-    (async () => {
-      try {
-        if (!await jj.isJJRepo()) return;
-
-        await jj.describe(formatChangeDescription(issueSlug, fromPhase, "complete"));
-
-        const changeId = await jj.newChange(formatChangeDescription(issueSlug, target));
-        if (changeId) {
-          const s = readState(cwd);
-          writeState(cwd, { ...s, jjChangeId: changeId });
-        }
-
-        // Squash task changes into parent when advancing to done (AC21)
-        if (target === "done" && savedJJChangeId) {
-          try {
-            await jj.squashInto(savedJJChangeId);
-          } catch {
-            // Non-fatal
-          }
-        }
-      } catch {
-        // jj failures are always non-fatal
-      }
-    })();
-  }
 
   return { ok: true, newPhase: target };
 }

@@ -11,7 +11,6 @@ import {
   buildSourceIssuesContext,
 } from "./prompts.js";
 import type { Store } from "./state/store.js";
-import type { JJ } from "./jj.js";
 import { getWorkflowConfig } from "./workflows/registry.js";
 import { deriveToolInstructions } from "./workflows/tool-instructions.js";
 
@@ -52,7 +51,7 @@ function buildIdlePrompt(_cwd: string, store?: Store): string | null {
   return parts.length > 0 ? parts.join("\n\n") : null;
 }
 
-export function buildInjectedPrompt(cwd: string, store?: Store, _jj?: JJ): string | null {
+export function buildInjectedPrompt(cwd: string, store?: Store): string | null {
   const state = readState(cwd);
 
   if (!state.megaEnabled) return null;

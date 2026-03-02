@@ -3,7 +3,7 @@ import type { Message } from "@mariozechner/pi-ai";
 export interface DispatchConfig {
   agent: string;
   task: string;
-  /** Working directory the subagent should run in (jj workspace path). */
+  /** Working directory the subagent should run in (isolated workspace path). */
   cwd: string;
 
   /** Optional overrides (mapped onto pi-subagents agent config / runSync options). */

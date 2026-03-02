@@ -13,7 +13,6 @@ export interface PhaseTransition {
   from: Phase | null;
   to: Phase;
   timestamp: number;
-  jjChangeId?: string;
 }
 
 export type TddState = "no-test" | "test-written" | "impl-allowed";
@@ -52,8 +51,6 @@ export interface MegapowersState {
   currentTaskIndex: number;
   completedTasks: number[];   // PlanTask.index values (1-based)
   tddTaskState: TddTaskState | null;
-  taskJJChanges: Record<number, string>;
-  jjChangeId: string | null;
   doneActions: string[];
   megaEnabled: boolean;
 }
@@ -85,8 +82,6 @@ export function createInitialState(): MegapowersState {
     currentTaskIndex: 0,
     completedTasks: [],
     tddTaskState: null,
-    taskJJChanges: {},
-    jjChangeId: null,
     doneActions: [],
     megaEnabled: true,
   };
@@ -143,9 +138,6 @@ export function transition(state: MegapowersState, to: Phase, tasks?: PlanTask[]
     const completedSet = new Set(state.completedTasks);
     const firstIncomplete = tasks.findIndex(t => !completedSet.has(t.index));
     next.currentTaskIndex = firstIncomplete >= 0 ? firstIncomplete : 0;
-    next.taskJJChanges = {};  // Reset per-task changes on re-entry
-  } else if (to === "implement") {
-    next.taskJJChanges = {};
   }
 
   // Reset doneActions on every phase transition

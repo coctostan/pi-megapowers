@@ -20,7 +20,7 @@ Issue: {{issue_slug}}
 
 ## Instructions
 
-Review the artifacts above and inspect the actual files changed using the project's VCS (`jj diff`, `git diff`, etc.) to get the real list of modified files.
+Review the artifacts above and inspect the actual files changed using the project's VCS (`git diff`, etc.) to get the real list of modified files.
 
 Write the bugfix summary in this structure:
 

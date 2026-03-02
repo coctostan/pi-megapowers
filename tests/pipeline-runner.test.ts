@@ -73,10 +73,10 @@ describe("runPipeline", () => {
         workspaceCwd: join(projectRoot, ".megapowers", "subagents", "pipe", "workspace"),
         pipelineId: "pipe",
         agents: { implementer: "implementer", verifier: "verifier", reviewer: "reviewer" },
-        execJJ: async (args) => {
-          if (args[0] === "diff" && args[1] === "--summary") return { code: 0, stdout: "M src/a.ts\n", stderr: "" };
-          if (args[0] === "diff") return { code: 0, stdout: "diff --git ...", stderr: "" };
-          return { code: 0, stdout: "", stderr: "" };
+        execGit: async (args) => {
+          if (args.includes("--stat")) return { stdout: "src/a.ts | 2 ++\n", stderr: "" };
+          if (args.includes("diff") && args.includes("--cached") && !args.includes("--stat")) return { stdout: "diff --git ...", stderr: "" };
+          return { stdout: "", stderr: "" };
         },
       },
     );
@@ -135,10 +135,9 @@ describe("runPipeline", () => {
         pipelineId: "p",
         agents: { implementer: "implementer", verifier: "verifier", reviewer: "reviewer" },
         maxRetries: 1,
-        execJJ: async (args) => {
-          if (args[0] === "diff" && args[1] === "--summary") return { code: 0, stdout: "", stderr: "" };
-          if (args[0] === "diff") return { code: 0, stdout: "diff --git ...", stderr: "" };
-          return { code: 0, stdout: "", stderr: "" };
+        execGit: async (args) => {
+          if (args.includes("diff") && args.includes("--cached") && !args.includes("--stat")) return { stdout: "diff --git ...", stderr: "" };
+          return { stdout: "", stderr: "" };
         },
       },
     );
@@ -217,10 +216,10 @@ describe("runPipeline", () => {
         pipelineId: "p",
         agents: { implementer: "implementer", verifier: "verifier", reviewer: "reviewer" },
         maxRetries: 3,
-        execJJ: async (args) => {
-          if (args[0] === "diff" && args[1] === "--summary") return { code: 0, stdout: "M src/a.ts\n", stderr: "" };
-          if (args[0] === "diff") return { code: 0, stdout: "diff --git ...", stderr: "" };
-          return { code: 0, stdout: "", stderr: "" };
+        execGit: async (args) => {
+          if (args.includes("--stat")) return { stdout: "src/a.ts | 2 ++\n", stderr: "" };
+          if (args.includes("diff") && args.includes("--cached") && !args.includes("--stat")) return { stdout: "diff --git ...", stderr: "" };
+          return { stdout: "", stderr: "" };
         },
       },
     );
@@ -256,7 +255,7 @@ describe("runPipeline", () => {
         pipelineId: "p",
         agents: { implementer: "implementer", verifier: "verifier", reviewer: "reviewer" },
         maxRetries: 0,
-        execJJ: async () => ({ code: 0, stdout: "", stderr: "" }),
+        execGit: async () => ({ stdout: "", stderr: "" }),
       },
     );
 
@@ -298,7 +297,7 @@ describe("runPipeline", () => {
         pipelineId: "p",
         agents: { implementer: "implementer", verifier: "verifier", reviewer: "reviewer" },
         maxRetries: 0,
-        execJJ: async () => ({ code: 0, stdout: "", stderr: "" }),
+        execGit: async () => ({ stdout: "", stderr: "" }),
       },
     );
 

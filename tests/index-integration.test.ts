@@ -1,9 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { readState, writeState } from "../extensions/megapowers/state/state-io.js";
 import { createInitialState } from "../extensions/megapowers/state/state-machine.js";
+import { createUI } from "../extensions/megapowers/ui.js";
+import { createStore } from "../extensions/megapowers/state/store.js";
+import { onSessionStart } from "../extensions/megapowers/hooks.js";
 
 // These tests verify the architectural invariants of the rewritten index.ts
 // by checking the source code and state file behavior.
@@ -28,6 +31,18 @@ describe("index.ts architectural invariants", () => {
     const source = readFileSync(join(__dirname, "../extensions/megapowers/index.ts"), "utf-8");
     expect(source).toContain('from "@mariozechner/pi-coding-agent"');
     expect(source).not.toContain('@mariozechner/pi-coding-agent/tools');
+  });
+
+  it("legacy VCS module files are removed", () => {
+    const legacyModule = ["j", "j", ".ts"].join("");
+    const legacyMessages = ["j", "j", "-messages.ts"].join("");
+    expect(existsSync(`extensions/megapowers/${legacyModule}`)).toBe(false);
+    expect(existsSync(`extensions/megapowers/${legacyMessages}`)).toBe(false);
+  });
+
+  it("legacy VCS test file is removed", () => {
+    const legacyTest = ["j", "j", ".test.ts"].join("");
+    expect(existsSync(`tests/${legacyTest}`)).toBe(false);
   });
 
   describe("satellite TDD flow invariants", () => {
@@ -80,37 +95,37 @@ describe("index.ts architectural invariants", () => {
     });
   });
 
-  describe("session_start jj availability check (AC1-4)", () => {
-    it("imports checkJJAvailability from jj.ts", () => {
-      // session_start handler lives in hooks.ts (extracted from index.ts)
-      const source = readFileSync(join(__dirname, "../extensions/megapowers/hooks.ts"), "utf-8");
-      expect(source).toContain('checkJJAvailability');
-      expect(source).toMatch(/import\s+\{[^}]*checkJJAvailability[^}]*\}\s+from\s+["']\.\/jj/);
+  describe("session_start without jj requirement", () => {
+    let tmp: string;
+
+    beforeEach(() => {
+      tmp = mkdtempSync(join(tmpdir(), "session-start-no-jj-"));
     });
 
-    it("imports JJ_INSTALL_MESSAGE and JJ_INIT_MESSAGE from jj-messages.ts", () => {
-      const source = readFileSync(join(__dirname, "../extensions/megapowers/hooks.ts"), "utf-8");
-      expect(source).toContain("JJ_INSTALL_MESSAGE");
-      expect(source).toContain("JJ_INIT_MESSAGE");
-      expect(source).toContain("jj-messages");
+    afterEach(() => {
+      rmSync(tmp, { recursive: true, force: true });
     });
 
-    it("calls ctx.ui.notify with JJ_INSTALL_MESSAGE for not-installed case", () => {
-      const source = readFileSync(join(__dirname, "../extensions/megapowers/hooks.ts"), "utf-8");
-      expect(source).toContain("ctx.ui.notify(JJ_INSTALL_MESSAGE)");
-    });
+    it("onSessionStart does not require jj and still renders dashboard", async () => {
+      const ui = createUI();
+      const store = createStore(tmp);
 
-    it("calls ctx.ui.notify with JJ_INIT_MESSAGE for not-repo case", () => {
-      const source = readFileSync(join(__dirname, "../extensions/megapowers/hooks.ts"), "utf-8");
-      expect(source).toContain("ctx.ui.notify(JJ_INIT_MESSAGE)");
-    });
+      writeState(tmp, { ...createInitialState(), megaEnabled: false, activeIssue: null });
+      const ctx = {
+        cwd: tmp,
+        hasUI: true,
+        ui: {
+          theme: { fg: (_name: string, text: string) => text },
+          setWidget: () => {},
+          setStatus: () => {},
+          notify: () => {},
+        },
+      };
 
-    it("jj check does not block — no early return or throw after availability check", () => {
-      const source = readFileSync(join(__dirname, "../extensions/megapowers/hooks.ts"), "utf-8");
-      const jjCheckIndex = source.indexOf("checkJJAvailability");
-      const dashboardIndex = source.indexOf("renderDashboard");
-      expect(jjCheckIndex).toBeGreaterThan(-1);
-      expect(dashboardIndex).toBeGreaterThan(jjCheckIndex);
+      await onSessionStart({} as any, ctx as any, { store, ui } as any);
+
+      const state = readState(tmp);
+      expect(state.megaEnabled).toBe(true);
     });
   });
 });

@@ -29,7 +29,7 @@ Save phase output by writing files directly under `.megapowers/plans/<issue-slug
 - Always save work before advancing phases
 
 ### Version Control
-Version control is managed automatically via jj. **Do not run jj or git commands unless the active phase prompt explicitly asks for VCS evidence or a selected done action requires it.**
+Version control is managed automatically. **Do not run git commands.** Phase changes and commits are handled by the system.
 
 ### Error Handling
 When a megapowers tool returns an error:

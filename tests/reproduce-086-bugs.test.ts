@@ -56,7 +56,6 @@ function makeDeps(cwd: string) {
   return {
     store: makeStore(cwd),
     ui: { renderDashboard: () => {} },
-    jj: null,
   };
 }
 
@@ -224,8 +223,7 @@ describe("Bug (fixed): onContext hook should not call buildSessionContext()", ()
 // Bug 5: Subagent workspace creation fails — parent directory not created
 // ============================================================================
 
-import { createPipelineWorkspace, type ExecJJ } from "../extensions/megapowers/subagent/pipeline-workspace.js";
-
+import { createPipelineWorkspace, type ExecGit } from "../extensions/megapowers/subagent/pipeline-workspace.js";
 describe("Bug: subagent workspace creation fails on fresh repo", () => {
   let tmp: string;
 
@@ -233,32 +231,27 @@ describe("Bug: subagent workspace creation fails on fresh repo", () => {
     tmp = mkdtempSync(join(tmpdir(), "workspace-create-"));
     mkdirSync(join(tmp, ".megapowers"), { recursive: true });
   });
-
   afterEach(() => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  it("should create parent directories before calling jj workspace add", async () => {
-    const calls: { args: string[]; opts?: { cwd?: string } }[] = [];
-    const execJJ: ExecJJ = async (args, opts) => {
-      calls.push({ args, opts });
-      // Simulate what jj does: check if parent dir exists
+  it("should create parent directories before calling git worktree add", async () => {
+    const calls: string[][] = [];
+    const execGit: ExecGit = async (args) => {
+      calls.push(args);
       const workspacePath = args[args.length - 1];
       const parentDir = join(workspacePath, "..");
       if (!existsSync(parentDir)) {
-        return {
-          code: 1,
-          stdout: "",
-          stderr: `Error: Cannot access ${workspacePath}\nCaused by: No such file or directory (os error 2)`,
-        };
+        throw new Error(`Cannot access ${workspacePath}`);
       }
-      return { code: 0, stdout: "", stderr: "" };
+      return { stdout: "", stderr: "" };
     };
 
-    const r = await createPipelineWorkspace(tmp, "oneshot-12345", execJJ);
-
-    // BUG: The parent directory .megapowers/subagents/oneshot-12345/ is never created
-    // so jj workspace add fails with ENOENT
+    const r = await createPipelineWorkspace(tmp, "oneshot-12345", execGit);
     expect((r as any).error).toBeUndefined();
+    const worktreeCall = calls.find((args) => args.includes("worktree") && args.includes("add"));
+    expect(worktreeCall).toBeDefined();
+    expect(worktreeCall).toContain("--detach");
+    expect(worktreeCall?.[worktreeCall.length - 1]).toContain(".megapowers/workspaces/");
   });
 });

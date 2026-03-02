@@ -1,27 +1,24 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { createStore, type Store } from "./state/store.js";
-import { createJJ, type JJ } from "./jj.js";
-import { createUI, filterTriageableIssues, formatTriageIssueList, showDoneChecklist, type MegapowersUI } from "./ui.js";
+import { createUI, showDoneChecklist, type MegapowersUI } from "./ui.js";
 import { readState, writeState } from "./state/state-io.js";
-import { loadPromptFile, interpolatePrompt } from "./prompts.js";
 import { handleSignal } from "./tools/tool-signal.js";
 import { deriveTasks } from "./state/derived.js";
 
 /** Mutable container — exactly one instance lives in index.ts, shared by all hooks and commands */
-export type RuntimeDeps = { store?: Store; jj?: JJ; ui?: MegapowersUI };
+export type RuntimeDeps = { store?: Store; ui?: MegapowersUI };
 
 /** Resolved deps — guaranteed non-optional */
-export type Deps = { pi: ExtensionAPI; store: Store; jj: JJ; ui: MegapowersUI };
+export type Deps = { pi: ExtensionAPI; store: Store; ui: MegapowersUI };
 
 /**
- * The ONLY place allowed to create store/jj/ui.
+ * The ONLY place allowed to create store/ui.
  * Mutates runtimeDeps in-place so hooks and commands always share instances.
  */
 export function ensureDeps(rd: RuntimeDeps, pi: ExtensionAPI, cwd: string): Deps {
   if (!rd.store) rd.store = createStore(cwd);
-  if (!rd.jj) rd.jj = createJJ(pi);
   if (!rd.ui) rd.ui = createUI();
-  return { pi, store: rd.store, jj: rd.jj, ui: rd.ui };
+  return { pi, store: rd.store, ui: rd.ui };
 }
 
 // --- Command handlers ---
@@ -60,20 +57,14 @@ export async function handleMegaCommand(args: string, ctx: any, deps: Deps): Pro
 
 export async function handleIssueCommand(args: string, ctx: any, deps: Deps): Promise<void> {
   const state = readState(ctx.cwd);
-  const newState = await deps.ui.handleIssueCommand(ctx, state, deps.store, deps.jj, args);
+  const newState = await deps.ui.handleIssueCommand(ctx, state, deps.store, args);
   writeState(ctx.cwd, newState);
 }
 
 export async function handleTriageCommand(_args: string, ctx: any, deps: Deps): Promise<void> {
-  const issues = filterTriageableIssues(deps.store.listIssues());
-  if (issues.length === 0) {
-    if (ctx.hasUI) ctx.ui.notify("No open issues to triage.", "info");
-    return;
-  }
-  const issueList = formatTriageIssueList(issues);
-  const template = loadPromptFile("triage.md");
-  const prompt = interpolatePrompt(template, { open_issues: issueList });
-  deps.pi.sendUserMessage(prompt);
+  const state = readState(ctx.cwd);
+  const newState = await deps.ui.handleTriageCommand(ctx, state, deps.store);
+  writeState(ctx.cwd, newState);
 }
 
 export async function handlePhaseCommand(args: string, ctx: any, deps: Deps): Promise<void> {
@@ -82,7 +73,7 @@ export async function handlePhaseCommand(args: string, ctx: any, deps: Deps): Pr
   if (sub === "next" || (sub !== "" && sub !== "status")) {
     // "next" uses default forward transition; any other non-empty string is a target phase
     const target = sub === "next" ? undefined : sub;
-    const result = handleSignal(ctx.cwd, "phase_next", deps.jj, target);
+    const result = handleSignal(ctx.cwd, "phase_next", target);
     if (result.error) {
       if (ctx.hasUI) ctx.ui.notify(result.error, "error");
     } else {
@@ -176,7 +167,7 @@ export async function handleTaskCommand(args: string, ctx: any, deps: Deps): Pro
   const sub = args.trim();
 
   if (sub === "done") {
-    const result = handleSignal(ctx.cwd, "task_done", deps.jj);
+    const result = handleSignal(ctx.cwd, "task_done");
     if (result.error) {
       if (ctx.hasUI) ctx.ui.notify(result.error, "error");
     } else {

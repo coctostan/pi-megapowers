@@ -21,10 +21,10 @@ describe("handleOneshotTool", () => {
   });
 
   it("squashes workspace on success", async () => {
-    const jjCalls: any[] = [];
-    const execJJ = async (args: string[], opts?: any) => {
-      jjCalls.push({ args, opts });
-      return { code: 0, stdout: "", stderr: "" };
+    const gitCalls: any[] = [];
+    const execGit = async (args: string[]) => {
+      gitCalls.push({ args });
+      return { stdout: "", stderr: "" };
     };
 
     const dispatcher: Dispatcher = {
@@ -38,15 +38,20 @@ describe("handleOneshotTool", () => {
       },
     };
 
-    const r = await handleOneshotTool(tmp, { task: "do it" }, dispatcher, execJJ);
+    const r = await handleOneshotTool(tmp, { task: "do it" }, dispatcher, execGit);
     expect(r.error).toBeUndefined();
-    expect(jjCalls.some((c) => c.args[0] === "squash")).toBe(true);
+    // squash cleans up workspace (worktree remove when no diff)
+    expect(gitCalls.some((c) => c.args.includes("worktree") && c.args.includes("remove"))).toBe(true);
   });
 
   it("returns an error when squash fails after successful dispatch", async () => {
-    const execJJ = async (args: string[]) => {
-      if (args[0] === "squash") return { code: 1, stdout: "", stderr: "squash boom" };
-      return { code: 0, stdout: "", stderr: "" };
+    const execGit = async (args: string[]) => {
+      // return non-empty diff so apply is called
+      if (args.includes("diff") && args.includes("--cached") && !args.includes("--stat")) {
+        return { stdout: "diff --git a/f.ts b/f.ts\n+x", stderr: "" };
+      }
+      if (args.includes("apply")) throw new Error("git apply failed: squash boom");
+      return { stdout: "", stderr: "" };
     };
 
     const dispatcher: Dispatcher = {
@@ -60,15 +65,17 @@ describe("handleOneshotTool", () => {
       },
     };
 
-    const r = await handleOneshotTool(tmp, { task: "do it" }, dispatcher, execJJ);
+    const r = await handleOneshotTool(tmp, { task: "do it" }, dispatcher, execGit);
     expect(r.error).toContain("Squash failed");
-    expect(r.error).toContain("squash boom");
+    expect(r.error).toContain("git apply failed");
   });
 
   it("returns cleanup errors when dispatch fails", async () => {
-    const execJJ = async (args: string[]) => {
-      if (args[0] === "workspace" && args[1] === "forget") return { code: 1, stdout: "", stderr: "forget boom" };
-      return { code: 0, stdout: "", stderr: "" };
+    const execGit = async (args: string[]) => {
+      if (args.includes("worktree") && args.includes("remove") && args.includes("--force")) {
+        throw new Error("forget boom");
+      }
+      return { stdout: "", stderr: "" };
     };
 
     const dispatcher: Dispatcher = {
@@ -83,7 +90,7 @@ describe("handleOneshotTool", () => {
       },
     };
 
-    const r = await handleOneshotTool(tmp, { task: "do it" }, dispatcher, execJJ);
+    const r = await handleOneshotTool(tmp, { task: "do it" }, dispatcher, execGit);
     expect(r.error).toContain("Cleanup failed");
     expect(r.error).toContain("forget boom");
   });

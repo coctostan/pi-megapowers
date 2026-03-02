@@ -28,7 +28,7 @@ Execute the following wrap-up actions in order:
 For each action listed above:
 
 ### generate-docs
-Generate a feature document summarizing what was built and why. Use the spec, plan, and verify artifacts, and inspect actual changed files via `jj diff` or `git diff` when needed. Present the full document in your response; the system persists it to `.megapowers/docs/{{issue_slug}}.md`.
+Generate a feature document summarizing what was built and why. Use the spec, plan, and verify artifacts, and inspect actual changed files via `git diff` when needed. Present the full document in your response; the system persists it to `.megapowers/docs/{{issue_slug}}.md`.
 
 ### generate-bugfix-summary
 Generate a bugfix summary document including root cause, fix approach, files changed, and how to verify the fix. Present the full summary in your response; the system persists it to `.megapowers/docs/{{issue_slug}}.md`.
@@ -50,7 +50,7 @@ write({ path: ".megapowers/plans/{{issue_slug}}/learnings.md", content: "<markdo
 (Use `edit` for incremental revisions.)
 
 ### squash-task-changes
-Run `jj squash --into @-` via bash to consolidate per-task jj changes into the phase change. Confirm the squash completed without error.
+Consolidate per-task changes into the phase-level history using the project's automatic VCS flow. Do not run manual VCS commands.
 
 ### close-issue
 All other actions are complete. Report the full list of completed wrap-up actions to the user. Inform them the issue is ready to close — they can run `/issue close` or select a new issue to continue.
