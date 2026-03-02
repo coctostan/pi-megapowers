@@ -1,7 +1,7 @@
 ---
 id: 67
 type: bugfix
-status: open
+status: done
 created: 2026-02-24T00:21:00.000Z
 milestone: M2
 priority: 1

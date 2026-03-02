@@ -1,145 +1,104 @@
 # Milestones
 
 > Operational tracking for milestone → issue mapping and progress.
-> Milestone definitions: `.megapowers/init/megapowers/05-roadmap.md`
-> Updated: 2026-02-25
+> Updated: 2026-03-01
 
 ---
 
-## M0: Restructure
+## ✅ M0: Restructure — COMPLETE
 
-**Status:** Not started
-**Theme:** Make the codebase workable. No user-visible changes.
-**Gate:** All 546 existing tests pass. No behavior change.
-
-| ID | Title | Priority | Status |
-|----|-------|----------|--------|
-| 070 | Directory restructure | 1 | open |
-| 043 | Extract slash commands, expose as LLM tools | 2 | open |
-| 071 | Generalize state machine / WorkflowConfig | 2 | open |
-
-**Dependency chain:** 070 → 071 (config needs clean dirs). 043 independent.
+All issues shipped: #070 (directory restructure), #043 (extract slash commands).
 
 ---
 
 ## M1: UX Foundation
 
-**Status:** In progress
-**Theme:** Fix the worst pain. PRD priority #1.
-**Gate:** A new user can start an issue and get through brainstorm → spec without getting stuck.
+**Status:** In progress (3 issues)
+**Theme:** Fix the worst pain. A new user can start an issue and get through brainstorm → spec without getting stuck.
 
-| ID | Title | Priority | Status |
-|----|-------|----------|--------|
-| 061 | jj mismatch dialog frozen | 1 | **done** |
-| 072 | Kill phase transition popup | 1 | open |
-| 050 | Agent context & awareness | 1 | in-progress |
-| 042 | Interactive UX transparency | 2 | open |
-| 051 | UX feedback & visibility | 2 | in-progress |
-| 073 | /mp command hub | 2 | open |
-| 041 | save_artifact overwrite + versioning | 3 | open |
-| 058 | Issue management UX | 3 | open |
+| ID  | Title | Priority | Status |
+|-----|-------|----------|--------|
+| 061 | jj mismatch dialog frozen | 1 | open |
+| 051 | UX feedback, visibility & transparency | 2 | open |
+| 073 | /mp command hub & issue management UX | 2 | open |
 
-**Dependency chain:** 043 → 073 (hub needs extracted commands). 072 related to 042, 051.
+**Notes:** #051 absorbs #042. #073 absorbs #058.
 
 ---
 
-## M2: Subagent Pipeline
+## ✅ M2: Subagent Pipeline — MOSTLY COMPLETE
 
-**Status:** Not started
-**Theme:** Make delegation work. PRD priority #2.
-**Gate:** A 3-task plan completes via sequential subagent delegation, results squashed back.
+Core pipeline shipped: #067 (workspace squash), #076 (per-task chain). One issue remains for polish:
 
-| ID | Title | Priority | Status |
-|----|-------|----------|--------|
-| 067 | Subagent workspace squash missing | 1 | open |
-| 074 | Subagent structured result handoff | 2 | open |
-| 075 | Rich subagent UI | 3 | open |
-| 076 | Per-task subagent chain | 4 | open |
+| ID  | Title | Priority | Status |
+|-----|-------|----------|--------|
+| 074 | Subagent structured handoff & rich UI | 2 | open |
 
-**Dependency chain:** 067 → 074 → 075, 076 (squash first, then structured data, then UI and chains).
+**Notes:** #074 absorbs #075. Pipeline-runner does implement→verify→review. This issue adds structured result format and user-facing display.
 
 ---
 
-## M3: Plan/Review Loop
+## ✅ M3: Plan/Review Loop — MOSTLY COMPLETE
 
-**Status:** Not started
-**Theme:** Plans that actually work. PRD priority #4.
-**Gate:** A plan goes through REJECT → fix → re-review and produces a better plan than single-shot.
+Core loop shipped: #066 (iterative plan-review), #085 (wiring & API). One issue remains:
 
-| ID | Title | Priority | Status |
-|----|-------|----------|--------|
-| 066 | Merge plan + review into iterative loop | 1 | open |
-| 059 | Context management + plan-review versioning | 2 | open |
-
-**Foldable gaps:** Interview step → #066. Autonomy checkpoints → #066.
+| ID  | Title | Priority | Status |
+|-----|-------|----------|--------|
+| 059 | Workflow iteration quality — context management | 2 | open |
 
 ---
 
-## M4: Done Phase
+## M4: VCS Integration
 
-**Status:** Not started
-**Theme:** Clean close. PRD priority #3.
-**Gate:** Issue goes from code-review → done → merged/pushed with one confirmation.
+**Status:** Not started (1 issue)
+**Theme:** Clean close. Issue goes from done → merged/pushed automatically.
 
-| ID | Title | Priority | Status |
-|----|-------|----------|--------|
-| 065 | Done phase refactor | 1 | open |
-| 064 | jj bookmark + git push workflow | 1 | open |
-| 063 | Done-phase artifacts write to wrong files | 2 | open |
+| ID  | Title | Priority | Status |
+|-----|-------|----------|--------|
+| 083 | Comprehensive VCS integration (git + jj) | 1 | open |
 
-**Foldable gaps:** Confirmation widget → #065. Issue archival → #065.
-**Note:** #063 likely superseded by #065 (same root cause). Consider closing when #065 is worked.
+**Notes:** #083 absorbs #064. Covers bookmark management, squash-on-done, git push, PR creation, branch cleanup, session resume, git-only fallback.
 
 ---
 
-## M5: Backward Transitions + TDD Flexibility + Issue Management
+## M5: TDD Flexibility + Issue Management
 
-**Status:** Not started
-**Theme:** Polish the dev workflow. PRD priorities #5, #6, #7.
-**Gate:** User can go backward, see cascade warnings, re-implement without stale state.
+**Status:** Not started (2 issues)
+**Theme:** Polish the dev workflow.
 
-| ID | Title | Priority | Status |
-|----|-------|----------|--------|
-| 069 | Backward phase transitions | 1 | open |
-| 068 | [prompt-test] task type | 2 | open |
+| ID  | Title | Priority | Status |
+|-----|-------|----------|--------|
+| 068 | `[prompt-test]` task type | 2 | open |
 | 077 | Issue priority, archiving, list UI | 3 | open |
 
-**Foldable gaps:** Cascade invalidation → #069. Backward warning dialog → #069.
-
 ---
 
-## M6: Init System + Clean Context Windows
+## M6: Init System
 
-**Status:** Not started (foundation docs completed in init phases 0–6)
+**Status:** Not started (4 issues)
 **Theme:** The second product. Init workflows + foundation doc lifecycle.
-**Gate:** User runs /mp init on brownfield, walks through all phases, produces foundation docs, starts dev workflow referencing them.
+**Gate:** User runs `/mp init` on brownfield, walks through all phases, produces foundation docs.
 
-| ID | Title | Priority | Status |
-|----|-------|----------|--------|
-| 081 | Foundation doc audit | 1 | open |
-| 082 | Greenfield process templates | 1 | open |
-| 078 | Init workflow system (configs + templates) | 1 | open |
-| 079 | Foundation doc lifecycle (inject + update + audit) | 2 | open |
-| 062 | Prompt/skill audit workflow (new workflow type) | 2 | open |
+| ID  | Title | Priority | Status |
+|-----|-------|----------|--------|
+| 078 | Init workflow system | 1 | open |
+| 079 | Foundation doc lifecycle | 2 | open |
 | 080 | Clean context windows | 3 | open |
 | 052 | Project lifecycle management | 3 | open |
 
-**Dependency chain:** 081 → 082 → 078 (audit templates, then greenfield variants, then build engine). 071 → 078 (init needs WorkflowConfig). 078 → 079 (docs need init system). 080 independent.
-**Note:** #052 partially stale — source #011 superseded by #064, source #049 addressed by init phases 0–6.
+**Notes:** #078 absorbs #081 (doc audit) and #082 (greenfield templates).
 
 ---
 
 ## Summary
 
-| Milestone | Issues | Status |
-|-----------|--------|--------|
-| M0 | 3 | Not started |
-| M1 | 8 | In progress |
-| M2 | 4 | Not started |
-| M3 | 2 | Not started |
-| M4 | 3 | Not started |
-| M5 | 3 | Not started |
-| M6 | 7 | Not started |
-| **Total** | **30** | |
-
-**6 foldable gaps** noted inline (will be absorbed into existing issues during planning).
+| Milestone | Total | Done | Remaining |
+|-----------|-------|------|-----------|
+| M0 | 2 | 2 | 0 ✅ |
+| M1 | 3 | 0 | 3 |
+| M2 | 1 | 0 | 1 |
+| M3 | 1 | 0 | 1 |
+| M4 | 1 | 0 | 1 |
+| M5 | 2 | 0 | 2 |
+| M6 | 4 | 0 | 4 |
+| **Total** | **14** | **2** | **12** |

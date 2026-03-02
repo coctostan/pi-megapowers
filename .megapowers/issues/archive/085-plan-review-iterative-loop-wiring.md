@@ -1,7 +1,7 @@
 ---
 id: 85
 type: feature
-status: closed
+status: done
 created: 2026-03-01T00:00:00.000Z
 milestone: M3
 priority: 1

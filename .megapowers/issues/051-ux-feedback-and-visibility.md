@@ -1,13 +1,20 @@
 ---
 id: 51
 type: feature
-status: in-progress
+status: open
 created: 2026-02-24T19:15:00.000Z
-sources: [22, 31, 45]
+sources: [22, 31, 36, 37, 45]
 milestone: M1
 priority: 2
 ---
 
-# UX feedback & visibility — progress indicators, notifications, and polish
+# UX feedback, visibility & transparency
 
-Batch addressing the lack of user-facing feedback during megapowers operations. (1) #045: Megapowers tool calls (`megapowers_signal`, `megapowers_save_artifact`) show no visible progress — the TUI appears frozen while the agent works. Need loading/status indicators. (2) #022: After phase transitions, show the artifact filename in the notification so the user knows what was saved and where. (3) #031: General UX polish pass — notification consistency, dashboard clarity, and visual feedback throughout the workflow.
+Batch addressing UX gaps in megapowers:
+
+1. **Progress indicators** — tool calls (`megapowers_signal`, etc.) show no visible progress; TUI appears frozen while agent works. Need loading/status indicators.
+2. **Notification clarity** — after phase transitions, show artifact filename so user knows what was saved and where. General notification consistency and polish.
+3. **Multi-select & Discuss** — done-phase wrap-up uses single-select-then-loop instead of multi-select. All phase menus lack a "Discuss" escape hatch.
+4. **Prompt injection visibility** — injection happens invisibly (`display: false`). Need a compact status indicator showing what was injected, plus optional `/mega context` debug command.
+
+Absorbs #042 (interactive UX transparency).

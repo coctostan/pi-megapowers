@@ -1,7 +1,7 @@
 ---
 id: 75
 type: feature
-status: open
+status: done
 created: 2026-02-25T18:50:00.000Z
 milestone: M2
 priority: 3

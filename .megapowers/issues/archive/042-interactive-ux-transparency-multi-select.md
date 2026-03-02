@@ -1,7 +1,7 @@
 ---
 id: 42
 type: feature
-status: open
+status: done
 created: 2026-02-24T00:48:10.229Z
 sources: [36, 37]
 milestone: M1

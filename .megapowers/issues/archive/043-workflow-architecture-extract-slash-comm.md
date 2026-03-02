@@ -1,7 +1,7 @@
 ---
 id: 43
 type: feature
-status: open
+status: done
 created: 2026-02-24T00:48:17.085Z
 sources: [13, 27, 35]
 milestone: M0

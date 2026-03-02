@@ -3,6 +3,7 @@ id: 78
 type: feature
 status: open
 created: 2026-02-25T18:50:00.000Z
+sources: [81, 82]
 milestone: M6
 priority: 1
 ---
@@ -11,54 +12,37 @@ priority: 1
 
 ## Problem
 
-The init phases (audit → discovery → vision → PRD → architecture → roadmap → conventions) were run manually for this project. There's no workflow engine driving them — no phase tracking, no gates, no enforcement. A new project would require the same manual orchestration.
+The init phases (audit → discovery → vision → PRD → architecture → roadmap → conventions) were run manually. No workflow engine, no phase tracking, no enforcement. Templates need auditing, and greenfield variants don't exist.
 
-## Proposed Solution
+## Scope
 
-Create two WorkflowConfigs (depends on #071):
+### 1. Foundation doc audit (from #081)
+- Review all brownfield process templates and project deliverables for misplaced content, gaps, redundancy, stale references
+- Verify cross-references between docs
+- Fix issues in-place, document findings
 
-**init-brownfield:**
-```
-audit → discovery → vision → prd → architecture → roadmap → conventions
-```
+### 2. Greenfield templates (from #082)
+- Derive greenfield variants for phases 2–7 (skip audit + discovery)
+- Vision from user description (not codebase analysis), architecture from scratch (not migration), roadmap without restructuring milestones, conventions chosen fresh
 
-**init-greenfield:**
-```
-vision → prd → architecture → roadmap → conventions
-```
-
-Greenfield skips audit and discovery (no existing codebase to analyze).
-
-Each phase has:
-- Phase-specific prompt template (brownfield templates exist from this project, greenfield variants needed)
-- Gate conditions (artifact must exist, no open questions)
-- Output location (`.megapowers/init/<project>/`)
-
-`/mp init [brownfield|greenfield]` starts the workflow. Phase tracking in state.json just like feature/bugfix.
-
-### Greenfield templates needed
-
-Greenfield variants of each phase template that don't reference existing code:
-- Vision: starts from user's idea/description, not codebase analysis
-- PRD: derives from vision without audit findings
-- Architecture: designed from scratch, not constrained by existing patterns
-- Roadmap: builds from zero, no "existing state" column
-- Conventions: establishes from scratch, no "current conventions" to document
+### 3. Workflow engine
+- Two WorkflowConfigs: init-brownfield (7 phases) and init-greenfield (5 phases)
+- `/mp init [brownfield|greenfield]` starts the workflow
+- Phase tracking in state.json, gate conditions enforced per phase
+- Output artifacts in `.megapowers/init/<project>/`
+- Phase-specific prompt templates with gates (artifact must exist, no open questions)
 
 ## Acceptance Criteria
 
-- [ ] init-brownfield WorkflowConfig defined with all 7 phases
-- [ ] init-greenfield WorkflowConfig defined with 5 phases (skip audit, discovery)
-- [ ] `/mp init brownfield` starts brownfield workflow
-- [ ] `/mp init greenfield` starts greenfield workflow
-- [ ] Phase tracking works (state.json tracks init workflow phase)
-- [ ] Greenfield prompt templates created for all 5 phases
-- [ ] Brownfield prompt templates verified (exist from this project's init)
-- [ ] Gate conditions enforced per phase
-- [ ] Output artifacts land in `.megapowers/init/<project>/`
+- [ ] Brownfield templates audited and cleaned
+- [ ] Greenfield variants created for phases 2–7
+- [ ] init-brownfield WorkflowConfig with all 7 phases
+- [ ] init-greenfield WorkflowConfig with 5 phases
+- [ ] `/mp init` command works
+- [ ] Phase tracking and gate enforcement functional
+- [ ] Output artifacts land in correct location
 
 ## Notes
-
-- Hard depends on #071 (WorkflowConfig) — can't build init workflows without the generalized engine.
-- Brownfield templates already exist at `.megapowers/init/megapowers/` — they need to be generalized (remove project-specific references).
-- Greenfield is the bigger design effort — how do you prompt "describe your vision" without an existing codebase to analyze?
+- Absorbs #081 (foundation doc audit) and #082 (greenfield templates).
+- Brownfield templates exist at `.megapowers/init/megapowers/` — need generalization.
+- Hard depends on generalized state machine (already shipped in #071).

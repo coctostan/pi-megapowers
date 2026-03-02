@@ -2,35 +2,39 @@
 
 ## Completed
 
-- **Core platform** — State machine, jj integration, TUI, feature + bugfix workflows
+- **M0: Restructure** — Directory reorganization (#070), slash command extraction (#043)
+- **Core platform** — State machine (#071), jj integration, TUI, feature + bugfix workflows
 - **TDD enforcement** — Blocks production writes until tests written and failing
-- **Task coordination** — Per-task jj changes, satellite TDD for subagents
-- **Issue triage & batching** — LLM-driven grouping of related issues
-- **State refactor** — Disk-first architecture, derived data from artifacts
-- **Subagent robustness** — jj prerequisite checks, agent optimization, phase-aware context (#060)
-- **Agent context & awareness** — Prompt quality, TDD edge cases, baseline context (#050)
-- **Generalized state machine** — WorkflowConfig-driven phases and transitions (#071)
-- **Phase transition UX** — Killed popup, streamlined transitions (#072)
-- **Subagent pipeline** — Workspace squash, structured handoff, rich UI, per-task chains (#067, #074, #075, #076)
-- **Codebase restructure** — Directory reorganization, command extraction, LLM tool exposure (#070, #043)
-- **UX foundation** — jj dialog fix, save_artifact versioning, interactive UX, feedback & visibility (#041, #042, #051, #061)
-- **Backward phase transitions** — LLM tools and slash commands for phase rollback (#069)
-- **Prompt-test task type** — TDD for prompts and skills (#068)
-- **Prompt/skill audit workflow** — New workflow type for non-code work (#062)
+- **Phase transition UX** — Killed popup (#072), backward transitions (#069)
+- **Subagent pipeline** — Workspace squash (#067), per-task implement→verify→review chain (#076)
+- **Plan-review loop** — Iterative draft/review/revise with entity parser (#066, #085)
+- **Done phase** — Artifact capture refactor (#065), save_artifact removed (#041, #063)
+- **Agent context & awareness** — Prompt quality, TDD edge cases (#050)
+- **Prompt/skill audit** — Workflow type for non-code work (#062)
 
-## Current: M1 (1 remaining) + M3 + M4
+## Current: M1 — UX Foundation
 
-| Issue | Milestone | Description |
-|-------|-----------|-------------|
-| #073 | M1 | /mp command hub — unified entry point for all commands |
-| #066 | M3 | Merge plan + review into iterative loop (absorbs #059 plan versioning) |
-| #087 | M4 | Done phase + VCS — artifact capture, squash, and push (#065 + #083) |
+| Issue | Pri | Description |
+|-------|-----|-------------|
+| #061  | P1  | jj change mismatch dialog frozen — select widget doesn't accept input |
+| #051  | P2  | UX feedback, visibility & transparency (absorbs #042) |
+| #073  | P2  | /mp command hub & issue management UX (absorbs #058) |
 
-## Later: M5 Issue Management + M6 Init System
+## Next: M2–M4
 
 | Issue | Milestone | Description |
 |-------|-----------|-------------|
-| #084 | M5 | Issue management — create, list, sort, archive, priority (#058 + #077) |
-| #085 | M6 | Foundation content — doc audit + greenfield templates (#081 + #082) |
-| #086 | M6 | Init engine — workflow system + doc lifecycle (#078 + #079) |
-| #080 | M6 | Clean context windows (absorbs #059 context mgmt) |
+| #074  | M2  | Subagent structured handoff & rich UI (absorbs #075) |
+| #059  | M3  | Workflow iteration quality — context management and plan-review versioning |
+| #083  | M4  | Comprehensive VCS integration — git + jj (absorbs #064) |
+
+## Later: M5–M6
+
+| Issue | Milestone | Description |
+|-------|-----------|-------------|
+| #068  | M5  | `[prompt-test]` task type — TDD for prompts and skills |
+| #077  | M5  | Issue priority, archiving, and list UI |
+| #078  | M6  | Init workflow system — doc audit, greenfield templates, workflow engine (absorbs #081, #082) |
+| #079  | M6  | Foundation doc lifecycle — inject, update, audit |
+| #080  | M6  | Clean context windows |
+| #052  | M6  | Project lifecycle management — onboarding, roadmap, branching |

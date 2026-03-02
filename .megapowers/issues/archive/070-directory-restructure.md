@@ -1,7 +1,7 @@
 ---
 id: 70
 type: feature
-status: open
+status: done
 created: 2026-02-25T18:50:00.000Z
 milestone: M0
 priority: 1

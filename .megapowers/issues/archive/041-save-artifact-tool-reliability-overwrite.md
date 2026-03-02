@@ -1,7 +1,7 @@
 ---
 id: 41
 type: bugfix
-status: open
+status: done
 created: 2026-02-24T00:48:02.892Z
 sources: [38, 39]
 milestone: M1
