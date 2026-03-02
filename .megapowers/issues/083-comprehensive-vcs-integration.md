@@ -8,43 +8,40 @@ milestone: M4
 priority: 1
 ---
 
-# Comprehensive VCS integration (git + jj)
+# Comprehensive VCS integration (git)
 
 ## Problem
 
-Megapowers has basic jj support (bookmark creation, commit on phase transitions) but lacks comprehensive VCS integration. Key gaps:
+Megapowers now runs on pure git (jj removed in #091). Basic VCS is in place (commits on phase transitions, git worktrees for pipeline isolation) but lacks a complete automated workflow. Key gaps:
 
-1. **No automated PR workflow** — pushing branches and opening PRs is manual
-2. **No squash-on-merge support** — workflow commits (brainstorm, spec, plan, review, verify) create noisy history; should squash to clean commits before push
-3. **No git-only fallback** — projects without jj installed can't use any VCS features
-4. **No branch cleanup** — stale bookmarks and orphaned commits accumulate
-5. **No conflict detection** — no warning when working copy diverges from pushed branch
-6. **No root change tracked** — can't squash the full issue tree (from #064)
-7. **No session resume** — if a session dies, next session doesn't navigate back to the right jj change (from #064)
+1. **No automated PR workflow** — pushing branches and opening PRs is still manual
+2. **No squash-on-merge support** — workflow commits (brainstorm, spec, plan, verify) create noisy history; should squash to a clean commit before push
+3. **No branch management** — feature branches aren't created automatically on issue start; stale branches accumulate
+4. **No conflict detection** — no warning when working branch diverges from remote main
+5. **No session resume** — if a session dies, the next session doesn't check out the right branch
 
 ## Desired Behavior
 
 ### Issue start
-- Create root jj change and bookmark on issue selection
-- Save `rootChangeId` to state (never overwritten during issue lifecycle)
+- Create a `feat/<slug>` or `fix/<slug>` branch on issue selection
+- Save `branchName` to state
 
 ### During work
-- Phase advances create child changes (existing behavior)
-- Task completion creates sibling changes (existing behavior)
+- Phase advances commit with structured messages (existing behavior)
+- Task completion creates additional commits
 
 ### Done phase / `/ship`
-- Squash all descendants into `rootChangeId`
-- Push bookmark via `jj git push`
-- Optionally open PR via `gh pr create`
+- Squash all issue commits into a single clean commit
+- Push branch to origin
+- Open PR via `gh pr create` (title from issue, body from spec/diagnosis)
 
 ### Session resume
-- Restore working copy to saved `jjChangeId` on session start
-- Fall back to `rootChangeId` if change was abandoned
+- Check out the saved `branchName` on session start
+- Warn if branch has diverged from remote
 
 ### Cleanup
-- Detect and clean up stale workspaces and orphaned commits on session start
-- Warn when bookmark diverges from remote
+- Detect and prune stale local branches and orphaned worktrees on session start
 
 ## Notes
-- Absorbs #064 (jj bookmark + git push workflow)
-- Originally filed as #063 on a branch lost during #070 directory restructure. Recreated with updated context.
+- Absorbs #064 (git push + PR workflow)
+- jj-specific work from the original #083 scope was resolved/removed by #091
