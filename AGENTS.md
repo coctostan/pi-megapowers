@@ -4,44 +4,52 @@ Pi extension that enforces structured development workflows via a state machine.
 
 ## workflows
 
-**Feature:** brainstorm → spec → plan → review → implement → verify → code-review → done
-**Bugfix:** reproduce → diagnose → plan → review → implement → verify → done
+**Feature:** brainstorm → spec → plan → implement → verify → code-review → done  
+**Bugfix:** reproduce → diagnose → plan → implement → verify → done
 
-Backward transitions: review→plan, verify→implement, code-review→implement.
+Backward transitions:
+- `verify` → `implement` (feature + bugfix)
+- `code-review` → `implement` (feature)
+
+## plan phase loop (current)
+
+Plan authoring is an internal loop inside `plan` (not a separate workflow phase):
+- **Draft/Revise:** create/update tasks with `megapowers_plan_task`
+- **Submit draft:** `megapowers_signal({ action: "plan_draft_done" })` → enters review mode + starts new session
+- **Review verdict:** `megapowers_plan_review({ verdict: "approve" | "revise", ... })`
+  - `approve`: marks tasks approved, generates backward-compatible `plan.md`, advances to `implement`
+  - `revise`: returns to revise mode, increments iteration (max 4)
 
 ## state architecture
 
-Disk-first, tool-first. Every handler reads state from disk via `readState(cwd)` — no module-level state variable. Mutations write through atomically via `writeState()`.
+Disk-first, tool-first. Every handler reads state from disk via `readState(cwd)` (no module-level state cache). Mutations persist atomically through `writeState()`.
 
-`state.json` stores only coordination data: `activeIssue`, `workflow`, `phase`, `currentTaskIndex`, `completedTasks[]`, `reviewApproved`, `tddTaskState`, `megaEnabled`. Task lists and acceptance criteria are derived on demand from artifact files (`plan.md`, `spec.md`, `diagnosis.md`).
+`state.json` stores coordination data only (e.g. `activeIssue`, `workflow`, `phase`, `planMode`, `planIteration`, `currentTaskIndex`, `completedTasks`, `tddTaskState`, `taskJJChanges`, `megaEnabled`).
+
+Derived data is always computed on demand:
+- Tasks: canonical from `.megapowers/plans/<issue>/tasks/*.md` (fallback: `plan.md`)
+- Acceptance criteria: from `spec.md` (feature) or `diagnosis.md` (bugfix)
 
 ## custom tools
 
-- **`megapowers_signal`** — state transitions: `task_done`, `review_approve`, `phase_next`, `phase_back`, `tests_failed`, `tests_passed`
-- **`pipeline`** — dispatch implement→verify→review pipeline for a plan task in an isolated jj workspace; supports pause/resume with guidance
-- **`subagent`** — one-shot subagent dispatch for ad-hoc tasks; squashes changes back on success
+- **`megapowers_signal`** — state transitions/signals: `task_done`, `phase_next`, `phase_back`, `tests_failed`, `tests_passed`, `plan_draft_done` (`review_approve` is deprecated)
+- **`megapowers_plan_task`** — create/update structured plan tasks during draft/revise
+- **`megapowers_plan_review`** — submit plan review verdict (`approve`/`revise`) with feedback
+- **`create_batch`** — create a batch issue from source issue IDs
+- **`pipeline`** — run implement→verify→review in an isolated jj workspace; supports pause/resume with guidance
+- **`subagent`** — one-shot ad-hoc subagent task in isolated workspace; squash on success
 
 ## enforcement
 
-- **Write policy**: `write`/`edit` intercepted via `tool_call` hook. Phase-based restrictions enforced by `canWrite()`.
-- **TDD guard**: during `implement` (primary session), production file writes blocked until test file written and test runner fails. Subagent sessions use prompt-based TDD + deterministic post-hoc audit instead.
-- **Phase gates**: each transition requires its artifact (e.g. spec→plan needs `spec.md` with no open questions).
+- **Write policy:** `write`/`edit` are intercepted via tool hooks; phase restrictions enforced by `canWrite()`.
+- **TDD guard:** in primary sessions (`implement`/`code-review`), production writes are blocked until test is written and a failing run is acknowledged via `tests_failed`.
+- **Artifact policy:** artifacts are saved directly with `write`/`edit` under `.megapowers/plans/<issue>/` (no save-artifact tool).
+- **Phase gates:** transitions require required artifacts + gate conditions (including plan-loop approval completion).
+- **Satellite mode:** subagent sessions (`PI_SUBAGENT=1` or `PI_SUBAGENT_DEPTH>0`) skip write-blocking hooks; TDD is enforced by prompt + post-hoc audit.
 
 ## key concepts
 
-- **Issue**: unit of work, stored as markdown with frontmatter in `.megapowers/issues/`.
-- **Derived data**: tasks from `plan.md`, acceptance criteria from `spec.md`/`diagnosis.md` — always on demand, never cached.
-- **Mega off/on**: `/mega off` disables enforcement, `/mega on` re-enables. Resets on session start.
-- **Bugfix aliasing**: `reproduce_content` → `brainstorm_content`, `diagnosis_content` → `spec_content` for shared templates.
-- **Pipeline**: `pipeline` tool runs implement→verify→review in an isolated jj workspace per task. On pause, parent LLM can resume with `{ resume: true, guidance }`. On completion, workspace is squashed and task marked done.
-- **Satellite mode**: subagent sessions (`PI_SUBAGENT=1` or `PI_SUBAGENT_DEPTH>0`) don't install write-blocking hooks; TDD is enforced via prompts + `auditTddCompliance` + reviewer.
-
-## tests
-
-`bun test` — tests across 48+ files. Each module has a corresponding `.test.ts`. Tests are pure (no pi dependency).
-
-## known issues
-
-- **Async jj fire-and-forget**: jj operations run as fire-and-forget — low risk given pi's sequential tool execution.
-- **Pipeline context growth**: `renderContextPrompt` appends full step output verbatim across retries — could exceed context limits for long-running pipelines with many retries.
-- **Workspace op return types**: `squashPipelineWorkspace` / `cleanupPipelineWorkspace` return untyped `{} | { error: string }`, requiring `(x as any).error` casts in callers.
+- **Issue:** markdown + frontmatter in `.megapowers/issues/`.
+- **Batch issue:** issue with `sources` linking source issue IDs; completing batch auto-closes sources.
+- **Mega off/on:** `/mega off` disables enforcement, `/mega on` re-enables; defaults to enabled on new session.
+- **Bugfix aliasing:** `reproduce_content` → `brainstorm_content`, `diagnosis_content` → `spec_content` for shared prompt templates.

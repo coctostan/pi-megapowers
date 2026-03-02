@@ -15,12 +15,8 @@ Issue: {{issue_slug}}
 ## Files Changed (from VCS)
 {{files_changed}}
 
-
 ## Learnings Captured
 {{learnings}}
-
-## Files Changed
-{{files_changed}}
 
 ## Instructions
 

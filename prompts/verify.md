@@ -77,7 +77,7 @@ pass / fail
 ## Rules
 - **Tests passing ≠ criteria met** — verify both independently
 - **No weasel words** — only claims backed by command output from THIS session
-- If any criterion fails: explain what's missing and recommend next steps. Use `megapowers_signal({ action: "phase_back" })` to return to implement for fixes. If planning is fundamentally wrong, call this out explicitly and recommend continuing backward through review→plan as needed.
+- If any criterion fails: explain what's missing and recommend next steps. Use `megapowers_signal({ action: "phase_back" })` to return to implement for fixes. If the plan is fundamentally wrong, call this out explicitly and recommend returning to the plan phase/workflow for replanning.
 
 ## Saving
 
