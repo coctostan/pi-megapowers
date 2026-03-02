@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Fixed
+- **`close-issue` done action now actually closes the issue** — `onAgentEnd` handler added for the `close-issue` action: calls `store.updateIssueStatus(slug, "done")` immediately, bypassing the 100-char LLM text guard that only applies to content-capture actions. (#086)
+- **Batch auto-close** — Closing a batch issue now also marks all source issues as done via `store.getSourceIssues()`. (#086)
+- **Subagent workspace creation on fresh repos** — `createPipelineWorkspace()` now calls `mkdirSync(dirname(workspacePath), { recursive: true })` before `jj workspace add`, fixing ENOENT failures on repos where `.megapowers/subagents/{id}/` does not yet exist. (#086)
+
 ### Housekeeping
 - **`close-issue` clears active issue state** — Fixed two bugs in `onAgentEnd`: (1) `close-issue` done-action had no handler and fell through to a spread that preserved `activeIssue` and `phase`; (2) non-content-capture done actions (`capture-learnings`, `squash-task-changes`) were gated on `text.length > 100`, permanently blocking the queue on short LLM responses. Fix uses `createInitialState()` as the reset base and unconditionally consumes non-content-capture actions. (#087)
 - **Issue cleanup** — Archived 21 completed/superseded issues, consolidated 7 into 5 (25 → 12 remaining). Updated ROADMAP.md and milestones.md. M0 fully complete, M2/M3 mostly complete.
