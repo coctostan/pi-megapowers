@@ -117,11 +117,13 @@ describe("onAgentEnd — done-phase doneActions cleanup", () => {
     expect(readState(tmp).phase).toBe("verify");
   });
 
-  it("consumes non-content-capture action even when text is shorter than 100 chars", async () => {
+  it("does nothing when text is shorter than 100 chars", async () => {
     setState(tmp, { phase: "done", doneActions: ["capture-learnings"] });
+
     await onAgentEnd(makeAgentEndEvent("short response"), makeCtx(tmp), makeDeps(tmp) as any);
 
-    expect(readState(tmp).doneActions).toEqual([]);
+    // Short text means the capture block is not entered — list unchanged
+    expect(readState(tmp).doneActions).toEqual(["capture-learnings"]);
   });
 });
 

@@ -1,5 +1,5 @@
-import { join } from "node:path";
-import { existsSync, rmSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { existsSync, rmSync, mkdirSync } from "node:fs";
 
 export interface ExecJJResult {
   code: number;
@@ -20,6 +20,13 @@ export function pipelineWorkspacePath(projectRoot: string, pipelineId: string): 
 export async function createPipelineWorkspace(projectRoot: string, pipelineId: string, execJJ: ExecJJ) {
   const workspaceName = pipelineWorkspaceName(pipelineId);
   const workspacePath = pipelineWorkspacePath(projectRoot, pipelineId);
+  // Ensure parent directory exists — jj workspace add does not create intermediates
+  // Best-effort: if this path is not writable in tests/sandbox, execJJ will surface the real error.
+  try {
+    mkdirSync(dirname(workspacePath), { recursive: true });
+  } catch {
+    // no-op
+  }
 
   const r = await execJJ(["workspace", "add", "--name", workspaceName, workspacePath]);
   if (r.code !== 0) {
