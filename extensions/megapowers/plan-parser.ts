@@ -68,10 +68,10 @@ function buildTask(index: number, raw: string): PlanTask {
 
 function extractTaskHeaders(content: string): PlanTask[] {
   const tasks: PlanTask[] = [];
-  const pattern = /^###\s+Task\s+(\d+):\s*(.+)$/gm;
+  const pattern = /^#{2,3}\s+Task\s+(\d+)\s*[:—–-]\s*(.+)$/gm;
 
   for (const match of content.matchAll(pattern)) {
-    tasks.push(buildTask(parseInt(match[1]), match[2].trim()));
+    tasks.push(buildTask(parseInt(match[1], 10), match[2].trim()));
   }
 
   return tasks;

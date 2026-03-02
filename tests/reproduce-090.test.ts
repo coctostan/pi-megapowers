@@ -118,8 +118,7 @@ describe("Issue #089: deriveTasks ignores task files", () => {
     writeFileSync(join(dir, filename), content);
   }
 
-  it("BUG: deriveTasks returns [] when plan.md uses ## Task N — format (not ### Task N:)", () => {
-    // This is the format LLMs commonly produce during draft
+  it("deriveTasks returns tasks when plan.md uses ## Task N — format", () => {
     writeArtifact("001-test", "plan.md",
       "# Plan\n\n" +
       "## Task 1 — Set up the database schema\n\n" +
@@ -130,24 +129,29 @@ describe("Issue #089: deriveTasks ignores task files", () => {
 
     const tasks = deriveTasks(tmp, "001-test");
 
-    // BUG: Returns [] because extractPlanTasks only matches ### Task N: format
-    expect(tasks.length).toBe(0); // <-- Should find 2 tasks
+    expect(tasks.length).toBe(2);
+    expect(tasks[0].index).toBe(1);
+    expect(tasks[0].description).toBe("Set up the database schema");
+    expect(tasks[1].index).toBe(2);
+    expect(tasks[1].description).toBe("Implement API endpoints");
   });
 
-  it("BUG: extractPlanTasks rejects ## headers (requires ###)", () => {
+  it("extractPlanTasks accepts ## headers (not just ###)", () => {
     const content = "## Task 1: Set up schema\n## Task 2: Build API\n";
     const tasks = extractPlanTasks(content);
 
-    // BUG: Only matches ### Task N:, not ## Task N:
-    expect(tasks.length).toBe(0); // <-- Should find 2 tasks
+    expect(tasks.length).toBe(2);
+    expect(tasks[0].index).toBe(1);
+    expect(tasks[1].index).toBe(2);
   });
 
-  it("BUG: extractPlanTasks rejects em-dash separator (requires colon)", () => {
+  it("extractPlanTasks accepts em-dash separator (not just colon)", () => {
     const content = "### Task 1 — Set up schema\n### Task 2 — Build API\n";
     const tasks = extractPlanTasks(content);
 
-    // BUG: Only matches ### Task N:, not ### Task N —
-    expect(tasks.length).toBe(0); // <-- Should find 2 tasks
+    expect(tasks.length).toBe(2);
+    expect(tasks[0].description).toBe("Set up schema");
+    expect(tasks[1].description).toBe("Build API");
   });
 
   it("BUG: deriveTasks ignores task files even when they exist", () => {
