@@ -2,7 +2,7 @@
 
 ## Overview
 
-A two-layer subagent orchestration system built on top of `pi-subagents` (npm dependency). The first layer is an **implementation pipeline** that autonomously runs implement → verify → review steps for each plan task in an isolated jj workspace, with retry budgets and escalation to the parent LLM on failure. The second layer is a **one-shot subagent tool** for ad-hoc delegation.
+A two-layer subagent orchestration system built on top of `pi-subagents` (npm dependency). The first layer is an **implementation pipeline** that autonomously runs implement → verify → review steps for each plan task in an isolated git worktree, with retry budgets and escalation to the parent LLM on failure. The second layer is a **one-shot subagent tool** for ad-hoc delegation.
 
 TDD enforcement shifts from the previous in-memory write-blocking approach to a **prompt-based + deterministic audit model**: a TDD auditor analyzes the implementer's tool-call history after the implement step and feeds a compliance report to the reviewer as a soft gate.
 
@@ -12,13 +12,13 @@ TDD enforcement shifts from the previous in-memory write-blocking approach to a 
 
 ### Layer 1: Implementation Pipeline (`pipeline` tool)
 
-The `pipeline` tool dispatches a full implement → verify → review cycle for a specific plan task. Each step runs as a pi-subagent in an isolated jj workspace.
+The `pipeline` tool dispatches a full implement → verify → review cycle for a specific plan task. Each step runs as a pi-subagent in an isolated git worktree.
 
 ```
 pipeline { taskIndex }
   │
   ▼
-createPipelineWorkspace()          ← isolated jj workspace
+createPipelineWorkspace()          ← isolated git worktree
   │
   ▼  [cycle, up to maxRetries]
   ├─ implementer agent             ← TDD-guided implementation
@@ -105,8 +105,8 @@ The legacy hard write-block is replaced by:
 ### Context Carry-Forward
 `PipelineContext` is immutable; each step produces a new context via `appendStepOutput` / `setRetryContext`. Review findings accumulate in `accumulatedReviewFindings`. `renderContextPrompt()` renders the full context as structured markdown sections.
 
-### jj Workspace Isolation
-Each pipeline creates a `mega-{pipelineId}@` workspace at `.megapowers/subagents/{pipelineId}/workspace`. On success: `jj squash --from mega-{id}@` + `jj workspace forget`. On failure/abort: `jj workspace forget` + `rmSync`.
+### Git Worktree Isolation
+Each pipeline creates a git worktree at `.megapowers/subagents/{pipelineId}/workspace` via `git worktree add --detach`. On success: changes are squashed back via `git diff --cached HEAD | git apply` in the main worktree + `git worktree remove`. On failure/abort: `git worktree remove --force` + `rmSync`.
 
 ### Satellite Compatibility
 `isSatelliteMode()` now recognizes `PI_SUBAGENT_DEPTH=N` (set by pi-subagents) in addition to legacy `PI_SUBAGENT=1`. `resolveProjectRoot()` walks up from the workspace cwd to find `.megapowers/state.json`. `setupSatellite()` is a no-op — satellite sessions don't install write-blocking hooks.
@@ -115,7 +115,7 @@ Each pipeline creates a `mega-{pipelineId}@` workspace at `.megapowers/subagents
 
 ## Test Coverage
 
-14 new test files, 601 total tests (up from 546 before this feature). All tests are pure (no actual pi-subagents or jj invocations).
+14 new test files, 601 total tests (up from 546 before this feature). All tests are pure (no actual pi-subagents or git invocations).
 
 ---
 
