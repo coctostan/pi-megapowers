@@ -21,7 +21,6 @@ function makeSessionManager() {
       sm._messages = [];
       return "new-session-id";
     },
-    buildSessionContext: () => ({ messages: sm._messages, thinkingLevel: "off", model: null }),
   };
   return sm;
 }
@@ -55,7 +54,7 @@ describe("newSession wiring", () => {
       expect(sessionManager.newSessionCalls).toBe(1);
 
       const contextResult = await onContext({ type: "context", messages: [] }, ctx, {} as any);
-      expect(contextResult.messages).toEqual([]);
+      expect(contextResult).toBeUndefined();
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

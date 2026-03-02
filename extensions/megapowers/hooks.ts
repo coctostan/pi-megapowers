@@ -22,11 +22,10 @@ function getAssistantText(message: AssistantMessage): string {
 
 // --- Hook handlers ---
 
-export async function onContext(_event: any, ctx: any, _deps: Deps): Promise<any> {
-  const state = readState(ctx.cwd);
-  if (!state.megaEnabled) return;
-  const sessionContext = ctx.sessionManager.buildSessionContext();
-  return { messages: sessionContext.messages };
+export async function onContext(_event: any, _ctx: any, _deps: Deps): Promise<any> {
+  // No-op: context hook should not replace messages.
+  // Previously called ctx.sessionManager.buildSessionContext() which is not a valid API method.
+  return;
 }
 
 
