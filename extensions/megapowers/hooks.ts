@@ -1,7 +1,5 @@
 import type { Deps } from "./commands.js";
 import { readState, writeState } from "./state/state-io.js";
-import { checkJJAvailability } from "./jj.js";
-import { JJ_INSTALL_MESSAGE, JJ_INIT_MESSAGE } from "./jj-messages.js";
 import { buildInjectedPrompt } from "./prompt-inject.js";
 import { evaluateWriteOverride, recordTestFileWritten } from "./tools/tool-overrides.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
@@ -30,7 +28,7 @@ export async function onContext(_event: any, _ctx: any, _deps: Deps): Promise<an
 
 
 export async function onSessionStart(_event: any, ctx: any, deps: Deps): Promise<void> {
-  const { store, jj, ui, pi } = deps;
+  const { store, ui } = deps;
 
   // Read state from disk (authoritative source of truth)
   const state = readState(ctx.cwd);
@@ -40,31 +38,6 @@ export async function onSessionStart(_event: any, ctx: any, deps: Deps): Promise
     writeState(ctx.cwd, { ...state, megaEnabled: true });
   }
 
-  // jj validation: check for change ID mismatch
-  const currentState = readState(ctx.cwd);
-  if (currentState.activeIssue && currentState.jjChangeId && await jj.isJJRepo()) {
-    const currentId = await jj.getCurrentChangeId();
-    if (currentId && !currentId.startsWith(currentState.jjChangeId) && !currentState.jjChangeId.startsWith(currentId)) {
-      // Auto-update stored change ID and notify (select dialog is broken during session_start — see #061)
-      writeState(ctx.cwd, { ...currentState, jjChangeId: currentId });
-      if (ctx.hasUI) {
-        ctx.ui.notify(`jj change updated: ${currentState.jjChangeId.slice(0, 8)} → ${currentId.slice(0, 8)} for ${currentState.activeIssue}`);
-      }
-    }
-  }
-
-  // jj availability check — informational only, does not block (AC1-4)
-  const jjStatus = await checkJJAvailability(
-    () => pi.exec("jj", ["version"]),
-    () => pi.exec("jj", ["root"]),
-  );
-  if (ctx.hasUI) {
-    if (jjStatus === "not-installed") {
-      ctx.ui.notify(JJ_INSTALL_MESSAGE);
-    } else if (jjStatus === "not-repo") {
-      ctx.ui.notify(JJ_INIT_MESSAGE);
-    }
-  }
 
   // Render dashboard
   if (ctx.hasUI) {
@@ -73,9 +46,9 @@ export async function onSessionStart(_event: any, ctx: any, deps: Deps): Promise
 }
 
 export async function onBeforeAgentStart(_event: any, ctx: any, deps: Deps): Promise<any> {
-  const { store, jj } = deps;
+  const { store } = deps;
 
-  const prompt = buildInjectedPrompt(ctx.cwd, store, jj);
+  const prompt = buildInjectedPrompt(ctx.cwd, store);
   if (!prompt) return;
 
   return {

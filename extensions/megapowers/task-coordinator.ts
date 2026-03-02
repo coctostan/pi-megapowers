@@ -1,4 +1,3 @@
-import type { JJ } from "./jj.js";
 
 // --- Pure helpers ---
 
@@ -11,7 +10,7 @@ export function buildTaskChangeDescription(
 }
 
 /**
- * Parse file paths from jj diff output.
+ * Parse file paths from diff output.
  * Supports --summary format ("M src/auth.ts") and --stat format ("src/auth.ts | 10 ++++").
  */
 export function parseTaskDiffFiles(diffOutput: string): string[] {
@@ -51,30 +50,4 @@ export function buildTaskCompletionReport(
   return `Task ${taskIndex} (${taskDescription}) — ${inspection.files.length} files:\n${fileList}`;
 }
 
-// --- JJ wrappers (thin, used by index.ts) ---
-
-export interface TaskChangeResult {
-  changeId: string | null;
-}
-
-export async function createTaskChange(
-  jj: JJ,
-  issueSlug: string,
-  taskIndex: number,
-  taskDescription: string,
-  parentChangeId?: string
-): Promise<TaskChangeResult> {
-  const desc = buildTaskChangeDescription(issueSlug, taskIndex, taskDescription);
-  const changeId = await jj.newChange(desc, parentChangeId);
-  return { changeId };
-}
-
-export async function inspectTaskChange(
-  jj: JJ,
-  changeId: string
-): Promise<TaskInspection> {
-  const diffOutput = await jj.diff(changeId);
-  const files = parseTaskDiffFiles(diffOutput);
-  return { files, hasDiffs: files.length > 0 };
-}
 

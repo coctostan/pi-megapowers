@@ -24,7 +24,7 @@ Plan authoring is an internal loop inside `plan` (not a separate workflow phase)
 
 Disk-first, tool-first. Every handler reads state from disk via `readState(cwd)` (no module-level state cache). Mutations persist atomically through `writeState()`.
 
-`state.json` stores coordination data only (e.g. `activeIssue`, `workflow`, `phase`, `planMode`, `planIteration`, `currentTaskIndex`, `completedTasks`, `tddTaskState`, `taskJJChanges`, `megaEnabled`).
+`state.json` stores coordination data only (e.g. `activeIssue`, `workflow`, `phase`, `planMode`, `planIteration`, `currentTaskIndex`, `completedTasks`, `tddTaskState`, `megaEnabled`).
 
 Derived data is always computed on demand:
 - Tasks: canonical from `.megapowers/plans/<issue>/tasks/*.md` (fallback: `plan.md`)
@@ -36,7 +36,7 @@ Derived data is always computed on demand:
 - **`megapowers_plan_task`** — create/update structured plan tasks during draft/revise
 - **`megapowers_plan_review`** — submit plan review verdict (`approve`/`revise`) with feedback
 - **`create_batch`** — create a batch issue from source issue IDs
-- **`pipeline`** — run implement→verify→review in an isolated jj workspace; supports pause/resume with guidance
+- **`pipeline`** — run implement→verify→review in an isolated git worktree; supports pause/resume with guidance
 - **`subagent`** — one-shot ad-hoc subagent task in isolated workspace; squash on success
 
 ## enforcement
@@ -53,3 +53,14 @@ Derived data is always computed on demand:
 - **Batch issue:** issue with `sources` linking source issue IDs; completing batch auto-closes sources.
 - **Mega off/on:** `/mega off` disables enforcement, `/mega on` re-enables; defaults to enabled on new session.
 - **Bugfix aliasing:** `reproduce_content` → `brainstorm_content`, `diagnosis_content` → `spec_content` for shared prompt templates.
+- **Pipeline**: `pipeline` tool runs implement→verify→review in an isolated git worktree per task. On pause, parent LLM can resume with `{ resume: true, guidance }`. On completion, workspace changes are squashed and the task is marked done.
+- **Satellite mode**: subagent sessions (`PI_SUBAGENT=1` or `PI_SUBAGENT_DEPTH>0`) don't install write-blocking hooks; TDD is enforced via prompts + `auditTddCompliance` + reviewer.
+
+## tests
+
+`bun test` — tests across 48+ files. Each module has a corresponding `.test.ts`. Tests are pure (no pi dependency).
+
+## known issues
+
+- **Pipeline context growth**: `renderContextPrompt` appends full step output verbatim across retries — could exceed context limits for long-running pipelines with many retries.
+- **Workspace op return types**: `squashPipelineWorkspace` / `cleanupPipelineWorkspace` return untyped `{} | { error: string }`, requiring `(x as any).error` casts in callers.

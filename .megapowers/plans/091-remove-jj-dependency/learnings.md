@@ -1,0 +1,15 @@
+# Learnings — 091-remove-jj-dependency
+
+- **`git -C <dir>` as a CWD override is cleaner than wrapping every call in a subprocess with a separate `cwd` option.** The `inDir(cwd, args)` helper makes each git call's target directory explicit and readable at the call site, and keeps `ExecGit` as a simple `(args: string[]) => Promise<{stdout, stderr}>` — no opaque options object needed. The default CWD of `pi.exec` (project root) handles the "main working directory" case naturally, so only worktree-targeted calls need `inDir`.
+
+- **Patch-based squash (`git diff --cached | git apply`) is a safe, commit-free way to merge worktree changes.** It doesn't create a commit, doesn't require a merge, and the patch file is a human-readable artifact for debugging. The key correctness constraint: preserve the worktree on squash failure so the user can inspect the state. Wrapping the apply step in try/catch and returning `{ error }` without calling `worktree remove` implements this cleanly.
+
+- **`KNOWN_KEYS` allowlist in `state-io.ts` is better than an explicit strip-by-field-name migration.** Any future field changes to `MegapowersState` automatically require a conscious update to the allowlist, making it self-documenting and forward-compatible. Old `state.json` files with legacy keys (`jjChangeId`, `taskJJChanges`) are silently dropped on read without any migration script.
+
+- **State field removal requires auditing all call sites in tests that construct partial state objects.** Test helpers that build `setState(tmp, { ... })` objects can silently inherit removed fields if they spread `createInitialState()`. The cleanest approach is to check all test files immediately after removing a field from the interface — TypeScript usually catches production code, but test helpers with `as any` casts or partial spreads can mask stale field usage.
+
+- **Dead exports accumulate invisibly when modules are gutted incrementally.** `task-coordinator.ts` had `createTaskChange`/`inspectTaskChange` removed, leaving `buildTaskChangeDescription`, `parseTaskDiffFiles`, `buildTaskCompletionReport` as tested-but-unused exports. No TypeScript error fires for exported symbols that nothing imports. An explicit check (`grep -rn "from.*task-coordinator" extensions/`) after the migration would have caught this earlier.
+
+- **`parseSummaryFiles` had a latent bug not caught by tests:** `git diff --stat` summary lines ("N files changed...") have no `|` separator, so `split("|")[0]` returns the whole line, which passes `filter(Boolean)`. The bug was invisible because `filesChanged` from `getWorkspaceDiff` was never consumed by any caller. Lesson: even if a function's output is currently unused, latent bugs in it should be caught by dedicated unit tests for the function's own contract — not just exercised indirectly through a caller that ignores the result.
+
+- **`git diff` without `--binary` silently drops binary file changes from patches.** For text-only TypeScript projects this is harmless, but it's a silent correctness gap worth documenting. Adding `--binary` to the diff call would make the squash safe for any file type with no downside.

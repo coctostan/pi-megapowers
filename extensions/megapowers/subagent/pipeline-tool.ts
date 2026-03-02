@@ -4,7 +4,7 @@ import { deriveTasks } from "../state/derived.js";
 import { createStore } from "../state/store.js";
 import { handleSignal } from "../tools/tool-signal.js";
 
-import { createPipelineWorkspace, squashPipelineWorkspace, type ExecJJ } from "./pipeline-workspace.js";
+import { createPipelineWorkspace, squashPipelineWorkspace, type ExecGit } from "./pipeline-workspace.js";
 import { runPipeline } from "./pipeline-runner.js";
 import { validateTaskDependencies } from "./task-deps.js";
 import { writePipelineMeta, readPipelineMeta, clearPipelineMeta } from "./pipeline-meta.js";
@@ -54,7 +54,7 @@ export async function handlePipelineTool(
   projectRoot: string,
   input: PipelineToolInput,
   dispatcher: Dispatcher,
-  execJJ: ExecJJ,
+  execGit: ExecGit,
 ): Promise<PipelineToolOutput> {
   const state = readState(projectRoot);
 
@@ -86,7 +86,7 @@ export async function handlePipelineTool(
   } else {
     pipelineId = `pipe-t${task.index}-${Date.now()}`;
 
-    const ws = await createPipelineWorkspace(projectRoot, pipelineId, execJJ);
+    const ws = await createPipelineWorkspace(projectRoot, pipelineId, execGit);
     if ((ws as any).error) return { error: `Workspace creation failed: ${(ws as any).error}` };
     workspacePath = ws.workspacePath;
   }
@@ -111,12 +111,12 @@ export async function handlePipelineTool(
       workspaceCwd: workspacePath,
       pipelineId,
       agents: { implementer: "implementer", verifier: "verifier", reviewer: "reviewer" },
-      execJJ,
+      execGit,
     },
   );
 
   if (result.status === "completed") {
-    const squash = await squashPipelineWorkspace(projectRoot, pipelineId, execJJ);
+    const squash = await squashPipelineWorkspace(projectRoot, pipelineId, execGit);
     if ((squash as any).error) return { error: `Squash failed: ${(squash as any).error}`, pipelineId, result };
 
     clearPipelineMeta(projectRoot, task.index);

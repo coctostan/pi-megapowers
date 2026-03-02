@@ -4,7 +4,7 @@ import { parseStepResult, parseReviewVerdict } from "./pipeline-results.js";
 import { writeLogEntry, readPipelineLog, type PipelineLogEntry } from "./pipeline-log.js";
 import { extractToolCalls, extractTestOutput } from "./message-utils.js";
 import { auditTddCompliance } from "./tdd-auditor.js";
-import { getWorkspaceDiff, type ExecJJ } from "./pipeline-workspace.js";
+import { getWorkspaceDiff, type ExecGit } from "./pipeline-workspace.js";
 
 export interface PipelineAgents {
   implementer: string;
@@ -21,7 +21,7 @@ export interface PipelineOptions {
   maxRetries?: number;
   stepTimeoutMs?: number;
 
-  execJJ: ExecJJ;
+  execGit: ExecGit;
 }
 
 export type PipelineStatus = "completed" | "paused";
@@ -111,7 +111,7 @@ export async function runPipeline(
     if (impl.exitCode !== 0) {
       retryCount++;
       if (cycle >= maxRetries) {
-        const { diff } = await getWorkspaceDiff(options.workspaceCwd, options.execJJ);
+        const { diff } = await getWorkspaceDiff(options.workspaceCwd, options.execGit);
         return {
           status: "paused",
           filesChanged,
@@ -156,7 +156,7 @@ export async function runPipeline(
     if (!verifyParsed.testsPassed) {
       retryCount++;
       if (cycle >= maxRetries) {
-        const { diff } = await getWorkspaceDiff(options.workspaceCwd, options.execJJ);
+        const { diff } = await getWorkspaceDiff(options.workspaceCwd, options.execGit);
         return {
           status: "paused",
           filesChanged,
@@ -202,7 +202,7 @@ export async function runPipeline(
       });
     retryCount++;
       if (cycle >= maxRetries) {
-        const { diff } = await getWorkspaceDiff(options.workspaceCwd, options.execJJ);
+        const { diff } = await getWorkspaceDiff(options.workspaceCwd, options.execGit);
         return {
           status: "paused",
           filesChanged,
@@ -248,7 +248,7 @@ export async function runPipeline(
     // AC6: review rejection triggers full re-run with findings
     retryCount++;
     if (cycle >= maxRetries) {
-      const { diff } = await getWorkspaceDiff(options.workspaceCwd, options.execJJ);
+      const { diff } = await getWorkspaceDiff(options.workspaceCwd, options.execGit);
       return {
         status: "paused",
         filesChanged,
@@ -261,7 +261,7 @@ export async function runPipeline(
     ctx = setRetryContext(ctx, `Review rejected`, verdict.findings.join("\n"));
   }
 
-  const { diff } = await getWorkspaceDiff(options.workspaceCwd, options.execJJ);
+  const { diff } = await getWorkspaceDiff(options.workspaceCwd, options.execGit);
   return {
     status: "paused",
     filesChanged,

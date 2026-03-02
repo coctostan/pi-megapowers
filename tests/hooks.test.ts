@@ -36,7 +36,6 @@ function makeDeps(cwd: string) {
   return {
     store: makeStore(cwd),
     ui: { renderDashboard: () => {} },
-    jj: null,
   };
 }
 
@@ -148,4 +147,12 @@ describe("handlePhaseBack — no intermediate state write", () => {
     const writeBeforeAdvance = /writeState[\s\S]*?reviewApproved:\s*false[\s\S]*?advancePhase/;
     expect(writeBeforeAdvance.test(body)).toBe(false);
   });
+});
+
+
+it("hooks.ts no longer imports jj availability helpers/messages", () => {
+  const source = readFileSync(join(process.cwd(), "extensions/megapowers/hooks.ts"), "utf-8");
+  expect(source).not.toContain("checkJJAvailability");
+  expect(source).not.toContain("JJ_INSTALL_MESSAGE");
+  expect(source).not.toContain("JJ_INIT_MESSAGE");
 });
