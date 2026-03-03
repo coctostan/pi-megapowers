@@ -83,24 +83,22 @@ describe("#081 — close-issue not executed when no TUI (prompt-driven path)", (
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  it("BUG: showDoneChecklist is a no-op when ctx.hasUI is false, leaving doneActions empty", async () => {
+  it("FIX: showDoneChecklist auto-populates defaults when ctx.hasUI is false (#081)", async () => {
     setState(tmp, { phase: "done", doneActions: [] });
-
-    // Simulate headless context (no TUI)
     const ctx = makeCtx(tmp, /* hasUI */ false);
     await showDoneChecklist(ctx, tmp);
-
-    // doneActions should still be empty — showDoneChecklist did nothing
     const state = readState(tmp);
-    expect(state.doneActions).toEqual([]);
-    // This means close-issue can never execute in headless mode
+    // After fix: doneActions should contain all default-checked items
+    expect(state.doneActions).toContain("generate-docs");
+    expect(state.doneActions).toContain("write-changelog");
+    expect(state.doneActions).toContain("capture-learnings");
+    expect(state.doneActions).toContain("push-and-pr");
+    expect(state.doneActions).toContain("close-issue");
   });
 
-  it("BUG: onAgentEnd skips close-issue when doneActions is empty (the consequence)", async () => {
-    // When doneActions is empty, onAgentEnd does NOT process close-issue
+  it("FIX: onAgentEnd invokes showDoneChecklist and populates doneActions when empty (#081)", async () => {
     setupIssue(tmp);
-    setState(tmp, { phase: "done", doneActions: [] });
-
+    setState(tmp, { phase: "done", doneActions: [], doneChecklistShown: false });
     const statusUpdates: { slug: string; status: string }[] = [];
     const deps = {
       store: {
@@ -108,29 +106,28 @@ describe("#081 — close-issue not executed when no TUI (prompt-driven path)", (
         updateIssueStatus: (slug: string, status: string) => {
           statusUpdates.push({ slug, status });
         },
+        getSourceIssues: () => [],
       },
       ui: { renderDashboard: () => {} },
     };
-
+    // First call: deferred checklist populates doneActions (headless auto-defaults)
     await onAgentEnd(makeAgentEndEvent("done"), makeCtx(tmp, false), deps as any);
-
-    // No issue status update — close-issue was never executed
-    expect(statusUpdates).toEqual([]);
-    // State was NOT reset — activeIssue still set
     const state = readState(tmp);
-    expect(state.activeIssue).toBe("001-test");
-    expect(state.phase).toBe("done");
+    // doneActions should now be populated via auto-defaults
+    expect(state.doneActions.length).toBeGreaterThan(0);
+    expect(state.doneChecklistShown).toBe(true);
   });
 
-  it("BUG: buildInjectedPrompt returns NO done template when doneActions is empty", () => {
-    setState(tmp, { phase: "done", doneActions: [], megaEnabled: true });
+  it("FIX: buildInjectedPrompt injects done template when doneActions is populated after headless auto-fill (#081)", () => {
+    // After the headless fix, doneActions will be populated, so done.md template IS injected
+    setState(tmp, {
+      phase: "done",
+      doneActions: ["generate-docs", "write-changelog", "capture-learnings", "push-and-pr", "close-issue"],
+      megaEnabled: true,
+    });
     const prompt = buildInjectedPrompt(tmp);
-    // The done template (done.md) is NOT injected when doneActions is empty
-    // The prompt should contain done-phase guidance but does NOT
-    // "You are executing wrap-up actions" is the unique done.md header
-    expect(prompt).not.toContain("You are executing wrap-up actions");
-    expect(prompt).not.toContain("Selected Wrap-up Actions");
-    expect(prompt).not.toContain("done_actions_list");
+    expect(prompt).toContain("wrap-up actions");
+    expect(prompt).toContain("close-issue");
   });
 
   it("CONTROL: onAgentEnd DOES close issue when doneActions contains close-issue", async () => {
@@ -298,29 +295,14 @@ describe("#083 — code-review artifact gate and done-checklist timing", () => {
     expect(result.newPhase).toBe("done");
   });
 
-  it("UX-ISSUE: showDoneChecklist fires synchronously inside tool execute (timing concern)", () => {
-    // The showDoneChecklist is called INSIDE the megapowers_signal tool's execute()
-    // function (register-tools.ts:49-54). While the gate prevents advancing without
-    // code-review.md, the user still gets the checklist immediately after the LLM writes
-    // the review and calls phase_next — no time to actually read the review findings.
+  it("FIX: showDoneChecklist is NOT called inside megapowers_signal execute (#083)", () => {
     const source = readFileSync(
       join(process.cwd(), "extensions/megapowers/register-tools.ts"),
       "utf-8",
     );
 
-    // Verify showDoneChecklist IS called inside the tool handler for megapowers_signal
-    // Use the full file since the signal tool block contains it
-    expect(source).toContain("showDoneChecklist");
-
-    // The call is inside the execute() of megapowers_signal, triggered by phase_next → done
-    // Verify the sequence: check phase_next action, read state, check done phase, show checklist
-    const checklistCallIdx = source.indexOf("await showDoneChecklist");
-    const phaseNextCheckIdx = source.indexOf('params.action === "phase_next"');
-    const doneCheckIdx = source.indexOf('currentState.phase === "done"');
-    // All three appear and in the correct order
-    expect(phaseNextCheckIdx).toBeGreaterThan(-1);
-    expect(doneCheckIdx).toBeGreaterThan(phaseNextCheckIdx);
-    expect(checklistCallIdx).toBeGreaterThan(doneCheckIdx);
+    // After fix: showDoneChecklist should NOT appear in register-tools.ts at all
+    expect(source).not.toContain("showDoneChecklist");
   });
 
   it("FINDING: bugfix workflow does NOT have code-review phase (not affected by #083)", () => {

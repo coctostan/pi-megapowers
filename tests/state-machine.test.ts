@@ -350,3 +350,22 @@ describe("OPEN_ENDED_PHASES", () => {
   });
 });
 
+describe("doneChecklistShown state field", () => {
+  it("createInitialState includes doneChecklistShown: false", () => {
+    const state = createInitialState();
+    expect(state.doneChecklistShown).toBe(false);
+  });
+
+  it("transition resets doneChecklistShown to false on every phase change", () => {
+    const base: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "code-review",
+      doneChecklistShown: true,
+    };
+    const next = transition(base, "done");
+    expect(next.doneChecklistShown).toBe(false);
+  });
+});
+

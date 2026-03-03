@@ -351,6 +351,49 @@ describe("showDoneChecklist (AC11, AC13, AC14)", () => {
     expect(updated.doneActions).toEqual([]);
   });
 
+  it("auto-populates doneActions with defaults when ctx.hasUI is false (headless fix #081)", async () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+    };
+    writeState(tmp2, state);
+
+    const ctx = { hasUI: false, cwd: tmp2 };
+
+    await showDoneChecklist(ctx as any, tmp2);
+    const updated = readState(tmp2);
+
+    // All default-checked items should be auto-selected
+    expect(updated.doneActions).toContain("generate-docs");
+    expect(updated.doneActions).toContain("write-changelog");
+    expect(updated.doneActions).toContain("capture-learnings");
+    expect(updated.doneActions).toContain("push-and-pr");
+    expect(updated.doneActions).toContain("close-issue");
+    expect(updated.doneActions.length).toBe(5);
+  });
+
+  it("auto-populates bugfix defaults when ctx.hasUI is false (headless fix #081 bugfix variant)", async () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "bugfix",
+      phase: "done",
+    };
+    writeState(tmp2, state);
+
+    const ctx = { hasUI: false, cwd: tmp2 };
+
+    await showDoneChecklist(ctx as any, tmp2);
+    const updated = readState(tmp2);
+
+    // Bugfix uses generate-bugfix-summary instead of generate-docs
+    expect(updated.doneActions).toContain("generate-bugfix-summary");
+    expect(updated.doneActions).not.toContain("generate-docs");
+    expect(updated.doneActions).toContain("close-issue");
+  });
+
   it("stores only the returned subset when user deselects some items (AC13)", async () => {
     const state: MegapowersState = {
       ...createInitialState(),

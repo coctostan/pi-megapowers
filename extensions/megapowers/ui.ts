@@ -78,15 +78,20 @@ export function getDoneChecklistItems(state: MegapowersState): DoneChecklistItem
 export async function showDoneChecklist(ctx: any, cwd: string): Promise<void> {
   const state = readState(cwd);
   if (!state.activeIssue || state.phase !== "done") return;
-  if (!ctx.hasUI) return;
-
+  if (!ctx.hasUI) {
+    // Headless: auto-select all default-checked items (#081 fix)
+    const doneActions = getDoneChecklistItems(state)
+      .filter(i => i.defaultChecked)
+      .map(i => i.key);
+    writeState(cwd, { ...readState(cwd), doneActions });
+    return;
+  }
   const checklistItems = getDoneChecklistItems(state);
   const selectedKeys = await showChecklistUI(
     ctx,
     checklistItems.map((i) => ({ key: i.key, label: i.label, checked: i.defaultChecked })),
     "Done — select wrap-up actions to perform:",
   );
-
   // null = dismissed (Escape) → store empty array
   const doneActions = selectedKeys ?? [];
   writeState(cwd, { ...readState(cwd), doneActions });

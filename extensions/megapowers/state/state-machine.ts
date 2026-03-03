@@ -52,6 +52,7 @@ export interface MegapowersState {
   completedTasks: number[];   // PlanTask.index values (1-based)
   tddTaskState: TddTaskState | null;
   doneActions: string[];
+  doneChecklistShown: boolean;
   megaEnabled: boolean;
   branchName: string | null;
   baseBranch: string | null;
@@ -85,6 +86,7 @@ export function createInitialState(): MegapowersState {
     completedTasks: [],
     tddTaskState: null,
     doneActions: [],
+    doneChecklistShown: false,
     megaEnabled: true,
     branchName: null,
     baseBranch: null,
@@ -146,6 +148,7 @@ export function transition(state: MegapowersState, to: Phase, tasks?: PlanTask[]
 
   // Reset doneActions on every phase transition
   next.doneActions = [];
+  next.doneChecklistShown = false;
 
   return next;
 }

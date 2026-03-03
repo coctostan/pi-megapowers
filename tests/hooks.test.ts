@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { readFileSync } from "node:fs";
 import { onAgentEnd } from "../extensions/megapowers/hooks.js";
 import { readState, writeState } from "../extensions/megapowers/state/state-io.js";
 import { createInitialState } from "../extensions/megapowers/state/state-machine.js";
@@ -100,12 +99,14 @@ describe("onAgentEnd — done-phase doneActions cleanup", () => {
     expect(state.doneActions).not.toContain("generate-docs");
   });
 
-  it("does nothing when doneActions is empty", async () => {
-    setState(tmp, { phase: "done", doneActions: [] });
+  it("populates doneActions (and sets doneChecklistShown) when in done phase with empty doneActions", async () => {
+    setState(tmp, { phase: "done", doneActions: [], doneChecklistShown: false });
 
-    await onAgentEnd(makeAgentEndEvent("some text"), makeCtx(tmp), makeDeps(tmp) as any);
+    await onAgentEnd(makeAgentEndEvent("done"), makeCtx(tmp, /* hasUI */ false), makeDeps(tmp) as any);
 
-    expect(readState(tmp).doneActions).toEqual([]);
+    const state = readState(tmp);
+    expect(state.doneActions.length).toBeGreaterThan(0);
+    expect(state.doneChecklistShown).toBe(true);
   });
 
   it("does nothing when not in done phase", async () => {
@@ -402,5 +403,154 @@ describe("onAgentEnd — push-and-pr done action (AC18, AC19, AC20)", () => {
 
     expect(readState(tmp).doneActions).not.toContain("push-and-pr");
     expect(notifications.some((n) => n.type === "error" && n.msg.includes("PR creation failed"))).toBe(true);
+  });
+});
+
+
+describe("onAgentEnd — deferred done checklist (#083)", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "hooks-done-checklist-"));
+    mkdirSync(join(tmp, ".megapowers"), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  function setupIssue(cwd: string) {
+    const issuesDir = join(cwd, ".megapowers", "issues");
+    mkdirSync(issuesDir, { recursive: true });
+    writeFileSync(
+      join(issuesDir, "001-test.md"),
+      "---\nid: 1\ntype: feature\nstatus: in-progress\ncreated: 2025-01-01T00:00:00Z\n---\n# Test Issue\nDescription",
+    );
+  }
+
+  it("calls showDoneChecklist when phase=done, doneActions=[], hasUI=true, doneChecklistShown=false", async () => {
+    setState(tmp, { phase: "done", doneActions: [], doneChecklistShown: false });
+
+    let checklistCalled = false;
+    const ctx = {
+      hasUI: true,
+      cwd: tmp,
+      ui: {
+        notify: () => {},
+        custom: async (_fn: any) => {
+          checklistCalled = true;
+          return ["generate-docs", "close-issue"];
+        },
+      },
+    };
+
+    const deps = {
+      store: {
+        ...makeStore(tmp),
+        updateIssueStatus: () => {},
+        getSourceIssues: () => [],
+      },
+      ui: { renderDashboard: () => {} },
+    };
+
+    await onAgentEnd(makeAgentEndEvent("review complete"), ctx as any, deps as any);
+
+    expect(checklistCalled).toBe(true);
+    const state = readState(tmp);
+    expect(state.doneChecklistShown).toBe(true);
+    expect(state.doneActions).toContain("generate-docs");
+    expect(state.doneActions).toContain("close-issue");
+  });
+
+  it("does NOT call showDoneChecklist when doneChecklistShown=true", async () => {
+    setState(tmp, { phase: "done", doneActions: [], doneChecklistShown: true });
+
+    let checklistCalled = false;
+    const ctx = {
+      hasUI: true,
+      cwd: tmp,
+      ui: {
+        notify: () => {},
+        custom: async (_fn: any) => {
+          checklistCalled = true;
+          return ["close-issue"];
+        },
+      },
+    };
+
+    const deps = {
+      store: {
+        ...makeStore(tmp),
+        updateIssueStatus: () => {},
+        getSourceIssues: () => [],
+      },
+      ui: { renderDashboard: () => {} },
+    };
+
+    await onAgentEnd(makeAgentEndEvent("done"), ctx as any, deps as any);
+
+    expect(checklistCalled).toBe(false);
+  });
+
+  it("auto-populates defaults in headless mode (hasUI=false) via showDoneChecklist", async () => {
+    setState(tmp, { phase: "done", doneActions: [], doneChecklistShown: false });
+
+    const ctx = {
+      hasUI: false,
+      cwd: tmp,
+      ui: { notify: () => {} },
+    };
+
+    const deps = {
+      store: {
+        ...makeStore(tmp),
+        updateIssueStatus: () => {},
+        getSourceIssues: () => [],
+      },
+      ui: { renderDashboard: () => {} },
+    };
+
+    await onAgentEnd(makeAgentEndEvent("done"), ctx as any, deps as any);
+
+    const state = readState(tmp);
+    expect(state.doneActions).toContain("close-issue");
+    expect(state.doneActions).toContain("generate-docs");
+    expect(state.doneChecklistShown).toBe(true);
+  });
+
+  it("end-to-end headless: deferred defaults eventually reach close-issue and reset state (#081 regression)", async () => {
+    setupIssue(tmp);
+    setState(tmp, { phase: "done", doneActions: [], doneChecklistShown: false });
+
+    const statusUpdates: { slug: string; status: string }[] = [];
+    const ctx = makeCtx(tmp, /* hasUI */ false);
+    const deps = {
+      store: {
+        ...makeStore(tmp),
+        getSourceIssues: () => [],
+        updateIssueStatus: (slug: string, status: string) => statusUpdates.push({ slug, status }),
+      },
+      ui: { renderDashboard: () => {} },
+    };
+
+    // 1) Populate defaults (deferred checklist fires, doneActions filled, doneChecklistShown = true)
+    await onAgentEnd(makeAgentEndEvent("done"), ctx as any, deps as any);
+
+    // 2-4) Consume content-capture actions
+    const longText = "A".repeat(150);
+    await onAgentEnd(makeAgentEndEvent(longText), ctx as any, deps as any); // generate-docs
+    await onAgentEnd(makeAgentEndEvent(longText), ctx as any, deps as any); // write-changelog
+    await onAgentEnd(makeAgentEndEvent(longText), ctx as any, deps as any); // capture-learnings
+
+    // 5) Consume push-and-pr (immediate; no execGit/branch -> skipped+consumed)
+    await onAgentEnd(makeAgentEndEvent("short"), ctx as any, deps as any);
+
+    // 6) close-issue executes and state resets
+    await onAgentEnd(makeAgentEndEvent("short"), ctx as any, deps as any);
+
+    expect(statusUpdates).toEqual([{ slug: "001-test", status: "done" }]);
+    const finalState = readState(tmp);
+    expect(finalState.activeIssue).toBeNull();
+    expect(finalState.phase).toBeNull();
   });
 });

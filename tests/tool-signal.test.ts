@@ -473,12 +473,9 @@ describe("handleSignal", () => {
         expect(lines).toHaveLength(0);
       }
     });
-    it("register-tools wires showDoneChecklist trigger after successful phase_next to done (AC11)", () => {
+    it("register-tools does NOT wire showDoneChecklist trigger inside megapowers_signal execute", () => {
       const source = readFileSync(join(process.cwd(), "extensions/megapowers/register-tools.ts"), "utf8");
-      expect(source).toContain('import { showDoneChecklist } from "./ui.js"');
-      expect(source).toContain('if (params.action === "phase_next")');
-      expect(source).toContain('if (currentState.phase === "done")');
-      expect(source).toContain("await showDoneChecklist(ctx, ctx.cwd)");
+      expect(source).not.toContain("showDoneChecklist");
     });
   });
   // ======================================================================

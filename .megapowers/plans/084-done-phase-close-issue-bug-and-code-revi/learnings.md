@@ -1,0 +1,15 @@
+# Learnings — Issue #084
+
+- **Design assumptions in headless mode must be explicit, not implicit.** `showDoneChecklist` was written with "TUI always present" baked in via a silent early-return (`if (!ctx.hasUI) return`). When the assumption breaks (headless/satellite), the entire downstream pipeline silently skips — no error, no log, no indication. Every hook or UI entry point that gates state writes should have an explicit headless fallback, not a silent return.
+
+- **Deferred UI interactions belong in lifecycle hooks, not tool execute().** Showing a modal checklist synchronously inside a tool's `execute()` blocks the tool response and races with the LLM's streaming output. The correct pattern is: tool transitions state, lifecycle hook (`onAgentEnd`) shows UI after the turn completes. Applying this pattern required adding a `doneChecklistShown` guard flag to prevent re-invocation — a small schema cost for a large UX improvement.
+
+- **State flags for one-shot interactions are cheaply testable.** Adding `doneChecklistShown: boolean` to `MegapowersState` was low-risk because the field is optional-equivalent (defaults to `false`) and all existing tests use `createInitialState()` spreads. The pattern — "show once, set flag, never re-show" — is a general solution for any deferred one-shot UI.
+
+- **Bug reproduction tests that document buggy behavior become liabilities the moment the bug is fixed.** All the `BUG:` test cases in `reproduce-084-batch.test.ts` asserted the wrong side of the fix (e.g., `expect(doneActions).toEqual([])`). A single-pass rename to `FIX:` with inverted assertions is the right migration, but the rename only works if Tasks are implemented in dependency order so the suite stays green throughout.
+
+- **`onAgentEnd` is a powerful but order-sensitive hook.** The deferred checklist branch must appear BEFORE the existing done-action processing block — if the order is reversed, an empty `doneActions` array is processed as "nothing to do" before the checklist ever fires. Documenting the intended ordering in a comment inside `onAgentEnd` will prevent future regression.
+
+- **End-to-end headless tests require simulating multi-call sequences, not single calls.** The `onAgentEnd` loop only pops one action per invocation. Testing the full path (`populate → consume n content-capture actions → skip push-and-pr → close-issue`) required 6 sequential calls. This is faithful to real behavior but the test setup is verbose — a helper like `drainDoneActions(ctx, deps, n)` would make the pattern reusable.
+
+- **Batch issues that fix exactly two bugs benefit from tight coupling in the plan.** Tasks 1–3 each fixed one prerequisite; Task 4 depended on all three. The linear dependency chain made it clear what order to implement in, but it also meant the test suite was in a broken state (failing BUG: assertions) between Task 3 and Task 6. Staging tests to match the implementation order — or marking intermediate-state tests `skip` — would keep CI green throughout.
