@@ -217,3 +217,26 @@ All wrap-up actions are complete. Here's the summary:
 - **751 tests passing**, 9/9 acceptance criteria met
 
 The issue is ready to close. Run `/issue close` or activate a new issue to continue.
+### Action 4: close-issue
+
+All wrap-up actions are complete. Here's a summary:
+
+---
+
+## ✅ Issue #084 — Wrap-up Complete
+
+**Completed actions:**
+
+| Action | Result |
+|--------|--------|
+| **write-changelog** | Entry appended to `.megapowers/CHANGELOG.md` — two `Fixed` items for #081 and #083 |
+| **capture-learnings** | 7 learnings written to `.megapowers/plans/084-done-phase-close-issue-bug-and-code-revi/learnings.md` |
+| **push-and-pr** | Branch pushed; PR #40 opened → https://github.com/coctostan/pi-megapowers/pull/40 |
+
+**What was fixed:**
+- **#081** — `showDoneChecklist` now auto-populates `doneActions` with all default-checked items in headless mode instead of silently returning, ensuring `close-issue` always executes
+- **#083** — `showDoneChecklist` deferred from `megapowers_signal execute()` to `onAgentEnd`, so the TUI checklist only appears after the full code-review narrative is visible
+
+**Test suite:** 759 pass, 0 fail across 72 files
+
+The issue is ready to close. Run `/issue close` to mark it done, or select a new issue to continue.
