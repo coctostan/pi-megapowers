@@ -63,6 +63,9 @@ describe("handlePlanReview — revise verdict", () => {
     setState(tmp, { phase: "plan", planMode: "review", planIteration: 1 });
     createTaskFile(tmp, 1, "T1");
     createTaskFile(tmp, 2, "T2");
+    const planDir = join(tmp, ".megapowers", "plans", "001-test");
+    mkdirSync(planDir, { recursive: true });
+    writeFileSync(join(planDir, "revise-instructions-1.md"), "Reviewer instructions");
 
     const result = handlePlanReview(tmp, {
       verdict: "revise",
@@ -82,6 +85,9 @@ describe("handlePlanReview — revise verdict", () => {
     setState(tmp, { phase: "plan", planMode: "review", planIteration: 1 });
     createTaskFile(tmp, 1, "T1");
     createTaskFile(tmp, 2, "T2");
+    const planDir = join(tmp, ".megapowers", "plans", "001-test");
+    mkdirSync(planDir, { recursive: true });
+    writeFileSync(join(planDir, "revise-instructions-1.md"), "Reviewer instructions");
 
     handlePlanReview(tmp, {
       verdict: "revise",
@@ -99,6 +105,9 @@ describe("handlePlanReview — revise verdict", () => {
   it("returns error at iteration cap (MAX_PLAN_ITERATIONS = 4)", () => {
     setState(tmp, { phase: "plan", planMode: "review", planIteration: 4 });
     createTaskFile(tmp, 1, "T1");
+    const planDir = join(tmp, ".megapowers", "plans", "001-test");
+    mkdirSync(planDir, { recursive: true });
+    writeFileSync(join(planDir, "revise-instructions-4.md"), "Reviewer instructions");
 
     const result = handlePlanReview(tmp, {
       verdict: "revise",
@@ -114,6 +123,9 @@ describe("handlePlanReview — revise verdict", () => {
   it("sets triggerNewSession flag on revise", () => {
     setState(tmp, { phase: "plan", planMode: "review", planIteration: 1 });
     createTaskFile(tmp, 1, "T1");
+    const planDir = join(tmp, ".megapowers", "plans", "001-test");
+    mkdirSync(planDir, { recursive: true });
+    writeFileSync(join(planDir, "revise-instructions-1.md"), "Reviewer instructions");
 
     const result = handlePlanReview(tmp, {
       verdict: "revise",
@@ -202,5 +214,71 @@ describe("handlePlanReview — approve verdict", () => {
     expect(result.message).toContain("approved");
     expect(result.message).toContain("2");
     expect(result.message).toContain("implement");
+  });
+});
+
+
+describe("handlePlanReview — revise-instructions file gate (missing → error)", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "tool-plan-review-gate-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("returns error when revise-instructions file is missing on revise verdict (AC5, AC6)", () => {
+    setState(tmp, { phase: "plan", planMode: "review", planIteration: 1 });
+    createTaskFile(tmp, 1, "T1");
+
+    const expectedFilepath = join(tmp, ".megapowers", "plans", "001-test", "revise-instructions-1.md");
+
+    const result = handlePlanReview(tmp, {
+      verdict: "revise",
+      feedback: "Task 1 needs work.",
+      approved_tasks: [],
+      needs_revision_tasks: [1],
+    });
+
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain("revise-instructions-1.md");
+    expect(result.error).toContain(expectedFilepath);
+  });
+
+  it("succeeds when revise-instructions file exists on revise verdict (AC5 happy-path)", () => {
+    setState(tmp, { phase: "plan", planMode: "review", planIteration: 1 });
+    createTaskFile(tmp, 1, "T1");
+
+    const planDir = join(tmp, ".megapowers", "plans", "001-test");
+    mkdirSync(planDir, { recursive: true });
+    writeFileSync(join(planDir, "revise-instructions-1.md"), "## Task 1\nFix step 2.");
+
+    const result = handlePlanReview(tmp, {
+      verdict: "revise",
+      feedback: "Task 1 needs work.",
+      approved_tasks: [],
+      needs_revision_tasks: [1],
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.message).toContain("REVISE");
+  });
+
+  it("does not check for revise-instructions file on approve verdict (AC7)", () => {
+    setState(tmp, { phase: "plan", planMode: "review", planIteration: 1 });
+    createTaskFile(tmp, 1, "T1");
+    // No revise-instructions-1.md written — if the gate ran on approve, this would return an error
+
+    const result = handlePlanReview(tmp, {
+      verdict: "approve",
+      feedback: "Looks great.",
+      approved_tasks: [1],
+      needs_revision_tasks: [],
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.message).toContain("approved");
   });
 });

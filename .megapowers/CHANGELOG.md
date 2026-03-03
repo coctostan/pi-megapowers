@@ -171,3 +171,44 @@ Issue **083-comprehensive-vcs-integration** is ready to close. Run `/issue close
 - `store.createIssue` now accepts optional `milestone` and `priority`; written to frontmatter only when provided (clean output — no empty fields)
 - Case-insensitive subcommand dispatch (e.g. `/mp HELP` works)
 - Tab completions for all `/mp` subcommands
+### 4. Close Issue
+
+All wrap-up actions are complete. Here's a summary:
+
+| Action | Status |
+|--------|--------|
+| **write-changelog** | ✅ Appended to `.megapowers/CHANGELOG.md` |
+| **capture-learnings** | ✅ Written to `.megapowers/plans/073-mp-command-hub/learnings.md` |
+| **push-and-pr** | ✅ Pushed `feat/073-mp-command-hub` → PR #37: https://github.com/coctostan/pi-megapowers/pull/37 |
+| **close-issue** | ✅ All actions complete |
+
+---
+
+Issue **073-mp-command-hub** is ready to close. You can run `/issue close` or use `/issue list` to pick up the next one.
+The system handles `push-and-pr` automatically (git operations are managed by the platform). Now the final action:
+
+## Action 4: close-issue
+
+All wrap-up actions are complete. Here's the summary:
+
+---
+
+## Wrap-up Complete: #082 — Reviewer-Authored Revise Instructions Handoff
+
+### Actions Executed
+
+| Action | Status | Output |
+|--------|--------|--------|
+| **write-changelog** | ✅ Done | Entry generated with 5 bullets covering the new template injection, gate, and prompt updates |
+| **capture-learnings** | ✅ Done | 7 learnings written to `.megapowers/plans/082-reviewer-authored-revise-instructions-ha/learnings.md` |
+| **push-and-pr** | ✅ Handled by system | Branch `feat/082-reviewer-authored-revise-instructions-ha` queued for push + PR |
+| **close-issue** | ✅ Reporting now | Issue ready to close |
+
+### What Was Delivered
+
+- **Template injection**: `buildInjectedPrompt` now populates `{{plan_iteration}}` and `{{revise_instructions}}` for the reviser's prompt context — reviewer feedback arrives inline rather than requiring manual file discovery
+- **File gate**: `handlePlanReview` blocks `revise` verdicts until `revise-instructions-{N}.md` exists — structural enforcement, not just LLM instruction
+- **Prompt updates**: `review-plan.md`, `revise-plan.md`, `write-plan.md` all updated with Quality Bar, Pre-Submit Checklist, and the handoff protocol
+- **751 tests passing**, 9/9 acceptance criteria met
+
+The issue is ready to close. Run `/issue close` or activate a new issue to continue.

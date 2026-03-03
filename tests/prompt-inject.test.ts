@@ -99,6 +99,71 @@ describe("buildInjectedPrompt — plan mode routing", () => {
   });
 });
 
+describe("buildInjectedPrompt — plan phase variable injection", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "prompt-inject-plan-vars-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("populates plan_iteration as string when phase is plan (AC4)", () => {
+    setState(tmp, { phase: "plan", planMode: "review", planIteration: 3, megaEnabled: true });
+    const store = createStore(tmp);
+    // review-plan.md has {{plan_iteration}} after Task 2
+    const result = buildInjectedPrompt(tmp, store);
+    expect(result).not.toBeNull();
+    // The template variable {{plan_iteration}} should be replaced with "3"
+    expect(result).toContain("revise-instructions-3.md");
+    // Verify it doesn't contain the un-interpolated template variable
+    expect(result).not.toContain("{{plan_iteration}}");
+  });
+
+  it("populates revise_instructions from file when planMode is revise (AC1)", () => {
+    setState(tmp, { phase: "plan", planMode: "revise", planIteration: 2, megaEnabled: true });
+    const store = createStore(tmp);
+    // planIteration - 1 = 1; reviewer at iteration 1 wrote revise-instructions-1.md
+    store.writePlanFile("001-test", "revise-instructions-1.md", "## Task 3: Fix test\n\nStep 2 needs specific error message.");
+    const result = buildInjectedPrompt(tmp, store);
+    expect(result).not.toBeNull();
+    expect(result).toContain("## Task 3: Fix test");
+    expect(result).toContain("Step 2 needs specific error message.");
+    expect(result).not.toContain("{{revise_instructions}}");
+  });
+
+  it("sets revise_instructions to empty string when file is missing in revise mode (AC2)", () => {
+    setState(tmp, { phase: "plan", planMode: "revise", planIteration: 2, megaEnabled: true });
+    const store = createStore(tmp);
+    // No revise-instructions-1.md written — file is missing
+    const result = buildInjectedPrompt(tmp, store);
+    expect(result).not.toBeNull();
+    // Token must be replaced (not left as literal template variable)
+    expect(result).not.toContain("{{revise_instructions}}");
+    // Both surrounding headings should still be present
+    expect(result).toContain("## Reviewer's Instructions");
+    expect(result).toContain("## Quality Bar");
+  });
+
+  it("does not read revise-instructions-* files when planMode is draft (AC3)", () => {
+    setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1, megaEnabled: true });
+    const store = createStore(tmp);
+
+    const calls: string[] = [];
+    const originalReadPlanFile = store.readPlanFile.bind(store);
+    (store as any).readPlanFile = (slug: string, filename: string) => {
+      calls.push(filename);
+      return originalReadPlanFile(slug, filename);
+    };
+
+    const result = buildInjectedPrompt(tmp, store);
+    expect(result).not.toBeNull();
+    expect(calls.some(f => f.startsWith("revise-instructions-"))).toBe(false);
+  });
+});
+
 describe("done phase — doneActions prompt injection (AC16, AC17)", () => {
   let tmp: string;
 

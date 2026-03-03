@@ -16,6 +16,8 @@ Task files are stored in `.megapowers/plans/{{issue_slug}}/tasks/`. Read them no
 
 ## Evaluate against these criteria:
 
+The drafter has a pre-submit checklist matching these criteria. Basic structural issues (missing steps, obvious placeholders) should be rare. **Focus your review on code correctness:** Are the tests testing the right behavior? Does the implementation use the correct APIs from the actual codebase? Will this code work when executed?
+
 ### 1. Coverage
 Does every acceptance criterion have at least one task addressing it? List any gaps. Check that tasks explicitly call out which AC they cover.
 
@@ -66,9 +68,37 @@ No issues.
 List any acceptance criteria not covered by any task.
 
 ### Verdict
-- **approve** — plan is ready for implementation
-- **revise** — specific tasks need adjustment (list what and why above)
-- **rethink** — fundamental issue (wrong approach, missing acceptance criteria). Submit this as `verdict: "revise"` with high-level corrective guidance.
+- **approve** — plan is ready for implementation. Every task passes all 6 criteria.
+- **revise** — specific tasks need adjustment (list what and why above).
+
+## Revise-Instructions Handoff
+
+When your verdict is `revise`, you MUST write a `revise-instructions-{{plan_iteration}}.md` file to the plan directory BEFORE calling the tool. This file is injected directly into the reviser's prompt — it is their primary guide.
+
+Save it to: `.megapowers/plans/{{issue_slug}}/revise-instructions-{{plan_iteration}}.md` (where `{{plan_iteration}}` is the current plan iteration number).
+
+The file must be **prescriptive and task-specific:**
+- Per-task headers (`## Task N: title`)
+- Specific code showing what's wrong and what it should look like
+- NOT "fix TDD completeness" — instead: "Step 2 is missing the error assertion. It should be: `expect(result.error).toBe('file not found: revise-instructions-1.md')`"
+- Reference actual codebase APIs/signatures you found during review
+- Only cover tasks that need changes — don't repeat tasks that passed
+
+**Example structure:**
+```markdown
+## Task 3: Add validation gate
+
+Step 2 expected failure is vague. The actual error from the runner will be:
+Expected: FAIL — "Error: revise-instructions-1.md not found. Write it before submitting a revise verdict."
+
+Step 3 implementation uses `readFile()` but the codebase uses `store.readPlanFile()`. Replace with:
+`const content = store.readPlanFile(slug, filename);`
+
+## Task 5: Template injection
+
+Step 1 test is missing the assertion for the empty-string fallback case. Add:
+`expect(vars.revise_instructions).toBe("")`
+```
 
 ## Project Conventions
 Check `AGENTS.md` for the project's language, test framework, and test runner. If not documented there, infer from the codebase. Verify that tasks use the correct file extensions, test locations, and run commands for this project.
@@ -90,6 +120,8 @@ megapowers_plan_review({
 })
 ```
 **To request revisions:**
+
+First, write `revise-instructions-{{plan_iteration}}.md` as described above. Then:
 ```
 megapowers_plan_review({
   verdict: "revise",
