@@ -4,14 +4,14 @@
 
 - **M0: Restructure** — Directory reorganization (#070), slash command extraction (#043)
 - **Core platform** — State machine (#071), TUI, feature + bugfix workflows
-- **jj removal** — Replaced jj (Jujutsu) with git worktrees; resolved #061 (dialog frozen), #083 (jj VCS layer) (#091)
 - **TDD enforcement** — Blocks production writes until tests written and failing
 - **Phase transition UX** — Killed popup (#072), backward transitions (#069)
 - **Subagent pipeline** — Workspace squash (#067), per-task implement→verify→review chain (#076)
-- **Plan-review loop** — Iterative draft/review/revise with entity parser (#066, #085)
+- **Plan-review loop** — Iterative draft/review/revise with entity parser (#066, #085); bypass bug fixed (#088, #089 via #090)
 - **Done phase** — Artifact capture refactor (#065), save_artifact removed (#041, #063)
 - **Agent context & awareness** — Prompt quality, TDD edge cases (#050)
 - **Prompt/skill audit** — Workflow type for non-code work (#062)
+- **M4: VCS integration** — Comprehensive git branching & PR workflow (#083), jj removal → git worktrees (#091)
 
 ## Current: M1 — UX Foundation
 
@@ -20,13 +20,12 @@
 | #051  | P2  | UX feedback, visibility & transparency (absorbs #042) |
 | #073  | P2  | /mp command hub & issue management UX (absorbs #058) |
 
-## Next: M2–M4
+## Next: M2–M3
 
 | Issue | Milestone | Description |
 |-------|-----------|-------------|
 | #074  | M2  | Subagent structured handoff & rich UI (absorbs #075) |
 | #059  | M3  | Workflow iteration quality — context management and plan-review versioning |
-| #083  | M4  | Comprehensive VCS integration — git branching & PR workflow (absorbs #064) |
 
 ## Later: M5–M6
 

@@ -9,6 +9,7 @@ import {
   type RuntimeDeps,
 } from "./commands.js";
 import { onContext, onSessionStart, onBeforeAgentStart, onToolCall, onToolResult, onAgentEnd } from "./hooks.js";
+import { handleMpCommand, mpArgumentCompletions } from "./mp/mp-command.js";
 
 // --- Extension ---
 
@@ -53,6 +54,12 @@ export default function megapowers(pi: ExtensionAPI): void {
   registerTools(pi, runtimeDeps);
 
   // --- Commands ---
+
+  pi.registerCommand("mp", {
+    description: "Megapowers command hub (usage: /mp | /mp help | /mp new)",
+    getArgumentCompletions: (prefix) => mpArgumentCompletions(prefix),
+    handler: async (args, ctx) => handleMpCommand(args, ctx, ensureDeps(runtimeDeps, pi, ctx.cwd)),
+  });
 
   pi.registerCommand("mega", {
     description: "Megapowers dashboard and controls (usage: /mega | /mega on | /mega off)",

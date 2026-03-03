@@ -1,7 +1,7 @@
 # Milestones
 
 > Operational tracking for milestone → issue mapping and progress.
-> Updated: 2026-03-01
+> Updated: 2026-03-02
 
 ---
 
@@ -13,16 +13,16 @@ All issues shipped: #070 (directory restructure), #043 (extract slash commands).
 
 ## M1: UX Foundation
 
-**Status:** In progress (3 issues)
+**Status:** In progress (2 issues remaining)
 **Theme:** Fix the worst pain. A new user can start an issue and get through brainstorm → spec without getting stuck.
 
 | ID  | Title | Priority | Status |
 |-----|-------|----------|--------|
-| 061 | jj mismatch dialog frozen | 1 | open |
+| ~~061~~ | ~~jj mismatch dialog frozen~~ | ~~1~~ | ✅ done |
 | 051 | UX feedback, visibility & transparency | 2 | open |
 | 073 | /mp command hub & issue management UX | 2 | open |
 
-**Notes:** #051 absorbs #042. #073 absorbs #058.
+**Notes:** #051 absorbs #042. #073 absorbs #058. #061 resolved as part of jj removal (#091).
 
 ---
 
@@ -40,7 +40,7 @@ Core pipeline shipped: #067 (workspace squash), #076 (per-task chain). One issue
 
 ## ✅ M3: Plan/Review Loop — MOSTLY COMPLETE
 
-Core loop shipped: #066 (iterative plan-review), #085 (wiring & API). One issue remains:
+Core loop shipped: #066 (iterative plan-review), #085 (wiring & API). Bugs fixed: #088/#089 via batch #090. One issue remains:
 
 | ID  | Title | Priority | Status |
 |-----|-------|----------|--------|
@@ -48,16 +48,16 @@ Core loop shipped: #066 (iterative plan-review), #085 (wiring & API). One issue 
 
 ---
 
-## M4: VCS Integration
+## ✅ M4: VCS Integration — COMPLETE
 
-**Status:** Not started (1 issue)
-**Theme:** Clean close. Issue goes from done → merged/pushed automatically.
+All issues shipped: #083 (comprehensive VCS integration), #091 (jj removal → git worktrees).
 
 | ID  | Title | Priority | Status |
 |-----|-------|----------|--------|
-| 083 | Comprehensive VCS integration (git + jj) | 1 | open |
+| ~~083~~ | ~~Comprehensive VCS integration (git)~~ | ~~1~~ | ✅ done |
+| ~~091~~ | ~~Remove jj dependency~~ | ~~1~~ | ✅ done |
 
-**Notes:** #083 absorbs #064. Covers bookmark management, squash-on-done, git push, PR creation, branch cleanup, session resume, git-only fallback.
+**Notes:** #083 absorbs #064. #091 replaced jj with git worktrees for pipeline isolation.
 
 ---
 
@@ -95,10 +95,10 @@ Core loop shipped: #066 (iterative plan-review), #085 (wiring & API). One issue 
 | Milestone | Total | Done | Remaining |
 |-----------|-------|------|-----------|
 | M0 | 2 | 2 | 0 ✅ |
-| M1 | 3 | 0 | 3 |
+| M1 | 3 | 1 | 2 |
 | M2 | 1 | 0 | 1 |
 | M3 | 1 | 0 | 1 |
-| M4 | 1 | 0 | 1 |
+| M4 | 2 | 2 | 0 ✅ |
 | M5 | 2 | 0 | 2 |
 | M6 | 4 | 0 | 4 |
-| **Total** | **14** | **2** | **12** |
+| **Total** | **15** | **5** | **10** |

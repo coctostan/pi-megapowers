@@ -158,3 +158,16 @@ Issue **083-comprehensive-vcs-integration** is ready to close. Run `/issue close
 - Automatic `feat/` / `fix/` branch creation on issue activation, WIP commits on issue switch, squash + force-push + `gh` PR at done phase
 - Two bugs found and fixed during code review: `execGit`/`execCmd` not wired into `runtimeDeps` (feature was dead), and `baseBranch` set to wrong value on issue switch
 - 711 tests passing
+
+
+## [Unreleased]
+### Added
+- `/mp` command hub: single unified entry-point dispatching to typed subcommand handlers; replaces ad-hoc command sprawl (#073)
+- `/mp help` (default): lists all registered subcommands with tier and description
+- `/mp new`: inject-tier handler that starts a conversational issue-drafting flow and calls `create_issue` when ready
+- `/mp on` / `/mp off`: re-exposed mega-enforcement toggle via the hub (AC17)
+- Stub handlers for `council`, `audit`, `health`, `ship`, `retro`, `export`, `quick`, `back`, `status` — discoverable from day one, return "Coming soon." until implemented
+- `create_issue` LLM-callable tool with Zod-validated parameters: `title`, `type`, `description` (required), `milestone`, `priority`, `sources` (optional)
+- `store.createIssue` now accepts optional `milestone` and `priority`; written to frontmatter only when provided (clean output — no empty fields)
+- Case-insensitive subcommand dispatch (e.g. `/mp HELP` works)
+- Tab completions for all `/mp` subcommands

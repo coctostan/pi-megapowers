@@ -3,12 +3,14 @@
 ## [Unreleased]
 
 ### Changed
+- **Comprehensive VCS integration — branch-per-issue lifecycle** — Automatic feature branch creation on issue activation (`mega/<issue-slug>`), WIP commits on issue switch, and done-phase wrap-up actions (push & PR, close issue). `close-issue` state reset restored. (#083)
 - **Removed jj (Jujutsu) dependency — pipeline isolation now uses `git worktree`** — All jj VCS integration removed from megapowers: `jj.ts`, `jj-messages.ts` deleted; `MegapowersState` stripped of `jjChangeId`/`taskJJChanges` fields (existing `state.json` files with these keys are silently dropped on read); `pipeline-workspace.ts` rewritten to use `git worktree add --detach` for subagent isolation and a patch-based squash (`git diff --cached HEAD` → `git apply`) for merging changes back. `ExecGit` type replaces `ExecJJ` across pipeline-runner, pipeline-tool, and oneshot-tool. No jj install or jj repo initialisation required. (#091)
 
 ### Fixed
 - **`close-issue` done action now actually closes the issue** — `onAgentEnd` handler added for the `close-issue` action: calls `store.updateIssueStatus(slug, "done")` immediately, bypassing the 100-char LLM text guard that only applies to content-capture actions. (#086)
 - **Batch auto-close** — Closing a batch issue now also marks all source issues as done via `store.getSourceIssues()`. (#086)
 - **Subagent workspace creation on fresh repos** — `createPipelineWorkspace()` now calls `mkdirSync(dirname(workspacePath), { recursive: true })` before creating the worktree, fixing ENOENT failures on repos where `.megapowers/subagents/{id}/` does not yet exist. (#086)
+- **Plan phase `phase_next` bypass blocked** — Added `requirePlanApproved` gate to plan→implement transition; `phase_next` can no longer skip plan review. `deriveTasks` updated to prefer task files over legacy `plan.md`. (#088, #089 via batch #090)
 ### Housekeeping
 - **`close-issue` clears active issue state** — Fixed two bugs in `onAgentEnd`: (1) `close-issue` done-action had no handler and fell through to a spread that preserved `activeIssue` and `phase`; (2) non-content-capture done actions (`capture-learnings`, `squash-task-changes`) were gated on `text.length > 100`, permanently blocking the queue on short LLM responses. Fix uses `createInitialState()` as the reset base and unconditionally consumes non-content-capture actions. (#087)
 - **Issue cleanup** — Archived 21 completed/superseded issues, consolidated 7 into 5 (25 → 12 remaining). Updated ROADMAP.md and milestones.md. M0 fully complete, M2/M3 mostly complete.
