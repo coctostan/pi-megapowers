@@ -265,6 +265,32 @@ describe("getDoneChecklistItems (AC12)", () => {
       expect(item.label.length).toBeGreaterThan(0);
     }
   });
+
+  it("includes push-and-pr item checked by default (AC17)", () => { // Task 11
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+    };
+    const items = getDoneChecklistItems(state);
+    const pushItem = items.find(i => i.key === "push-and-pr");
+    expect(pushItem).toBeDefined();
+    expect(pushItem!.label).toBe("Push & create PR");
+    expect(pushItem!.defaultChecked).toBe(true);
+  });
+
+  it("includes push-and-pr in bugfix workflow too (AC17)", () => {
+    const state: MegapowersState = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "bugfix",
+      phase: "done",
+    };
+    const items = getDoneChecklistItems(state);
+    const keys = items.map(i => i.key);
+    expect(keys).toContain("push-and-pr");
+  });
 });
 
 

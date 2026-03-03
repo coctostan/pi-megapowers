@@ -162,6 +162,35 @@ describe("state-io", () => {
     });
   });
 
+  it("persists and reads branchName field (AC13)", () => { // Task 10
+    const state = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      branchName: "feat/001-test",
+    };
+    writeState(tmp, state);
+    const read = readState(tmp);
+    expect(read.branchName).toBe("feat/001-test");
+  });
+
+  it("persists and reads baseBranch field (required to support AC18 squashAndPush)", () => {
+    const state = {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      branchName: "feat/001-test",
+      baseBranch: "main",
+    };
+    writeState(tmp, state);
+    const read = readState(tmp);
+    expect(read.baseBranch).toBe("main");
+  });
+
+  it("defaults branchName and baseBranch to null when not in state.json", () => {
+    const state = readState(tmp);
+    expect(state.branchName).toBeNull();
+    expect(state.baseBranch).toBeNull();
+  });
+
   describe("thin schema", () => {
     it("initial state has completedTasks array, not planTasks", () => {
       const state = createInitialState();

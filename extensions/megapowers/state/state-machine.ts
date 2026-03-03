@@ -53,6 +53,8 @@ export interface MegapowersState {
   tddTaskState: TddTaskState | null;
   doneActions: string[];
   megaEnabled: boolean;
+  branchName: string | null;
+  baseBranch: string | null;
 }
 
 // --- Config-driven data ---
@@ -84,6 +86,8 @@ export function createInitialState(): MegapowersState {
     tddTaskState: null,
     doneActions: [],
     megaEnabled: true,
+    branchName: null,
+    baseBranch: null,
   };
 }
 

@@ -68,6 +68,7 @@ export function getDoneChecklistItems(state: MegapowersState): DoneChecklistItem
   items.push({ key: "write-changelog", label: "Write changelog entry", defaultChecked: true });
   items.push({ key: "capture-learnings", label: "Capture learnings", defaultChecked: true });
 
+  items.push({ key: "push-and-pr", label: "Push & create PR", defaultChecked: true });
   items.push({ key: "close-issue", label: "Close issue", defaultChecked: true });
 
   return items;

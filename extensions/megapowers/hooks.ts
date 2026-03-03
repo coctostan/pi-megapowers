@@ -1,5 +1,7 @@
 import type { Deps } from "./commands.js";
 import { readState, writeState } from "./state/state-io.js";
+import { squashAndPush } from "./vcs/branch-manager.js";
+import { createPR } from "./vcs/pr-creator.js";
 import { buildInjectedPrompt } from "./prompt-inject.js";
 import { evaluateWriteOverride, recordTestFileWritten } from "./tools/tool-overrides.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
@@ -111,6 +113,57 @@ export async function onAgentEnd(event: any, ctx: any, deps: Deps): Promise<void
         const sourceInfo = sources.length > 0 ? ` (+ ${sources.length} source issues)` : "";
         ctx.ui.notify(`Issue ${state.activeIssue} marked as done${sourceInfo}`, "info");
       }
+      return;
+    }
+
+    if (doneAction === "push-and-pr") {
+      // AC18: Push & create PR
+      if (!deps.execGit || !state.branchName) {
+        // No VCS available or no branch tracked — skip and consume
+        writeState(ctx.cwd, { ...state, doneActions: state.doneActions.filter(a => a !== doneAction) });
+        if (ctx.hasUI) ctx.ui.notify("VCS: No branch tracked — skipping push & PR.", "info");
+        return;
+      }
+
+      if (!state.baseBranch) {
+        // base branch unknown — can't safely squash. Degrade gracefully by consuming the action.
+        writeState(ctx.cwd, { ...state, doneActions: state.doneActions.filter((a) => a !== doneAction) });
+        if (ctx.hasUI) ctx.ui.notify("VCS: baseBranch is missing — skipping push & PR.", "error");
+        return;
+      }
+
+      const baseBranch = state.baseBranch;
+      const issue = store.getIssue(state.activeIssue);
+      const commitPrefix = state.workflow === "bugfix" ? "fix" : "feat";
+      const commitMsg = `${commitPrefix}: ${issue?.title ?? state.activeIssue}`;
+
+      const pushResult = await squashAndPush(deps.execGit, state.branchName, baseBranch, commitMsg);
+      if (!pushResult.ok) {
+        // AC19: don't consume action on failure — user can retry
+        if (ctx.hasUI) ctx.ui.notify(`Push failed (${pushResult.step}): ${pushResult.error}`, "error");
+        return;
+      }
+
+      // Push succeeded — attempt PR creation
+      if (deps.execCmd) {
+        const prTitle = issue?.title ?? state.activeIssue;
+        const prBody = `Resolves ${state.activeIssue}\n\n${issue?.description ?? ""}`.trim();
+        const prResult = await createPR(deps.execCmd, state.branchName, prTitle, prBody);
+
+        if ("skipped" in prResult) {
+          // AC20: pushed but no PR
+          if (ctx.hasUI) ctx.ui.notify(`Branch pushed. PR creation skipped: ${prResult.reason}`, "info");
+        } else if (prResult.ok) {
+          if (ctx.hasUI) ctx.ui.notify(`PR created: ${prResult.url}`, "info");
+        } else {
+          if (ctx.hasUI) ctx.ui.notify(`PR creation failed: ${prResult.error}`, "error");
+        }
+      } else {
+        if (ctx.hasUI) ctx.ui.notify("Branch pushed. PR creation skipped (no execCmd).", "info");
+      }
+
+      // Consume action once push succeeds (even if PR creation fails)
+      writeState(ctx.cwd, { ...state, doneActions: state.doneActions.filter(a => a !== doneAction) });
       return;
     }
 

@@ -4,12 +4,14 @@ import { createUI, showDoneChecklist, type MegapowersUI } from "./ui.js";
 import { readState, writeState } from "./state/state-io.js";
 import { handleSignal } from "./tools/tool-signal.js";
 import { deriveTasks } from "./state/derived.js";
+import { ensureBranch, switchAwayCommit } from "./vcs/branch-manager.js";
+import type { ExecGit } from "./vcs/git-ops.js";
+import type { ExecCmd } from "./vcs/pr-creator.js";
 
-/** Mutable container — exactly one instance lives in index.ts, shared by all hooks and commands */
-export type RuntimeDeps = { store?: Store; ui?: MegapowersUI };
+export type RuntimeDeps = { store?: Store; ui?: MegapowersUI; execGit?: ExecGit; execCmd?: ExecCmd };
 
 /** Resolved deps — guaranteed non-optional */
-export type Deps = { pi: ExtensionAPI; store: Store; ui: MegapowersUI };
+export type Deps = { pi: ExtensionAPI; store: Store; ui: MegapowersUI; execGit?: ExecGit; execCmd?: ExecCmd };
 
 /**
  * The ONLY place allowed to create store/ui.
@@ -18,7 +20,7 @@ export type Deps = { pi: ExtensionAPI; store: Store; ui: MegapowersUI };
 export function ensureDeps(rd: RuntimeDeps, pi: ExtensionAPI, cwd: string): Deps {
   if (!rd.store) rd.store = createStore(cwd);
   if (!rd.ui) rd.ui = createUI();
-  return { pi, store: rd.store, ui: rd.ui };
+  return { pi, store: rd.store, ui: rd.ui, execGit: rd.execGit, execCmd: rd.execCmd };
 }
 
 // --- Command handlers ---
@@ -56,8 +58,42 @@ export async function handleMegaCommand(args: string, ctx: any, deps: Deps): Pro
 }
 
 export async function handleIssueCommand(args: string, ctx: any, deps: Deps): Promise<void> {
-  const state = readState(ctx.cwd);
-  const newState = await deps.ui.handleIssueCommand(ctx, state, deps.store, args);
+  const prevState = readState(ctx.cwd);
+  const newState = await deps.ui.handleIssueCommand(ctx, prevState, deps.store, args);
+
+  // AC14/AC15: VCS branch management on issue activation/switch
+  if (deps.execGit && newState.activeIssue && newState.activeIssue !== prevState.activeIssue && newState.workflow) {
+    // AC15: WIP commit on previous issue's branch before switching away
+    if (prevState.branchName) {
+      const switchResult = await switchAwayCommit(deps.execGit, prevState.branchName);
+      if (!switchResult.ok) {
+        // AC16: surface error, don't block
+        if (ctx.hasUI) ctx.ui.notify(`VCS: ${switchResult.error}`, "error");
+      }
+    }
+    // Capture baseBranch for the new issue:
+    // - If switching between issues, propagate prevState.baseBranch (e.g. "main") so
+    //   the new branch targets the same original base — not the old feature branch.
+    // - If fresh activation (no prior branch), capture current HEAD.
+    let baseBranch: string | null = null;
+    if (prevState.branchName) {
+      // Already on a feature branch — preserve the known base
+      baseBranch = prevState.baseBranch;
+    } else {
+      try {
+        const r = await deps.execGit(["rev-parse", "--abbrev-ref", "HEAD"]);
+        baseBranch = r.stdout.trim() || null;
+      } catch { /* ignore — baseBranch stays null */ }
+    }
+    const result = await ensureBranch(deps.execGit, newState.activeIssue, newState.workflow);
+    if ("branchName" in result) {
+      newState.branchName = result.branchName;
+      newState.baseBranch = baseBranch;
+    } else {
+      // AC16: surface error, don't block activation
+      if (ctx.hasUI) ctx.ui.notify(`VCS: ${result.error}`, "error");
+    }
+  }
   writeState(ctx.cwd, newState);
 }
 

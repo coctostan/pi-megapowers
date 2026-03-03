@@ -25,7 +25,18 @@ export default function megapowers(pi: ExtensionAPI): void {
   }
 
   // Single shared deps object — one per extension lifetime
-  const runtimeDeps: RuntimeDeps = {};
+  const runtimeDeps: RuntimeDeps = {
+    execGit: async (args: string[]) => {
+      const r = await pi.exec("git", args);
+      if (r.code !== 0) throw new Error(`git ${args[0]} failed (exit ${r.code}): ${r.stderr}`);
+      return { stdout: r.stdout, stderr: r.stderr };
+    },
+    execCmd: async (cmd: string, args: string[]) => {
+      const r = await pi.exec(cmd, args);
+      if (r.code !== 0) throw new Error(`${cmd} ${args[0]} failed (exit ${r.code}): ${r.stderr}`);
+      return { stdout: r.stdout, stderr: r.stderr };
+    },
+  };
 
   // --- Hooks ---
 

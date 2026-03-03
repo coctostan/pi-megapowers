@@ -1,7 +1,7 @@
 ---
 id: 83
 type: feature
-status: open
+status: done
 created: 2026-02-26T00:00:00.000Z
 sources: [64]
 milestone: M4

@@ -140,3 +140,21 @@ All three wrap-up actions complete. Here's what was done:
    - `git diff --binary` gap for binary files
 
 3. **close-issue** — Run `/issue close` to mark issue #091 as done, or select a new issue to continue.
+## close-issue
+
+All wrap-up actions are complete:
+
+| Action | Status |
+|---|---|
+| `write-changelog` | ✅ Entry generated |
+| `capture-learnings` | ✅ Saved to `.megapowers/plans/083-comprehensive-vcs-integration/learnings.md` |
+
+---
+
+Issue **083-comprehensive-vcs-integration** is ready to close. Run `/issue close` (or select a new issue) to continue.
+
+**Summary of what shipped:**
+- 3 new VCS modules (`git-ops.ts`, `branch-manager.ts`, `pr-creator.ts`) with full injected-executor pattern
+- Automatic `feat/` / `fix/` branch creation on issue activation, WIP commits on issue switch, squash + force-push + `gh` PR at done phase
+- Two bugs found and fixed during code review: `execGit`/`execCmd` not wired into `runtimeDeps` (feature was dead), and `baseBranch` set to wrong value on issue switch
+- 711 tests passing

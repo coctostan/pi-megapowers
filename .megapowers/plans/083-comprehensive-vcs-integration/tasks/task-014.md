@@ -1,165 +1,46 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import { readFileSync } from "node:fs";
-import { onAgentEnd } from "../extensions/megapowers/hooks.js";
-import { readState, writeState } from "../extensions/megapowers/state/state-io.js";
-import { createInitialState } from "../extensions/megapowers/state/state-machine.js";
+---
+id: 14
+title: Done action handler for push-and-pr
+status: approved
+depends_on:
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+no_test: false
+files_to_modify:
+  - extensions/megapowers/commands.ts
+  - extensions/megapowers/hooks.ts
+  - tests/hooks.test.ts
+files_to_create: []
+---
 
-// --- helpers ---
+### Task 14: Done action handler for push-and-pr [depends: 8, 9, 10, 11, 12, 13]
 
-function makeStore(cwd: string) {
-  const docsDir = join(cwd, ".megapowers", "docs");
-  const changelogPath = join(cwd, ".megapowers", "CHANGELOG.md");
-  let featureDocContent = "";
-  let changelogContent = "";
-  return {
-    writeFeatureDoc: (_slug: string, text: string) => { featureDocContent = text; },
-    appendChangelog: (text: string) => { changelogContent += text; },
-    _getFeatureDoc: () => featureDocContent,
-    _getChangelog: () => changelogContent,
-  };
-}
+**Files:**
+- Modify: `extensions/megapowers/commands.ts`
+- Modify: `extensions/megapowers/hooks.ts`
+- Modify: `tests/hooks.test.ts`
 
-function makeCtx(cwd: string, hasUI = false) {
-  return {
-    hasUI,
-    cwd,
-    ui: {
-      notify: () => {},
-    },
-  };
-}
+**Step 1 — Write the failing test**
 
-function makeDeps(cwd: string) {
-  return {
-    store: makeStore(cwd),
-    ui: { renderDashboard: () => {} },
-  };
-}
+Add to `tests/hooks.test.ts`:
 
-function makeAgentEndEvent(text: string) {
-  return {
-    messages: [
-      {
-        role: "assistant",
-        content: [{ type: "text", text }],
-      },
-    ],
-  };
-}
-
-function setState(cwd: string, overrides: any) {
-  writeState(cwd, {
-    ...createInitialState(),
-    activeIssue: "001-test",
-    workflow: "feature",
-    ...overrides,
-  });
-}
-
-describe("onAgentEnd — done-phase doneActions cleanup", () => {
-  let tmp: string;
-
-  beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), "hooks-test-"));
-    mkdirSync(join(tmp, ".megapowers"), { recursive: true });
-  });
-
-  afterEach(() => {
-    rmSync(tmp, { recursive: true, force: true });
-  });
-
-  it("removes capture-learnings from doneActions after agent produces long text", async () => {
-    // Bug: capture-learnings is special-cased and never removed from doneActions.
-    // Fix: remove the special case so it is removed like other actions.
-    setState(tmp, {
-      phase: "done",
-      doneActions: ["capture-learnings"],
-    });
-
-    const longText = "A".repeat(150); // > 100 chars threshold
-    await onAgentEnd(makeAgentEndEvent(longText), makeCtx(tmp), makeDeps(tmp) as any);
-
-    const state = readState(tmp);
-    expect(state.doneActions).toEqual([]); // should be removed
-  });
-
-  it("removes generate-docs from doneActions after agent produces long text", async () => {
-    setState(tmp, {
-      phase: "done",
-      doneActions: ["generate-docs", "write-changelog"],
-    });
-
-    const longText = "A".repeat(150);
-    await onAgentEnd(makeAgentEndEvent(longText), makeCtx(tmp), makeDeps(tmp) as any);
-
-    // first action "generate-docs" should be removed; "write-changelog" remains for next turn
-    const state = readState(tmp);
-    expect(state.doneActions).not.toContain("generate-docs");
-  });
-
-  it("does nothing when doneActions is empty", async () => {
-    setState(tmp, { phase: "done", doneActions: [] });
-
-    await onAgentEnd(makeAgentEndEvent("some text"), makeCtx(tmp), makeDeps(tmp) as any);
-
-    expect(readState(tmp).doneActions).toEqual([]);
-  });
-
-  it("does nothing when not in done phase", async () => {
-    setState(tmp, { phase: "verify", doneActions: [] });
-
-    await onAgentEnd(makeAgentEndEvent("A".repeat(150)), makeCtx(tmp), makeDeps(tmp) as any);
-
-    expect(readState(tmp).phase).toBe("verify");
-  });
-
-  it("does nothing when text is shorter than 100 chars", async () => {
-    setState(tmp, { phase: "done", doneActions: ["capture-learnings"] });
-
-    await onAgentEnd(makeAgentEndEvent("short response"), makeCtx(tmp), makeDeps(tmp) as any);
-
-    // Short text means the capture block is not entered — list unchanged
-    expect(readState(tmp).doneActions).toEqual(["capture-learnings"]);
-  });
-});
-
-describe("handlePhaseBack — no intermediate state write", () => {
-  it("tool-signal.ts does not contain a redundant intermediate writeState in handlePhaseBack", () => {
-    // handlePhaseBack previously double-read state and wrote reviewApproved: false
-    // before calling advancePhase. transition() already handles this. The explicit
-    // intermediate write should not be present.
-    const source = readFileSync(
-      join(process.cwd(), "extensions/megapowers/tools/tool-signal.ts"),
-      "utf-8",
-    );
-
-    // Find the handlePhaseBack function body
-    const start = source.indexOf("function handlePhaseBack");
-    const end = source.indexOf("\nfunction ", start + 1);
-    const body = source.slice(start, end === -1 ? undefined : end);
-
-    // Should not contain a writeState call BEFORE advancePhase inside handlePhaseBack
-    // The pattern to avoid: writeState(cwd, { ...currentState, reviewApproved: false })
-    // transition() in state-machine.ts handles this invariant.
-    const writeBeforeAdvance = /writeState[\s\S]*?reviewApproved:\s*false[\s\S]*?advancePhase/;
-    expect(writeBeforeAdvance.test(body)).toBe(false);
-  });
-});
-
-
-it("hooks.ts no longer imports jj availability helpers/messages", () => {
-  const source = readFileSync(join(process.cwd(), "extensions/megapowers/hooks.ts"), "utf-8");
-  expect(source).not.toContain("checkJJAvailability");
-  expect(source).not.toContain("JJ_INSTALL_MESSAGE");
-  expect(source).not.toContain("JJ_INIT_MESSAGE");
-});
-
+First, add required imports at the top of `tests/hooks.test.ts`:
+```typescript
 import type { ExecGit } from "../extensions/megapowers/vcs/git-ops.js";
 import type { ExecCmd } from "../extensions/megapowers/vcs/pr-creator.js";
+```
 
+**Note on `state.baseBranch`:** Tests set `baseBranch: "main"` in the initial state. This field is captured
+at issue-activation time (Task 12). For graceful degradation, if `baseBranch` is missing we **notify error**
+and **consume** the action (so done-phase completion is never blocked).
+
+Then add these test cases:
+
+```typescript
 describe("onAgentEnd — push-and-pr done action (AC18, AC19, AC20)", () => {
   let tmp: string;
 
@@ -218,10 +99,15 @@ describe("onAgentEnd — push-and-pr done action (AC18, AC19, AC20)", () => {
 
     await onAgentEnd(makeAgentEndEvent("short"), ctx, deps);
 
+    // Squash should have been called
     expect(gitCalls.some(c => c[0] === "reset" && c[1] === "--soft" && c[2] === "main")).toBe(true);
+    // Push should have been called with force
     expect(gitCalls.some(c => c[0] === "push" && c.includes("--force-with-lease"))).toBe(true);
+    // PR should have been created
     expect(cmdCalls.some(c => c.args[0] === "pr" && c.args[1] === "create")).toBe(true);
+    // Action should be consumed
     expect(readState(tmp).doneActions).not.toContain("push-and-pr");
+    // Success notification
     expect(notifications.some(n => n.msg.includes("PR created"))).toBe(true);
   });
 
@@ -255,7 +141,9 @@ describe("onAgentEnd — push-and-pr done action (AC18, AC19, AC20)", () => {
 
     await onAgentEnd(makeAgentEndEvent("short"), ctx, deps);
 
+    // Action should NOT be consumed (retry possible)
     expect(readState(tmp).doneActions).toContain("push-and-pr");
+    // Error should be notified
     expect(notifications.some(n => n.type === "error" && n.msg.includes("squash"))).toBe(true);
   });
 
@@ -294,7 +182,9 @@ describe("onAgentEnd — push-and-pr done action (AC18, AC19, AC20)", () => {
 
     await onAgentEnd(makeAgentEndEvent("short"), ctx, deps);
 
+    // Action should be consumed (push succeeded)
     expect(readState(tmp).doneActions).not.toContain("push-and-pr");
+    // Notification about PR being skipped
     expect(notifications.some(n => n.msg.includes("skipped"))).toBe(true);
   });
 
@@ -329,33 +219,6 @@ describe("onAgentEnd — push-and-pr done action (AC18, AC19, AC20)", () => {
 
     expect(readState(tmp).doneActions).not.toContain("push-and-pr");
     expect(notifications.some((n) => n.type === "error" && n.msg.includes("baseBranch"))).toBe(true);
-  });
-
-  it("consumes action and skips VCS when branchName is null", async () => {
-    writeState(tmp, {
-      ...createInitialState(),
-      activeIssue: "001-test",
-      workflow: "feature",
-      phase: "done",
-      branchName: null,
-      doneActions: ["push-and-pr"],
-    });
-
-    const notifications: { msg: string; type: string }[] = [];
-    const deps = {
-      store: { ...makeStore(tmp), getSourceIssues: () => [] },
-      ui: { renderDashboard: () => {} },
-    } as any;
-    const ctx = {
-      cwd: tmp,
-      hasUI: true,
-      ui: { notify: (msg: string, type: string) => notifications.push({ msg, type }) },
-    };
-
-    await onAgentEnd(makeAgentEndEvent("short"), ctx, deps);
-
-    expect(readState(tmp).doneActions).not.toContain("push-and-pr");
-    expect(notifications.some(n => n.msg.includes("No branch"))).toBe(true);
   });
 
   it("notifies error (and consumes action) when PR creation fails after push", async () => {
@@ -403,4 +266,135 @@ describe("onAgentEnd — push-and-pr done action (AC18, AC19, AC20)", () => {
     expect(readState(tmp).doneActions).not.toContain("push-and-pr");
     expect(notifications.some((n) => n.type === "error" && n.msg.includes("PR creation failed"))).toBe(true);
   });
+  it("consumes action and skips VCS when branchName is null", async () => {
+    writeState(tmp, {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+      branchName: null,
+      doneActions: ["push-and-pr"],
+    });
+
+    const notifications: { msg: string; type: string }[] = [];
+    const deps = {
+      store: { ...makeStore(tmp), getSourceIssues: () => [] },
+      ui: { renderDashboard: () => {} },
+    } as any;
+    const ctx = {
+      cwd: tmp,
+      hasUI: true,
+      ui: { notify: (msg: string, type: string) => notifications.push({ msg, type }) },
+    };
+
+    await onAgentEnd(makeAgentEndEvent("short"), ctx, deps);
+
+    // Action should be consumed (nothing to push)
+    expect(readState(tmp).doneActions).not.toContain("push-and-pr");
+    // Info notification about no branch
+    expect(notifications.some(n => n.msg.includes("No branch"))).toBe(true);
+  });
 });
+```
+
+**Step 2 — Run test, verify it fails**
+Run: `bun test tests/hooks.test.ts`
+Expected: FAIL — push-and-pr action is not handled, falls through to content-capture section which doesn't consume it
+
+**Step 3 — Write minimal implementation**
+
+**3a. Add `execCmd` to deps in `extensions/megapowers/commands.ts`:**
+
+Add import:
+```typescript
+import type { ExecCmd } from "./vcs/pr-creator.js";
+```
+
+Update types:
+```typescript
+export type RuntimeDeps = { store?: Store; ui?: MegapowersUI; execGit?: ExecGit; execCmd?: ExecCmd };
+export type Deps = { pi: ExtensionAPI; store: Store; ui: MegapowersUI; execGit?: ExecGit; execCmd?: ExecCmd };
+```
+
+In `ensureDeps`, add after the `execGit` initialization:
+```typescript
+  if (!rd.execCmd) {
+    rd.execCmd = async (cmd: string, args: string[]) => {
+      const r = await pi.exec(cmd, args);
+      if (r.code !== 0) throw new Error(`${cmd} failed (exit ${r.code}): ${r.stderr}`);
+      return { stdout: r.stdout, stderr: r.stderr };
+    };
+  }
+  return { pi, store: rd.store, ui: rd.ui, execGit: rd.execGit, execCmd: rd.execCmd };
+```
+
+**3b. Handle push-and-pr in `extensions/megapowers/hooks.ts`:**
+
+Add imports:
+```typescript
+import { squashAndPush } from "./vcs/branch-manager.js";
+import { createPR } from "./vcs/pr-creator.js";
+```
+
+In `onAgentEnd`, inside the `if (phase === "done" && state.doneActions.length > 0)` block, add a new immediate action handler BEFORE the `close-issue` check:
+
+```typescript
+    if (doneAction === "push-and-pr") {
+      // AC18: Push & create PR
+      if (!deps.execGit || !state.branchName) {
+        // No VCS available or no branch tracked — skip and consume
+        writeState(ctx.cwd, { ...state, doneActions: state.doneActions.filter(a => a !== doneAction) });
+        if (ctx.hasUI) ctx.ui.notify("VCS: No branch tracked — skipping push & PR.", "info");
+        return;
+      }
+
+      if (!state.baseBranch) {
+        // base branch unknown — can't safely squash. Degrade gracefully by consuming the action.
+        writeState(ctx.cwd, { ...state, doneActions: state.doneActions.filter((a) => a !== doneAction) });
+        if (ctx.hasUI) ctx.ui.notify("VCS: baseBranch is missing — skipping push & PR.", "error");
+        return;
+      }
+
+      const baseBranch = state.baseBranch;
+      const issue = store.getIssue(state.activeIssue);
+      const commitPrefix = state.workflow === "bugfix" ? "fix" : "feat";
+      const commitMsg = `${commitPrefix}: ${issue?.title ?? state.activeIssue}`;
+
+      const pushResult = await squashAndPush(deps.execGit, state.branchName, baseBranch, commitMsg);
+      if (!pushResult.ok) {
+        // AC19: don't consume action on failure — user can retry
+        if (ctx.hasUI) ctx.ui.notify(`Push failed (${pushResult.step}): ${pushResult.error}`, "error");
+        return;
+      }
+
+      // Push succeeded — attempt PR creation
+      if (deps.execCmd) {
+        const prTitle = issue?.title ?? state.activeIssue;
+        const prBody = `Resolves ${state.activeIssue}\n\n${issue?.description ?? ""}`.trim();
+        const prResult = await createPR(deps.execCmd, state.branchName, prTitle, prBody);
+
+        if ("skipped" in prResult) {
+          // AC20: pushed but no PR
+          if (ctx.hasUI) ctx.ui.notify(`Branch pushed. PR creation skipped: ${prResult.reason}`, "info");
+        } else if (prResult.ok) {
+          if (ctx.hasUI) ctx.ui.notify(`PR created: ${prResult.url}`, "info");
+        } else {
+          if (ctx.hasUI) ctx.ui.notify(`PR creation failed: ${prResult.error}`, "error");
+        }
+      } else {
+        if (ctx.hasUI) ctx.ui.notify("Branch pushed. PR creation skipped (no execCmd).", "info");
+      }
+
+      // Consume action once push succeeds (even if PR creation fails) to avoid repeated force-push retries
+      writeState(ctx.cwd, { ...state, doneActions: state.doneActions.filter(a => a !== doneAction) });
+      return;
+    }
+```
+
+**Step 4 — Run test, verify it passes**
+Run: `bun test tests/hooks.test.ts`
+Expected: PASS
+
+**Step 5 — Verify no regressions**
+Run: `bun test`
+Expected: all passing
