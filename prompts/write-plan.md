@@ -18,49 +18,51 @@ Issue: {{issue_slug}}
 
 ## Instructions
 
-Each task should be **bite-sized** — a single test and its minimal implementation. If a task takes more than 5 minutes to describe, it's too big. Split it.
+Check `AGENTS.md` for the project's language, test framework, and test runner. If not documented there, infer from the codebase (package.json, Cargo.toml, pyproject.toml, etc.). Use the project's actual conventions for file extensions, test locations, and run commands.
 
-### Task structure
+Each task should be **bite-sized** — a single test and its minimal implementation. If a task has "and" in its title, split it into two tasks.
 
-Every task follows the 5-step TDD cycle:
+### Task template
+
+Write every task exactly like this. The annotations in `(← ...)` are quality criteria — follow them, but don't include them in the output.
 
 ```
 ### Task N: [Name] [depends: 1, 2]
 
 **Files:**
-- Create: `exact/path/to/file`
+- Create: `exact/path/from/project/root`        (← full paths, never relative or abbreviated)
 - Modify: `exact/path/to/existing`
 - Test: `exact/path/to/test`
 
 **Step 1 — Write the failing test**
-[Full test code]
+[Full, copy-pasteable test code]                 (← not pseudocode, not "similar to Task 3")
 
 **Step 2 — Run test, verify it fails**
-Run: [exact command to run this specific test]
-Expected: FAIL — [specific error message or failure description]
+Run: `exact command to run this specific test`
+Expected: FAIL — [specific error message]        (← not just "FAIL" — what does the failure say?)
 
 **Step 3 — Write minimal implementation**
-[Full implementation code — just enough to pass the test]
+[Full, copy-pasteable implementation code]       (← just enough to pass, no extras)
 
 **Step 4 — Run test, verify it passes**
-Run: [same command as Step 2]
+Run: `same command as Step 2`
 Expected: PASS
 
 **Step 5 — Verify no regressions**
-Run: [project's full test suite command]
+Run: `project's full test suite command`
 Expected: all passing
 ```
 
-Check `AGENTS.md` for the project's language, test framework, and test runner. If not documented there, infer from the codebase (package.json, Cargo.toml, pyproject.toml, etc.). Use the project's actual conventions for file extensions, test locations, and run commands.
+Omit `[depends: N, M]` for tasks with no dependencies. Include it whenever a task uses output, types, or utilities from a prior task.
 
 ### No-test tasks
 
-Some tasks don't have a meaningful test — config changes, documentation, CI setup, type-only refactors. Mark these with `[no-test]`:
+Some tasks don't have a meaningful test — config, docs, CI, type-only refactors, prompt/skill files. Mark with `[no-test]`:
 
 ```
 ### Task N: [Name] [no-test]
 
-**Justification:** [Why this task has no test — must be a real reason, not laziness]
+**Justification:** [Real reason — "config-only", "documentation", "prompt change", etc.]
 
 **Files:**
 - Modify: `exact/path/to/file`
@@ -69,30 +71,38 @@ Some tasks don't have a meaningful test — config changes, documentation, CI se
 [Full change description or code]
 
 **Step 2 — Verify**
-Run: [build command, type check, or other verification]
+Run: `build command, type check, or other verification`
 Expected: [success criteria]
 ```
 
-Use `[no-test]` sparingly. If a task changes behavior, it needs a test. Valid reasons: config-only, documentation, pure refactor with existing test coverage, CI/tooling setup, prompt/skill file changes.
-
-For **prompt or skill changes**: use `[no-test]` but include a subagent verification step if possible — run a scenario with the updated prompt and confirm the LLM behaves as expected. This isn't enforced yet but is strongly recommended.
-
-### Key requirements
-
-- **Complete code** — no "implement something similar" or "add validation here"
-- **Expected test output** — Step 2 must specify what the failure looks like. This catches tests that pass when they shouldn't.
-- **Minimal implementation** — Step 3 writes just enough to make the test pass, nothing more
-- **Exact file paths** — every file referenced must include its full path from project root
+Use `[no-test]` sparingly. If a task changes observable behavior, it needs a test. For prompt/skill changes, include a subagent verification step when possible.
 
 ## Rules
-- Tasks must be **independently verifiable** — if a task has "and" in it, split it
-- Task order must **respect dependencies** — foundational pieces first
-- **Annotate dependencies** — if a task requires output from prior tasks, add `[depends: N, M]` to the title. Omit for tasks with no dependencies.
-- **Coverage** — each acceptance criterion from the spec must be covered by at least one task. Call out the mapping explicitly (e.g., "Covers AC 3").
-- **YAGNI** — no tasks for speculative features
-- **DRY** — extract shared code into utilities, don't duplicate
+
+- **One behavior per task.** One test file, one assertion target. If you're testing two things, that's two tasks.
+- **Dependencies first.** Task N must never reference code that doesn't exist until Task N+1.
+- **AC coverage.** Every acceptance criterion from the spec must map to at least one task. After writing all tasks, verify this — if an AC has no task, add one.
+- **No forward references.** Each task's code must be complete using only what exists before it. No "we'll define this helper in Task 8."
+- **No lazy placeholders.** If you write "implement similar logic" or "add tests as appropriate," you've failed. Write the actual code.
+- **YAGNI.** No tasks for speculative features not in the spec.
+
+## Common Mistakes
+
+These are what the reviewer will reject. Don't do them:
+
+| ❌ Mistake | ✅ Fix |
+|---|---|
+| Step 1 says "write a test similar to Task 2" | Write the full test code — every task is self-contained |
+| Step 2 says "Expected: FAIL" | Say what fails: "Expected: FAIL — TypeError: processEvent is not a function" |
+| Step 3 has a placeholder: "add validation logic here" | Write the actual validation code |
+| Task title: "Add parser and validator" | Split into Task N: "Add parser" and Task N+1: "Add validator" |
+| File listed as `./utils.ts` or just `utils.ts` | Use full path: `src/utils/parser.ts` |
+| `[no-test]` on a task that adds a new function | If it has behavior, it needs a test |
+| Task 5 imports a type defined in Task 7 | Reorder so Task 5 comes after Task 7, or merge the dependency |
+| No task covers acceptance criterion 4 | Add a task that explicitly covers it |
 
 ## Saving Tasks
+
 For each task, call the `megapowers_plan_task` tool with structured parameters:
 
 ```
