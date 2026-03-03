@@ -5,7 +5,7 @@ Megapowers supports a dedicated bugfix workflow alongside the existing feature w
 ## Workflow Phases
 
 ```
-reproduce → diagnose → plan → review → implement → verify → done
+reproduce → diagnose → plan → implement → verify → done
 ```
 
 ### reproduce
@@ -20,14 +20,14 @@ Output is saved as `reproduce.md` in the issue's plan directory.
 ### diagnose
 The agent receives the `diagnose-bug.md` prompt with the reproduction report interpolated as `{{reproduce_content}}`. The agent identifies root cause without fixing.
 
-The diagnosis may include an optional `## Fixed When` section with numbered acceptance criteria. These are automatically extracted into `state.acceptanceCriteria` for tracking during verify.
+The diagnosis may include an optional `## Fixed When` section with numbered acceptance criteria. These are extracted on demand during verify.
 
 Output is saved as `diagnosis.md`.
 
-### plan → review → implement → verify
+### plan → implement → verify
 These phases work identically to feature mode, except:
 - **Plan phase**: `{{brainstorm_content}}` is aliased to `reproduce.md` content, and `{{spec_content}}` is aliased to `diagnosis.md` content
-- **Verify phase**: If `## Fixed When` criteria were extracted, they're tracked alongside plan tasks
+- **Verify phase**: If `## Fixed When` criteria were extracted, they are checked alongside plan tasks
 
 ### done
 The done-phase menu includes bugfix-specific options:
@@ -35,7 +35,7 @@ The done-phase menu includes bugfix-specific options:
 - **Write changelog entry** — standard changelog entry
 - **Capture learnings** — save insights for future reference
 - **Close issue** — marks issue as done and resets state
-- **Squash task changes into phase change** — consolidates jj changes (stays in menu after)
+- **Squash task changes into phase change** — consolidates task work into the phase change (stays in menu after)
 
 Note: Feature mode shows "Generate feature doc" instead of "Generate bugfix summary". The remaining options are shared.
 

@@ -29,7 +29,7 @@ Save phase output by writing files directly under `.megapowers/plans/<issue-slug
 - Always save work before advancing phases
 
 ### Version Control
-Version control is managed automatically. **Do not run git commands.** Phase changes and commits are handled by the system.
+Git is the underlying VCS. Read-only operations (`git status`, `git log`, `git diff`) are fine. **Do not run `git commit`, `git push`, `git branch`, `git checkout`, or `git merge` manually.** The system automatically creates a feature branch on issue activation and WIP-commits when switching issues. On entering the done phase, a checklist lets you select wrap-up actions (push & PR, close issue, etc.) which are then executed automatically. Pipeline/subagent worktrees are also managed automatically.
 
 ### Error Handling
 When a megapowers tool returns an error:
