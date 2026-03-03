@@ -16,6 +16,41 @@ Issue: {{issue_slug}}
 > - **Task 1 should adopt or build on the failing test from the reproduction report** (if one was written) — don't duplicate or ignore it
 > - Include a regression test that reproduces the original bug's exact steps
 
+## Quality Bar
+
+Your plan will be reviewed against these 6 criteria. Every task must pass all of them. Read these BEFORE writing any tasks.
+
+### 1. Coverage
+Every acceptance criterion from the spec maps to at least one task. After writing all tasks, go back and verify — if an AC has no task, add one.
+
+### 2. Ordering & Dependencies
+Tasks are independent or depend only on earlier tasks. Task N must never reference code that doesn't exist until Task N+1. Use `[depends: N, M]` annotations when a task uses output, types, or utilities from a prior task. No cycles, no forward references.
+
+### 3. TDD Completeness
+Every non-`[no-test]` task has all 5 steps with **real, complete code**:
+- **Step 1** — Full, copy-pasteable test code. Not pseudocode, not "similar to Task 3", not a description.
+- **Step 2** — Exact run command + the **specific error message** the runner will print (e.g., "TypeError: processEvent is not a function", not just "FAIL").
+- **Step 3** — Full, copy-pasteable implementation code. Just enough to pass. No "add validation logic here."
+- **Step 4** — Same run command as Step 2, expected PASS.
+- **Step 5** — Full test suite command, expected all passing.
+
+### 4. Granularity
+Each task is one test + one implementation. One logical change, ≤3 files. If the title has "and" in it, split it. If a test has multiple unrelated assertions, split it.
+
+### 5. No-Test Validity
+Only config, docs, CI, type-only refactors, or prompt/skill file changes use `[no-test]`. Anything with observable behavior changes needs a test. Every `[no-test]` task must have a justification and a verification step.
+
+### 6. Self-Containment
+Each task has actual code — not "similar to Task N", not placeholder comments, not `// ...rest`. A new session must be able to execute the task without reading other tasks. Real file paths, real function signatures, real error messages.
+
+## Read the Codebase First
+
+Before writing any tasks, use `read` to inspect every file you plan to modify. Verify:
+- Function signatures and exports
+- Import paths and module structure
+- Test file conventions (location, naming, test runner)
+- Actual APIs — do not invent functions, types, or patterns that don't exist
+
 ## Instructions
 
 Check `AGENTS.md` for the project's language, test framework, and test runner. If not documented there, infer from the codebase (package.json, Cargo.toml, pyproject.toml, etc.). Use the project's actual conventions for file extensions, test locations, and run commands.
@@ -24,25 +59,25 @@ Each task should be **bite-sized** — a single test and its minimal implementat
 
 ### Task template
 
-Write every task exactly like this. The annotations in `(← ...)` are quality criteria — follow them, but don't include them in the output.
+Write every task exactly like this:
 
 ```
 ### Task N: [Name] [depends: 1, 2]
 
 **Files:**
-- Create: `exact/path/from/project/root`        (← full paths, never relative or abbreviated)
+- Create: `exact/path/from/project/root`
 - Modify: `exact/path/to/existing`
 - Test: `exact/path/to/test`
 
 **Step 1 — Write the failing test**
-[Full, copy-pasteable test code]                 (← not pseudocode, not "similar to Task 3")
+[Full, copy-pasteable test code]
 
 **Step 2 — Run test, verify it fails**
 Run: `exact command to run this specific test`
-Expected: FAIL — [specific error message]        (← not just "FAIL" — what does the failure say?)
+Expected: FAIL — [specific error message the runner will print]
 
 **Step 3 — Write minimal implementation**
-[Full, copy-pasteable implementation code]       (← just enough to pass, no extras)
+[Full, copy-pasteable implementation code]
 
 **Step 4 — Run test, verify it passes**
 Run: `same command as Step 2`
@@ -77,23 +112,12 @@ Expected: [success criteria]
 
 Use `[no-test]` sparingly. If a task changes observable behavior, it needs a test. For prompt/skill changes, include a subagent verification step when possible.
 
-## Rules
-
-- **One behavior per task.** One test file, one assertion target. If you're testing two things, that's two tasks.
-- **Dependencies first.** Task N must never reference code that doesn't exist until Task N+1.
-- **AC coverage.** Every acceptance criterion from the spec must map to at least one task. After writing all tasks, verify this — if an AC has no task, add one.
-- **No forward references.** Each task's code must be complete using only what exists before it. No "we'll define this helper in Task 8."
-- **No lazy placeholders.** If you write "implement similar logic" or "add tests as appropriate," you've failed. Write the actual code.
-- **YAGNI.** No tasks for speculative features not in the spec.
-
 ## Common Mistakes
-
-These are what the reviewer will reject. Don't do them:
 
 | ❌ Mistake | ✅ Fix |
 |---|---|
 | Step 1 says "write a test similar to Task 2" | Write the full test code — every task is self-contained |
-| Step 2 says "Expected: FAIL" | Say what fails: "Expected: FAIL — TypeError: processEvent is not a function" |
+| Step 2 says "Expected: FAIL" with no error detail | Say what fails: "Expected: FAIL — TypeError: processEvent is not a function" |
 | Step 3 has a placeholder: "add validation logic here" | Write the actual validation code |
 | Task title: "Add parser and validator" | Split into Task N: "Add parser" and Task N+1: "Add validator" |
 | File listed as `./utils.ts` or just `utils.ts` | Use full path: `src/utils/parser.ts` |
@@ -116,7 +140,22 @@ megapowers_plan_task({
   files_to_create: ["path/to/new.ts"]
 })
 ```
-After all tasks are saved, call `megapowers_signal({ action: "plan_draft_done" })` to submit for review.
+
+## Pre-Submit Checklist
+
+Before calling `megapowers_signal({ action: "plan_draft_done" })`, walk through EVERY task and verify:
+
+- [ ] **Coverage:** Every acceptance criterion has at least one task
+- [ ] **Step 1:** Test file path is real; test code is complete and runnable — no placeholders, no `// TODO`
+- [ ] **Step 2:** Run command is correct for the project's test runner; expected failure message is the specific error text
+- [ ] **Step 3:** Implementation code is complete and uses actual codebase APIs (you verified by reading the files)
+- [ ] **Step 4/5:** Run commands match Step 2; full suite command is correct
+- [ ] **Self-contained:** No "similar to Task N" — every task stands alone
+- [ ] **File paths:** All paths verified against actual codebase structure
+- [ ] **No-test tasks:** Each has a real justification and a verification step
+- [ ] **Ordering:** No task references code from a later task
+
+If any check fails, fix it before submitting.
 
 ## Project Learnings
 {{learnings}}

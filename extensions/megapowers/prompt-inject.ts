@@ -133,6 +133,16 @@ export function buildInjectedPrompt(cwd: string, store?: Store): string | null {
     if (!vars.files_changed) vars.files_changed = "";
   }
 
+  // Plan phase: inject plan_iteration and revise_instructions (AC1-4)
+  if (state.phase === "plan") {
+    vars.plan_iteration = String(state.planIteration);
+    if (state.planMode === "revise" && store) {
+      const filename = `revise-instructions-${state.planIteration - 1}.md`;
+      const content = store.readPlanFile(state.activeIssue!, filename);
+      vars.revise_instructions = content ?? "";
+    }
+  }
+
   // Phase prompt template (plan-mode aware; skip done phase unless doneActions is set)
   if (state.phase === "plan" && state.planMode) {
     const PLAN_MODE_TEMPLATES: Record<"draft" | "review" | "revise", string> = {

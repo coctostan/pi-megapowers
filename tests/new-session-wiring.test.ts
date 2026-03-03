@@ -68,6 +68,8 @@ describe("newSession wiring", () => {
       const tasksDir = join(tmp, ".megapowers", "plans", "001-test", "tasks");
       mkdirSync(tasksDir, { recursive: true });
       writeFileSync(join(tasksDir, "task-001.md"), "---\nid: 1\ntitle: T\nstatus: draft\n---\nBody.");
+      const planDir = join(tmp, ".megapowers", "plans", "001-test");
+      writeFileSync(join(planDir, "revise-instructions-1.md"), "Reviewer instructions");
 
       const tools: Record<string, any> = {};
       const pi = {

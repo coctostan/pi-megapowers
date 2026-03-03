@@ -1,7 +1,7 @@
 ---
 id: 73
 type: feature
-status: in-progress
+status: done
 created: 2026-02-25T18:50:00.000Z
 sources: [33, 46, 53, 58]
 milestone: M1

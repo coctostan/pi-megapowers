@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { readState, writeState } from "../state/state-io.js";
 import { readPlanTask, writePlanTask, listPlanTasks, writePlanReview } from "../state/plan-store.js";
@@ -32,6 +32,20 @@ export function handlePlanReview(cwd: string, params: PlanReviewParams): PlanRev
   }
 
   const slug = state.activeIssue!;
+
+  // Gate: revise verdict requires revise-instructions file (AC5, AC6)
+  if (params.verdict === "revise") {
+    const filename = `revise-instructions-${state.planIteration}.md`;
+    const filepath = join(cwd, ".megapowers", "plans", slug, filename);
+    if (!existsSync(filepath)) {
+      return {
+        error:
+          `Missing revise-instructions file: ${filepath}\n` +
+          `Expected filename: ${filename}\n` +
+          "Write it before submitting a revise verdict.",
+      };
+    }
+  }
   const approvedIds = params.approved_tasks ?? [];
   const needsRevisionIds = params.needs_revision_tasks ?? [];
 
