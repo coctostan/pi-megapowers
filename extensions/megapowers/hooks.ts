@@ -1,5 +1,6 @@
 import type { Deps } from "./commands.js";
 import { readState, writeState } from "./state/state-io.js";
+import { createInitialState } from "./state/state-machine.js";
 import { squashAndPush } from "./vcs/branch-manager.js";
 import { createPR } from "./vcs/pr-creator.js";
 import { buildInjectedPrompt } from "./prompt-inject.js";
@@ -108,7 +109,8 @@ export async function onAgentEnd(event: any, ctx: any, deps: Deps): Promise<void
         store.updateIssueStatus(source.slug, "done");
       }
       store.updateIssueStatus(state.activeIssue, "done");
-      writeState(ctx.cwd, { ...state, doneActions: state.doneActions.filter(a => a !== doneAction) });
+      // Reset state fully to idle — only preserve megaEnabled
+      writeState(ctx.cwd, { ...createInitialState(), megaEnabled: state.megaEnabled });
       if (ctx.hasUI) {
         const sourceInfo = sources.length > 0 ? ` (+ ${sources.length} source issues)` : "";
         ctx.ui.notify(`Issue ${state.activeIssue} marked as done${sourceInfo}`, "info");
