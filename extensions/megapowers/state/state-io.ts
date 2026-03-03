@@ -11,7 +11,7 @@ const STATE_FILE = "state.json";
 const KNOWN_KEYS: ReadonlySet<string> = new Set([
   "version", "activeIssue", "workflow", "phase", "phaseHistory",
   "reviewApproved", "planMode", "planIteration", "currentTaskIndex", "completedTasks",
-  "tddTaskState", "doneActions", "megaEnabled", "branchName", "baseBranch",
+  "tddTaskState", "doneActions", "doneChecklistShown", "megaEnabled", "branchName", "baseBranch",
 ]);
 
 export function readState(cwd: string): MegapowersState {

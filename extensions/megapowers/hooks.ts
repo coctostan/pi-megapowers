@@ -4,6 +4,7 @@ import { createInitialState } from "./state/state-machine.js";
 import { squashAndPush } from "./vcs/branch-manager.js";
 import { createPR } from "./vcs/pr-creator.js";
 import { buildInjectedPrompt } from "./prompt-inject.js";
+import { showDoneChecklist } from "./ui.js";
 import { evaluateWriteOverride, recordTestFileWritten } from "./tools/tool-overrides.js";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
@@ -97,6 +98,13 @@ export async function onAgentEnd(event: any, ctx: any, deps: Deps): Promise<void
   if (!state.activeIssue || !state.phase) return;
 
   const phase = state.phase;
+
+  // Deferred done checklist — fires after agent turn completes (#083 fix)
+  if (phase === "done" && state.doneActions.length === 0 && state.activeIssue && !state.doneChecklistShown) {
+    await showDoneChecklist(ctx, ctx.cwd);
+    writeState(ctx.cwd, { ...readState(ctx.cwd), doneChecklistShown: true });
+    return;
+  }
 
   // Done-phase action processing
   if (phase === "done" && state.doneActions.length > 0) {

@@ -1,4 +1,9 @@
 
+## [Unreleased]
+### Fixed
+- Headless done-phase now auto-populates `doneActions` with default-checked items instead of silently no-op-ing, ensuring `close-issue` always executes when running without a TUI (#081)
+- Done-phase checklist deferred from `megapowers_signal execute()` to `onAgentEnd`, so users see the full code-review narrative before committing to wrap-up actions (#083)
+- Added `doneChecklistShown` state flag to prevent checklist re-display on dismiss/re-entry
 
 ## 2026-02-22 — Done-phase action feedback
 

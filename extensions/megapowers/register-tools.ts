@@ -4,7 +4,6 @@ import { ensureDeps } from "./commands.js";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { readState } from "./state/state-io.js";
-import { showDoneChecklist } from "./ui.js";
 import { handleSignal } from "./tools/tool-signal.js";
 import { handlePlanTask } from "./tools/tool-plan-task.js";
 import { handlePlanReview } from "./tools/tool-plan-review.js";
@@ -44,14 +43,6 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
         (ctx.sessionManager as any)?.newSession?.({ parentSession: parent ?? undefined });
       }
 
-      // AC11: Show done checklist when phase_next advances to done
-      // Trigger is here ONLY — not in hooks.ts — to prevent duplicate presentation
-      if (params.action === "phase_next") {
-        const currentState = readState(ctx.cwd);
-        if (currentState.phase === "done") {
-          await showDoneChecklist(ctx, ctx.cwd);
-        }
-      }
 
       if (ctx.hasUI) {
         ui.renderDashboard(ctx, readState(ctx.cwd), store);
