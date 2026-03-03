@@ -241,6 +241,15 @@ describe("buildInjectedPrompt — idle mode", () => {
     expect(result).toContain("priority: 2");
   });
 
+  it("renders missing priority as none in idle prompt", () => {
+    writeState(tmp, { ...createInitialState(), megaEnabled: true });
+    const store = createStore(tmp);
+    store.createIssue("Auth refactor", "feature", "Refactor auth module");
+
+    const result = buildInjectedPrompt(tmp, store);
+    expect(result).toContain("priority: none");
+  });
+
   it("does not include done issues in idle prompt", () => {
     writeState(tmp, { ...createInitialState(), megaEnabled: true });
     const store = createStore(tmp);

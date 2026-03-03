@@ -14,13 +14,13 @@ export interface Issue {
   description: string;
   createdAt: number;
   sources: number[];
-  milestone: string;
-  priority: number;
+  milestone?: string;
+  priority?: number;
 }
 
 export interface Store {
   listIssues(): Issue[];
-  createIssue(title: string, type: "feature" | "bugfix", description: string, sources?: number[]): Issue;
+  createIssue(title: string, type: "feature" | "bugfix", description: string, sources?: number[], milestone?: string, priority?: number): Issue;
   getIssue(slug: string): Issue | null;
   getSourceIssues(slug: string): Issue[];
   getBatchForIssue(issueId: number): string | null;
@@ -91,15 +91,15 @@ function parseIssueFrontmatter(content: string): Partial<Issue> {
 
 function formatIssueFile(issue: Issue): string {
   const sourcesLine = issue.sources.length > 0 ? `sources: [${issue.sources.join(", ")}]\n` : "";
+  const milestoneLine = issue.milestone?.trim() ? `milestone: ${issue.milestone.trim()}\n` : "";
+  const priorityLine = typeof issue.priority === "number" ? `priority: ${issue.priority}\n` : "";
   return `---
 id: ${issue.id}
 type: ${issue.type}
 status: ${issue.status}
 created: ${new Date(issue.createdAt).toISOString()}
-${sourcesLine}---
-
+${sourcesLine}${milestoneLine}${priorityLine}---
 # ${issue.title}
-
 ${issue.description}
 `;
 }
@@ -148,13 +148,13 @@ export function createStore(projectRoot: string): Store {
             description: parsed.description ?? "",
             createdAt: parsed.createdAt ?? 0,
             sources: parsed.sources ?? [],
-            milestone: parsed.milestone ?? "",
-            priority: parsed.priority ?? 0,
+            milestone: parsed.milestone,
+            priority: parsed.priority,
           };
         });
     },
 
-    createIssue(title: string, type: "feature" | "bugfix", description: string, sources?: number[]): Issue {
+    createIssue(title: string, type: "feature" | "bugfix", description: string, sources?: number[], milestone?: string, priority?: number): Issue {
       ensureRoot();
       const existing = readdirSync(issuesDir).filter((f) => f.endsWith(".md"));
       const maxId = existing.reduce((max, f) => {
@@ -173,8 +173,8 @@ export function createStore(projectRoot: string): Store {
         description,
         createdAt: Date.now(),
         sources: sources ?? [],
-        milestone: "",
-        priority: 0,
+        milestone: milestone?.trim() ? milestone.trim() : undefined,
+        priority: typeof priority === "number" ? priority : undefined,
       };
 
       writeFileSync(join(issuesDir, `${slug}.md`), formatIssueFile(issue));
@@ -196,8 +196,8 @@ export function createStore(projectRoot: string): Store {
         description: parsed.description ?? "",
         createdAt: parsed.createdAt ?? 0,
         sources: parsed.sources ?? [],
-        milestone: parsed.milestone ?? "",
-        priority: parsed.priority ?? 0,
+        milestone: parsed.milestone,
+        priority: parsed.priority,
       };
     },
 

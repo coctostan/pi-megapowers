@@ -9,6 +9,7 @@ import { handleSignal } from "./tools/tool-signal.js";
 import { handlePlanTask } from "./tools/tool-plan-task.js";
 import { handlePlanReview } from "./tools/tool-plan-review.js";
 import { createBatchHandler } from "./tools/tools.js";
+import { createIssueHandler } from "./tools/tool-create-issue.js";
 import { handleOneshotTool } from "./subagent/oneshot-tool.js";
 import { PiSubagentsDispatcher } from "./subagent/pi-subagents-dispatcher.js";
 import { handlePipelineTool } from "./subagent/pipeline-tool.js";
@@ -110,6 +111,33 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
   });
 
 
+  // --- Tools: create_issue ---
+
+  pi.registerTool({
+    name: "create_issue",
+    label: "Create Issue",
+    description: "Create a new issue file via validated parameters.",
+    // Keep fields optional here so zod validation errors are returned from execute()
+    parameters: Type.Object({
+      title: Type.Optional(Type.String({ description: "Required" })),
+      type: Type.Optional(Type.String({ description: "Required: feature|bugfix" })),
+      description: Type.Optional(Type.String({ description: "Required" })),
+      milestone: Type.Optional(Type.String()),
+      priority: Type.Optional(Type.Number()),
+      sources: Type.Optional(Type.Array(Type.Number())),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const { store } = ensureDeps(runtimeDeps, pi, ctx.cwd);
+      const result = createIssueHandler(store, params);
+      if ("error" in result) {
+        return { content: [{ type: "text", text: `Error: ${result.error}` }], details: undefined };
+      }
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }],
+        details: undefined,
+      };
+    },
+  });
   // --- Tools: create_batch ---
 
   pi.registerTool({

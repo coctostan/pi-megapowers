@@ -97,11 +97,11 @@ Description here
     expect(issues[0].priority).toBe(2);
   });
 
-  it("defaults milestone to empty string and priority to 0", () => {
+  it("defaults milestone to undefined and priority to undefined", () => {
     const issue = store.createIssue("No metadata", "feature", "Bare issue");
     const fetched = store.getIssue(issue.slug);
-    expect(fetched!.milestone).toBe("");
-    expect(fetched!.priority).toBe(0);
+    expect(fetched!.milestone).toBeUndefined();
+    expect(fetched!.priority).toBeUndefined();
   });
 });
 
