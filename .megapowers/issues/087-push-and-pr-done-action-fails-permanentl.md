@@ -1,7 +1,7 @@
 ---
 id: 87
 type: bugfix
-status: in-progress
+status: done
 created: 2026-03-04T03:20:43.802Z
 priority: 2
 milestone: M1

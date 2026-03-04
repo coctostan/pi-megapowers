@@ -117,13 +117,13 @@ describe("onAgentEnd — done-phase doneActions cleanup", () => {
     expect(readState(tmp).phase).toBe("verify");
   });
 
-  it("does nothing when text is shorter than 100 chars", async () => {
+  it("consumes capture-learnings unconditionally regardless of response length", async () => {
     setState(tmp, { phase: "done", doneActions: ["capture-learnings"] });
-
     await onAgentEnd(makeAgentEndEvent("short response"), makeCtx(tmp), makeDeps(tmp) as any);
 
-    // Short text means the capture block is not entered — list unchanged
-    expect(readState(tmp).doneActions).toEqual(["capture-learnings"]);
+    // capture-learnings is consumed unconditionally: LLM already wrote the file via write()
+    // The response length is irrelevant — no text scraping occurs for this action.
+    expect(readState(tmp).doneActions).toEqual([]);
   });
 });
 
