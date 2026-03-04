@@ -6,6 +6,7 @@ import { extractToolCalls } from "./message-utils.js";
 import { auditTddCompliance } from "./tdd-auditor.js";
 import { getWorkspaceDiff, type ExecGit } from "./pipeline-workspace.js";
 import { runVerifyStep, type ExecShell } from "./pipeline-steps.js";
+import type { PipelineProgressEvent } from "./pipeline-renderer.js";
 
 export interface PipelineAgents {
   implementer: string;
@@ -24,6 +25,7 @@ export interface PipelineOptions {
   execGit: ExecGit;
   testCommand?: string;
   execShell?: ExecShell;
+  onProgress?: (event: PipelineProgressEvent) => void;
 }
 
 export type PipelineStatus = "completed" | "paused";
@@ -86,6 +88,7 @@ export async function runPipeline(
   const stepTimeoutMs = options.stepTimeoutMs ?? 10 * 60 * 1000;
   const testCommand = options.testCommand ?? "bun test";
   const execShell = options.execShell ?? defaultExecShell;
+  const onProgress = options.onProgress;
 
   let retryCount = 0;
   let filesChanged: string[] = [];
@@ -94,6 +97,7 @@ export async function runPipeline(
 
   for (let cycle = 0; cycle <= maxRetries; cycle++) {
     // ---------------- implement ----------------
+    onProgress?.({ type: "step-start", step: "implement" });
     const t0 = Date.now();
     const impl = await safeDispatch(dispatcher, {
       agent: options.agents.implementer,
@@ -116,6 +120,13 @@ export async function runPipeline(
       summary: impl.exitCode === 0 ? "implement ok" : "implement failed",
       error: implParsed.error,
     });
+    onProgress?.({
+      type: "step-end",
+      step: "implement",
+      durationMs: Date.now() - t0,
+      error: implParsed.error,
+      messages: impl.messages,
+    });
 
     if (impl.exitCode !== 0) {
       retryCount++;
@@ -131,6 +142,7 @@ export async function runPipeline(
           infrastructureError: implParsed.error,
         };
       }
+      onProgress?.({ type: "retry", retryCount, reason: `implement_failed: ${implParsed.error ?? "unknown"}` });
       ctx = withRetryContext(ctx, {
         reason: "implement_failed",
         detail: implParsed.error ?? "unknown",
@@ -139,6 +151,7 @@ export async function runPipeline(
     }
 
     // ---------------- verify (shell command) ----------------
+    onProgress?.({ type: "step-start", step: "verify" });
     const t1 = Date.now();
     let verify: { passed: boolean; exitCode: number; output: string; durationMs: number };
     try {
@@ -152,6 +165,7 @@ export async function runPipeline(
         summary: "verify infrastructure failure",
         error: verifyMsg,
       });
+      onProgress?.({ type: "step-end", step: "verify", durationMs: Date.now() - t1, error: verifyMsg });
       retryCount++;
       if (cycle >= maxRetries) {
         const { diff } = await getWorkspaceDiff(options.workspaceCwd, options.execGit);
@@ -165,6 +179,7 @@ export async function runPipeline(
           infrastructureError: verifyMsg,
         };
       }
+      onProgress?.({ type: "retry", retryCount, reason: `verify_failed: ${verifyMsg}` });
       ctx = withRetryContext(ctx, {
         reason: "verify_failed",
         detail: verifyMsg,
@@ -176,6 +191,12 @@ export async function runPipeline(
       status: verify.passed ? "completed" : "failed",
       durationMs: verify.durationMs,
       summary: verify.passed ? "tests passed" : "tests failed",
+      error: verify.passed ? undefined : `exit code ${verify.exitCode}`,
+    });
+    onProgress?.({
+      type: "step-end",
+      step: "verify",
+      durationMs: verify.durationMs,
       error: verify.passed ? undefined : `exit code ${verify.exitCode}`,
     });
     if (!verify.passed) {
@@ -193,6 +214,7 @@ export async function runPipeline(
           errorSummary: "Retry budget exhausted — tests still failing",
         };
       }
+      onProgress?.({ type: "retry", retryCount, reason: "verify_failed: tests failing" });
       ctx = withRetryContext(ctx, {
         reason: "verify_failed",
         detail: verify.output,
@@ -201,6 +223,7 @@ export async function runPipeline(
     }
 
     // ---------------- review (frontmatter-parsed) ----------------
+    onProgress?.({ type: "step-start", step: "review" });
     const t2 = Date.now();
     const { diff: reviewDiff } = await getWorkspaceDiff(options.workspaceCwd, options.execGit);
     const review = await safeDispatch(dispatcher, {
@@ -226,6 +249,13 @@ export async function runPipeline(
         summary: "review dispatch failed",
         error: reviewParsed.error,
       });
+      onProgress?.({
+        type: "step-end",
+        step: "review",
+        durationMs: Date.now() - t2,
+        error: reviewParsed.error,
+        messages: review.messages,
+      });
 
       retryCount++;
       if (cycle >= maxRetries) {
@@ -240,6 +270,7 @@ export async function runPipeline(
           infrastructureError: reviewParsed.error,
         };
       }
+      onProgress?.({ type: "retry", retryCount, reason: `review_failed: ${reviewParsed.error ?? "unknown"}` });
       ctx = withRetryContext(ctx, {
         reason: "review_failed",
         detail: `Review dispatch failed: ${reviewParsed.error ?? "unknown"}`,
@@ -255,6 +286,13 @@ export async function runPipeline(
       durationMs: Date.now() - t2,
       summary: `verdict: ${verdict.verdict}`,
       error: verdict.verdict === "reject" ? verdict.findings.join("; ") : undefined,
+    });
+    onProgress?.({
+      type: "step-end",
+      step: "review",
+      durationMs: Date.now() - t2,
+      error: verdict.verdict === "reject" ? verdict.findings.join("; ") : undefined,
+      messages: review.messages,
     });
 
     if (verdict.verdict === "approve") {
@@ -283,6 +321,7 @@ export async function runPipeline(
         errorSummary: "Retry budget exhausted — review still rejecting",
       };
     }
+    onProgress?.({ type: "retry", retryCount, reason: `review_rejected: ${verdict.findings.join("; ")}` });
     ctx = withRetryContext(ctx, {
       reason: "review_rejected",
       detail: verdict.findings.join("\n"),

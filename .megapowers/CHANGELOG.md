@@ -1,5 +1,7 @@
 
 ## [Unreleased]
+### Added
+- `pipeline` tool now renders live step-by-step progress in the TUI (implement → verify → review) with per-step timing, usage stats (tokens, cost, model), and a persistent collapsed/expanded result panel after completion; replaced silent-run-then-JSON-blob behavior with `renderCall`, `renderResult`, and `onUpdate` partial streaming (#074)
 ### Fixed
 - Pipeline squash no longer fails when prior-task files exist uncommitted in the main working directory; `createPipelineWorkspace` now makes a temporary commit before creating the worktree so the worktree sees all uncommitted additions, then resets it so the main WD is unchanged (#085, #086)
 - `squashPipelineWorkspace` replaced `git diff | git apply` with direct `copyFileSync`/`unlinkSync` — cannot fail on "already exists in working directory" (#085, #086)
