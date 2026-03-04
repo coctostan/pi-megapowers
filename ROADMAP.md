@@ -13,20 +13,24 @@
 - **Prompt/skill audit** — Workflow type for non-code work (#062)
 - **M4: VCS integration** — Comprehensive git branching & PR workflow (#083), jj removal → git worktrees (#091)
 - **M1 partial** — /mp command hub & issue management UX (#073); done-phase bugs resolved (#081, #082, #083, #084)
+- **M2: Subagent pipeline** — Pipeline reliability & structured handoff (#086 batch: #085 squash fix, #074 TUI visibility panel)
+- **M3 partial** — Reviewer-authored revise-instructions handoff (#082)
 
-## Current: M1 — UX Foundation (1 remaining)
+## Current: M1 — UX Foundation (2 remaining)
 
 | Issue | Pri | Status | Description |
 |-------|-----|--------|-------------|
 | #051  | P2  | open   | UX feedback, visibility & transparency (absorbs #042) |
 | #073  | P2  | ✅ done | /mp command hub & issue management UX (absorbs #058) |
+| #087  | P2  | open   | push-and-pr done action fails when not on feature branch |
 
-## Next: M2–M3
+## Next: M3 — Workflow Iteration Quality (2 remaining)
 
-| Issue | Milestone | Description |
-|-------|-----------|-------------|
-| #074  | M2  | Subagent structured handoff & rich UI (absorbs #075) |
-| #059  | M3  | Workflow iteration quality — context management and plan-review versioning |
+| Issue | Pri | Status | Description |
+|-------|-----|--------|-------------|
+| #082  | P1  | ✅ done | Reviewer-authored revise-instructions handoff |
+| #059  | P2  | open   | Context management and plan-review versioning |
+| #088  | P2  | open   | Use individual task files instead of plan.md |
 
 ## Later: M5–M6
 
@@ -34,6 +38,7 @@
 |-------|-----------|-------------|
 | #068  | M5  | `[prompt-test]` task type — TDD for prompts and skills |
 | #077  | M5  | Issue priority, archiving, and list UI |
+| #089  | M5  | Add Zod frontmatter schemas to phase artifact files |
 | #078  | M6  | Init workflow system — doc audit, greenfield templates, workflow engine (absorbs #081, #082) |
 | #079  | M6  | Foundation doc lifecycle — inject, update, audit |
 | #080  | M6  | Clean context windows |
