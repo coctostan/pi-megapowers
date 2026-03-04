@@ -16,6 +16,18 @@
 
 ## [Prior]
 ### Fixed
+- Pipeline squash no longer fails when prior-task files exist uncommitted in the main working directory; `createPipelineWorkspace` now makes a temporary commit before creating the worktree so the worktree sees all uncommitted additions, then resets it so the main WD is unchanged (#085, #086)
+- `squashPipelineWorkspace` replaced `git diff | git apply` with direct `copyFileSync`/`unlinkSync` — cannot fail on "already exists in working directory" (#085, #086)
+
+### Changed
+- Pipeline cycle now dispatches exactly 2 LLM agents (implementer + reviewer); verification runs `bun test` as a direct shell command instead of a third LLM dispatch (#086)
+- `createPipelineWorkspace`, `squashPipelineWorkspace`, and `cleanupPipelineWorkspace` return discriminated union types (`{ ok: true, ... } | { ok: false, error }`) — eliminates `(as any).error` casts throughout (#086)
+- Retry context is O(1) in size: each retry replaces the previous failure context rather than accumulating all prior step output (#086)
+- Reviewer output parsed via `gray-matter` frontmatter + Zod validation instead of regex; invalid output reliably returns `verdict: reject` with a parse error finding (#086)
+- `PipelineResult` now includes structured fields: `testsPassed`, `testOutput`, `reviewVerdict`, `reviewFindings`, `infrastructureError` — infrastructure failures (LLM crash, timeout) separated from semantic failures (test failures, review rejections) (#086)
+
+## [Prior]
+### Fixed
 - Headless done-phase now auto-populates `doneActions` with default-checked items instead of silently no-op-ing, ensuring `close-issue` always executes when running without a TUI (#081)
 - Done-phase checklist deferred from `megapowers_signal execute()` to `onAgentEnd`, so users see the full code-review narrative before committing to wrap-up actions (#083)
 - Added `doneChecklistShown` state flag to prevent checklist re-display on dismiss/re-entry
