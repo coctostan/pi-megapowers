@@ -1,5 +1,20 @@
 
 ## [Unreleased]
+### Added
+- `pipeline` tool now renders live step-by-step progress in the TUI (implement → verify → review) with per-step timing, usage stats (tokens, cost, model), and a persistent collapsed/expanded result panel after completion; replaced silent-run-then-JSON-blob behavior with `renderCall`, `renderResult`, and `onUpdate` partial streaming (#074)
+### Fixed
+- Fix done-phase deadlock: `capture-learnings` and `write-changelog` doneActions never consumed due to `text.length > 100` guard; added unconditional handler for `capture-learnings`, lowered content-capture guard to `text.length > 0` (#090)
+- Pipeline squash no longer fails when prior-task files exist uncommitted in the main working directory; `createPipelineWorkspace` now makes a temporary commit before creating the worktree so the worktree sees all uncommitted additions, then resets it so the main WD is unchanged (#085, #086)
+- `squashPipelineWorkspace` replaced `git diff | git apply` with direct `copyFileSync`/`unlinkSync` — cannot fail on "already exists in working directory" (#085, #086)
+
+### Changed
+- Pipeline cycle now dispatches exactly 2 LLM agents (implementer + reviewer); verification runs `bun test` as a direct shell command instead of a third LLM dispatch (#086)
+- `createPipelineWorkspace`, `squashPipelineWorkspace`, and `cleanupPipelineWorkspace` return discriminated union types (`{ ok: true, ... } | { ok: false, error }`) — eliminates `(as any).error` casts throughout (#086)
+- Retry context is O(1) in size: each retry replaces the previous failure context rather than accumulating all prior step output (#086)
+- Reviewer output parsed via `gray-matter` frontmatter + Zod validation instead of regex; invalid output reliably returns `verdict: reject` with a parse error finding (#086)
+- `PipelineResult` now includes structured fields: `testsPassed`, `testOutput`, `reviewVerdict`, `reviewFindings`, `infrastructureError` — infrastructure failures (LLM crash, timeout) separated from semantic failures (test failures, review rejections) (#086)
+
+## [Prior]
 ### Fixed
 - Pipeline squash no longer fails when prior-task files exist uncommitted in the main working directory; `createPipelineWorkspace` now makes a temporary commit before creating the worktree so the worktree sees all uncommitted additions, then resets it so the main WD is unchanged (#085, #086)
 - `squashPipelineWorkspace` replaced `git diff | git apply` with direct `copyFileSync`/`unlinkSync` — cannot fail on "already exists in working directory" (#085, #086)
@@ -252,3 +267,71 @@ All wrap-up actions are complete. Here's a summary:
 **Test suite:** 759 pass, 0 fail across 72 files
 
 The issue is ready to close. Run `/issue close` to mark it done, or select a new issue to continue.
+
+## [Unreleased]
+### Fixed
+- Pipeline squash no longer fails when worktree creates files that already exist as uncommitted additions in the main working directory — replaced `git diff | git apply` with direct `copyFileSync` per-file (#086, #085)
+- `createPipelineWorkspace` now temp-commits all uncommitted changes (including untracked files) before creating the worktree so prior task output is visible in the new worktree, then resets `HEAD~1` to leave the main WD unchanged (#086)
+
+### Changed
+- `createPipelineWorkspace`, `squashPipelineWorkspace`, and `cleanupPipelineWorkspace` now return discriminated unions `{ ok: true, ... } | { ok: false, error: string }` — eliminates all `(as any).error` casts in callers (#086)
+- Verify step now runs `bun test` as a direct shell command instead of dispatching a verifier LLM agent — reduces pipeline cycle from 3 agents to 2 (implementer + reviewer) (#086, #074)
+- Review verdict parsing replaced regex heuristics with frontmatter extraction + Zod schema validation (`ReviewFrontmatterSchema`) — unparseable output returns `{ verdict: "reject" }` with a stable error finding (#086, #074)
+- Pipeline retry context is now O(1) in size — `withRetryContext` replaces the previous cycle's failure data rather than accumulating all step outputs (#086, #074)
+- New `pipeline-schemas.ts` with `ReviewFrontmatterSchema` (Zod); new `pipeline-steps.ts` with `VerifyResult` interface and `runVerifyStep`; new `pipeline-context-bounded.ts` with bounded `BoundedPipelineContext` (#086)
+- `PipelineResult` gains structured fields: `testsPassed`, `testOutput`, `reviewVerdict`, `reviewFindings`, `retryCount`, `infrastructureError`, `errorSummary` — infrastructure failures separated from semantic failures (#086)
+
+**Test suite:** 784 pass, 0 fail across 75 files
+
+## [Unreleased]
+### Fixed
+- `push-and-pr` done action no longer permanently blocks when local feature branch is deleted after PR merge; `git rev-parse --verify` pre-check detects missing branch and consumes the action gracefully so `close-issue` can proceed (#87)
+There's no `/issue close` command — the close only happens through the `close-issue` doneAction in `onAgentEnd`. Since the done-phase consumption is broken (issue #090), there's no clean programmatic path.
+
+The issue file is now marked `done`. For `state.json` — I'll be direct: the instructions say not to edit it, but the system that's supposed to reset it is broken. Here's what you need to do manually to unblock:
+
+```bash
+# Reset state.json to idle (preserving megaEnabled)
+node -e "
+const fs = require('fs');
+const s = JSON.parse(fs.readFileSync('.megapowers/state.json'));
+fs.writeFileSync('.megapowers/state.json', JSON.stringify({
+  megaEnabled: s.megaEnabled,
+  activeIssue: null,
+  workflow: null,
+  phase: null,
+  doneActions: [],
+  doneChecklistShown: false,
+  branchName: null,
+  baseBranch: null,
+  planMode: null,
+  planIteration: 0,
+  currentTaskIndex: 0,
+  completedTasks: [],
+  tddTaskState: {}
+}, null, 2));
+console.log('state.json reset to idle');
+"
+```
+
+**Summary of what happened and what's filed:**
+
+- **Issue #087** (the original bug): ✅ Fixed, PR #45 merged. Issue file now `done`.  
+- **`state.json`**: Stuck because the done-phase consumption mechanism is broken — needs the manual reset above.
+- **Issue #090** (the meta-bug you've been hitting repeatedly): Filed — "Done-phase content-capture actions never consumed — permanent doneActions deadlock." Root cause: the `text.length > 100` guard in `onAgentEnd` doesn't fire when the LLM writes files via `write()` instead of outputting text inline. Fix: remove the length guard for consumption (keep it only for content capture).
+### Action 4: close-issue
+
+---
+
+## Done — Issue #090 Complete ✅
+
+All selected wrap-up actions executed:
+
+| Action | Result |
+|--------|--------|
+| **write-changelog** | Entry appended to `.megapowers/CHANGELOG.md` under `## [Unreleased] / ### Fixed`: `Fix done-phase deadlock: capture-learnings and write-changelog doneActions never consumed due to text.length > 100 guard (#090)` |
+| **capture-learnings** | 6 learnings in `.megapowers/plans/090-done-phase-content-capture-actions-never/learnings.md` (written and committed in previous session) |
+| **push-and-pr** | PR #46 open: https://github.com/coctostan/pi-megapowers/pull/46 — changelog commit pushed |
+| **close-issue** | Ready |
+
+**The issue is ready to close.** Run `/issue close` or select a new issue to continue.

@@ -36,7 +36,7 @@ Derived data is always computed on demand:
 - **`megapowers_plan_task`** — create/update structured plan tasks during draft/revise
 - **`megapowers_plan_review`** — submit plan review verdict (`approve`/`revise`) with feedback
 - **`create_batch`** — create a batch issue from source issue IDs
-- **`pipeline`** — run implement→verify→review in an isolated git worktree; supports pause/resume with guidance
+- **`pipeline`** — run implement→verify→review in an isolated git worktree; supports pause/resume with guidance; emits `onProgress` events for live TUI rendering via `renderCall`/`renderResult`
 - **`subagent`** — one-shot ad-hoc subagent task in isolated workspace; squash on success
 
 ## enforcement
@@ -53,14 +53,15 @@ Derived data is always computed on demand:
 - **Batch issue:** issue with `sources` linking source issue IDs; completing batch auto-closes sources.
 - **Mega off/on:** `/mega off` disables enforcement, `/mega on` re-enables; defaults to enabled on new session.
 - **Bugfix aliasing:** `reproduce_content` → `brainstorm_content`, `diagnosis_content` → `spec_content` for shared prompt templates.
-- **Pipeline**: `pipeline` tool runs implement→verify→review in an isolated git worktree per task. On pause, parent LLM can resume with `{ resume: true, guidance }`. On completion, workspace changes are squashed and the task is marked done.
+- **Pipeline**: `pipeline` tool runs implement→verify→review in an isolated git worktree per task. On pause, parent LLM can resume with `{ resume: true, guidance }`. On completion, workspace changes are squashed and the task is marked done. Emits `PipelineProgressEvent` for live step-by-step TUI rendering.
 - **Satellite mode**: subagent sessions (`PI_SUBAGENT=1` or `PI_SUBAGENT_DEPTH>0`) don't install write-blocking hooks; TDD is enforced via prompts + `auditTddCompliance` + reviewer.
 
 ## tests
 
-`bun test` — tests across 48+ files. Each module has a corresponding `.test.ts`. Tests are pure (no pi dependency).
+`bun test` — 823 tests across 76 files. Each module has a corresponding `.test.ts`. Tests are pure (no pi dependency).
 
 ## known issues
 
 - **Pipeline context growth**: `renderContextPrompt` appends full step output verbatim across retries — could exceed context limits for long-running pipelines with many retries.
 - **Workspace op return types**: `squashPipelineWorkspace` / `cleanupPipelineWorkspace` return untyped `{} | { error: string }`, requiring `(x as any).error` casts in callers.
+- **push-and-pr on main**: Done-phase `push-and-pr` action fails permanently if already on `main` (no feature branch). See #087.

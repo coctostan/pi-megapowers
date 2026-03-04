@@ -142,6 +142,18 @@ export async function onAgentEnd(event: any, ctx: any, deps: Deps): Promise<void
         return;
       }
 
+      // Check whether the local feature branch still exists.
+      // If it was deleted after merging (e.g. git branch -d feat/...), the push
+      // would permanently fail with "src refspec does not match any". Skip and
+      // consume the action so close-issue can run (FC1, FC3 — BUG #087).
+      try {
+        await deps.execGit(["rev-parse", "--verify", state.branchName]);
+      } catch {
+        writeState(ctx.cwd, { ...state, doneActions: state.doneActions.filter((a) => a !== doneAction) });
+        if (ctx.hasUI) ctx.ui.notify("Feature branch not found locally — push skipped. PR may already be merged.", "info");
+        return;
+      }
+
       const baseBranch = state.baseBranch;
       const issue = store.getIssue(state.activeIssue);
       const commitPrefix = state.workflow === "bugfix" ? "fix" : "feat";
@@ -177,11 +189,17 @@ export async function onAgentEnd(event: any, ctx: any, deps: Deps): Promise<void
       return;
     }
 
-    // Content-capture actions — need LLM-generated text > 100 chars
+    // capture-learnings: LLM writes file directly via write() — no text scraping, consume unconditionally
+    if (doneAction === "capture-learnings") {
+      writeState(ctx.cwd, { ...state, doneActions: state.doneActions.filter(a => a !== doneAction) });
+      return;
+    }
+
+    // Content-capture actions — consume on any non-empty LLM response
     const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
     if (lastAssistant) {
       const text = getAssistantText(lastAssistant);
-      if (text && text.length > 100) {
+      if (text && text.length > 0) {
         if (doneAction === "generate-docs" || doneAction === "generate-bugfix-summary") {
           store.writeFeatureDoc(state.activeIssue, text);
           if (ctx.hasUI) ctx.ui.notify(`Feature doc saved to .megapowers/docs/${state.activeIssue}.md`, "info");

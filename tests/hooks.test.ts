@@ -117,13 +117,13 @@ describe("onAgentEnd — done-phase doneActions cleanup", () => {
     expect(readState(tmp).phase).toBe("verify");
   });
 
-  it("does nothing when text is shorter than 100 chars", async () => {
+  it("consumes capture-learnings unconditionally regardless of response length", async () => {
     setState(tmp, { phase: "done", doneActions: ["capture-learnings"] });
-
     await onAgentEnd(makeAgentEndEvent("short response"), makeCtx(tmp), makeDeps(tmp) as any);
 
-    // Short text means the capture block is not entered — list unchanged
-    expect(readState(tmp).doneActions).toEqual(["capture-learnings"]);
+    // capture-learnings is consumed unconditionally: LLM already wrote the file via write()
+    // The response length is irrelevant — no text scraping occurs for this action.
+    expect(readState(tmp).doneActions).toEqual([]);
   });
 });
 
@@ -552,5 +552,98 @@ describe("onAgentEnd — deferred done checklist (#083)", () => {
     const finalState = readState(tmp);
     expect(finalState.activeIssue).toBeNull();
     expect(finalState.phase).toBeNull();
+  });
+});
+
+
+describe("BUG #087: push-and-pr permanently blocks when on main after PR merge", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "hooks-bug087-"));
+    mkdirSync(join(tmp, ".megapowers"), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("push-and-pr stays stuck permanently when local feature branch is deleted (on main after merge)", async () => {
+    // Simulate: user is on main after merging PR; local feature branch was deleted.
+    // git reset --soft main  → no-op (already at main, clean tree)
+    // git status --porcelain → empty (nothing staged)
+    // git push origin feat/001-test --force-with-lease → FAILS (local branch doesn't exist)
+    const execGit: ExecGit = async (args) => {
+      if (args[0] === "rev-parse" && args[1] === "--verify")
+        throw new Error("fatal: Needed a single revision");
+      if (args[0] === "reset") return { stdout: "", stderr: "" }; // no-op on main
+      if (args[0] === "status") return { stdout: "", stderr: "" }; // clean tree
+      if (args[0] === "push") throw new Error("error: src refspec feat/001-test does not match any");
+      return { stdout: "", stderr: "" };
+    };
+
+    writeState(tmp, {
+      ...createInitialState(),
+      activeIssue: "001-test",
+      workflow: "feature",
+      phase: "done",
+      branchName: "feat/001-test",
+      baseBranch: "main",
+      doneActions: ["push-and-pr", "close-issue"],
+      doneChecklistShown: true,
+    });
+
+    const notifications: { msg: string; type: string }[] = [];
+    const statusUpdates: { slug: string; status: string }[] = [];
+    const deps = {
+      store: {
+        ...makeStore(tmp),
+        getIssue: () => ({ title: "Test Feature", description: "" }),
+        getSourceIssues: () => [],
+        updateIssueStatus: (slug: string, status: string) => statusUpdates.push({ slug, status }),
+      },
+      ui: { renderDashboard: () => {} },
+      execGit,
+    } as any;
+    const ctx = {
+      cwd: tmp,
+      hasUI: true,
+      ui: { notify: (msg: string, type: string) => notifications.push({ msg, type }) },
+    };
+
+    // Simulate 3 successive onAgentEnd calls (multiple sessions / retries)
+    await onAgentEnd(makeAgentEndEvent("short"), ctx, deps);
+    await onAgentEnd(makeAgentEndEvent("short"), ctx, deps);
+    await onAgentEnd(makeAgentEndEvent("short"), ctx, deps);
+
+    // BUG: push-and-pr is never consumed — permanently stuck
+    // Expected fix: handler should detect "already on base branch / branch gone" and skip/consume
+    expect(readState(tmp).doneActions).not.toContain("push-and-pr");
+
+    // BUG: close-issue never runs because push-and-pr permanently blocks it
+    expect(statusUpdates).toEqual([{ slug: "001-test", status: "done" }]);
+    expect(readState(tmp).activeIssue).toBeNull();
+  });
+
+  it("squashOnto is a no-op when already on main (precondition that causes the push to fail)", async () => {
+    // This demonstrates WHY the push fails: squashOnto returns ok: true committed: false
+    // when on main with a clean working tree, so execution reaches pushBranch with a
+    // non-existent local branch name.
+    const { squashOnto } = await import("../extensions/megapowers/vcs/git-ops.js");
+
+    const gitCalls: string[][] = [];
+    const execGit: ExecGit = async (args) => {
+      gitCalls.push(args);
+      if (args[0] === "reset") return { stdout: "", stderr: "" }; // no-op
+      if (args[0] === "status") return { stdout: "", stderr: "" }; // clean
+      throw new Error("unexpected git call: " + args.join(" "));
+    };
+
+    const result = await squashOnto(execGit, "main", "feat: done");
+
+    // squashOnto returns ok: true, committed: false (no error from squash)
+    // This means execution continues to pushBranch — which then fails on the missing local branch
+    expect(result).toEqual({ ok: true, committed: false });
+    expect(gitCalls.some(c => c[0] === "reset" && c[1] === "--soft" && c[2] === "main")).toBe(true);
   });
 });

@@ -39,4 +39,29 @@ describe("registerTools — plan loop tools", () => {
     // No return statement that includes 'code:' (which would trigger legacy compat branches)
     expect(source).not.toMatch(/return \{ code: r\.code/);
   });
+
+  it("pipeline tool registration includes renderCall and renderResult", () => {
+    const tools: Record<string, any> = {};
+
+    const pi = {
+      registerTool: (tool: any) => {
+        tools[tool.name] = tool;
+      },
+    } as any;
+
+    registerTools(pi, {} as any);
+
+    const pipeline = tools.pipeline;
+    expect(pipeline).toBeDefined();
+    expect(typeof pipeline.renderCall).toBe("function");
+    expect(typeof pipeline.renderResult).toBe("function");
+  });
+
+  it("pipeline tool handler passes onProgress to handlePipelineTool options", () => {
+    const source = readFileSync(join(process.cwd(), "extensions/megapowers/register-tools.ts"), "utf-8");
+    // The pipeline tool execute function should reference onProgress and onUpdate
+    expect(source).toContain("onProgress");
+    expect(source).toContain("onUpdate");
+    expect(source).toContain("buildPipelineDetails");
+  });
 });
