@@ -12,13 +12,14 @@
 - **Agent context & awareness** — Prompt quality, TDD edge cases (#050)
 - **Prompt/skill audit** — Workflow type for non-code work (#062)
 - **M4: VCS integration** — Comprehensive git branching & PR workflow (#083), jj removal → git worktrees (#091)
+- **M1 partial** — /mp command hub & issue management UX (#073); done-phase bugs resolved (#081, #082, #083, #084)
 
-## Current: M1 — UX Foundation
+## Current: M1 — UX Foundation (1 remaining)
 
-| Issue | Pri | Description |
-|-------|-----|-------------|
-| #051  | P2  | UX feedback, visibility & transparency (absorbs #042) |
-| #073  | P2  | /mp command hub & issue management UX (absorbs #058) |
+| Issue | Pri | Status | Description |
+|-------|-----|--------|-------------|
+| #051  | P2  | open   | UX feedback, visibility & transparency (absorbs #042) |
+| #073  | P2  | ✅ done | /mp command hub & issue management UX (absorbs #058) |
 
 ## Next: M2–M3
 

@@ -6,6 +6,7 @@ import { handleSignal } from "../tools/tool-signal.js";
 
 import { createPipelineWorkspace, squashPipelineWorkspace, type ExecGit } from "./pipeline-workspace.js";
 import { runPipeline } from "./pipeline-runner.js";
+import type { ExecShell } from "./pipeline-steps.js";
 import { validateTaskDependencies } from "./task-deps.js";
 import { writePipelineMeta, readPipelineMeta, clearPipelineMeta } from "./pipeline-meta.js";
 
@@ -55,6 +56,7 @@ export async function handlePipelineTool(
   input: PipelineToolInput,
   dispatcher: Dispatcher,
   execGit: ExecGit,
+  execShell?: ExecShell,
 ): Promise<PipelineToolOutput> {
   const state = readState(projectRoot);
 
@@ -87,7 +89,7 @@ export async function handlePipelineTool(
     pipelineId = `pipe-t${task.index}-${Date.now()}`;
 
     const ws = await createPipelineWorkspace(projectRoot, pipelineId, execGit);
-    if ((ws as any).error) return { error: `Workspace creation failed: ${(ws as any).error}` };
+    if (!ws.ok) return { error: `Workspace creation failed: ${ws.error}` };
     workspacePath = ws.workspacePath;
   }
 
@@ -110,19 +112,20 @@ export async function handlePipelineTool(
       projectRoot,
       workspaceCwd: workspacePath,
       pipelineId,
-      agents: { implementer: "implementer", verifier: "verifier", reviewer: "reviewer" },
+      agents: { implementer: "implementer", reviewer: "reviewer" },
       execGit,
+      execShell,
     },
   );
 
   if (result.status === "completed") {
     const squash = await squashPipelineWorkspace(projectRoot, pipelineId, execGit);
-    if ((squash as any).error) return { error: `Squash failed: ${(squash as any).error}`, pipelineId, result };
+    if (!squash.ok) return { error: `Squash failed: ${squash.error}`, pipelineId, result };
 
     clearPipelineMeta(projectRoot, task.index);
 
     // Ensure state machine completion isn't blocked by the legacy hard TDD gate.
-    // This is safe because pipeline completion is gated by verifier + reviewer
+    // This is safe because pipeline completion is gated by shell test command + reviewer
     // and includes a deterministic TDD audit report in the review context.
     setSkippedTddStateForTask(projectRoot, task.index);
 

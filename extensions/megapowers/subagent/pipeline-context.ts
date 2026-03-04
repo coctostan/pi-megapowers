@@ -1,3 +1,10 @@
+/**
+ * @deprecated Legacy unbounded pipeline context — accumulates step outputs without size limits.
+ * New code should use `pipeline-context-bounded.ts` which provides `withRetryContext()` with
+ * bounded replacement semantics (AC22–AC24).
+ *
+ * This module is kept for backward compatibility. Do not add new callers.
+ */
 export interface PipelineStepOutput {
   step: "implement" | "verify" | "review";
   filesChanged: string[];

@@ -1,7 +1,7 @@
 ---
 id: 83
 type: bugfix
-status: open
+status: done
 created: 2026-03-03T13:52:48.657Z
 milestone: M3
 priority: 1

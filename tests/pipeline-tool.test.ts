@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { describe, it, expect, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -8,6 +8,7 @@ import { writeState, readState } from "../extensions/megapowers/state/state-io.j
 import { createInitialState } from "../extensions/megapowers/state/state-machine.js";
 import type { Dispatcher } from "../extensions/megapowers/subagent/dispatcher.js";
 import { type ExecGit } from "../extensions/megapowers/subagent/pipeline-workspace.js";
+import type { ExecShell } from "../extensions/megapowers/subagent/pipeline-steps.js";
 
 function setup(plan: string) {
   const tmp = mkdtempSync(join(tmpdir(), "pipe-tool-"));
@@ -40,18 +41,26 @@ describe("handlePipelineTool", () => {
   it("rejects resume without guidance (AC27)", async () => {
     tmp = setup(`# Plan\n\n### Task 1: Do thing\n\nDo it.\n`);
 
-    const dispatcher: Dispatcher = { async dispatch() { return { exitCode: 0, messages: [], filesChanged: [], testsPassed: null }; } };
+    const dispatcher: Dispatcher = {
+      async dispatch() {
+        return { exitCode: 0, messages: [], filesChanged: [], testsPassed: null };
+      },
+    };
 
-    const r = await handlePipelineTool(tmp, { taskIndex: 1, resume: true }, dispatcher, async () => ({ code: 0, stdout: "", stderr: "" }));
+    const r = await handlePipelineTool(tmp, { taskIndex: 1, resume: true }, dispatcher, async () => ({ stdout: "", stderr: "" }));
     expect(r.error).toContain("guidance");
   });
 
   it("rejects when dependencies are unmet (AC26)", async () => {
     tmp = setup(`# Plan\n\n### Task 1: Base\n\nX\n\n### Task 2: Next [depends: 1]\n\nY\n`);
 
-    const dispatcher: Dispatcher = { async dispatch() { return { exitCode: 0, messages: [], filesChanged: [], testsPassed: null }; } };
+    const dispatcher: Dispatcher = {
+      async dispatch() {
+        return { exitCode: 0, messages: [], filesChanged: [], testsPassed: null };
+      },
+    };
 
-    const r = await handlePipelineTool(tmp, { taskIndex: 2 }, dispatcher, async () => ({ code: 0, stdout: "", stderr: "" }));
+    const r = await handlePipelineTool(tmp, { taskIndex: 2 }, dispatcher, async () => ({ stdout: "", stderr: "" }));
     expect(r.error).toContain("depends");
   });
 
@@ -83,24 +92,18 @@ describe("handlePipelineTool", () => {
       return { stdout: "", stderr: "" };
     };
 
+    const mockExecShell: ExecShell = async () => ({
+      exitCode: 0,
+      stdout: "1 pass\n0 fail",
+      stderr: "",
+    });
+
     const dispatcher: Dispatcher = {
       async dispatch(cfg) {
         if (cfg.agent === "reviewer") {
           return {
             exitCode: 0,
-            messages: [{ role: "assistant" as const, content: [{ type: "text" as const, text: "Verdict: approve" }] }] as any,
-            filesChanged: [],
-            testsPassed: null,
-          };
-        }
-
-        if (cfg.agent === "verifier") {
-          return {
-            exitCode: 0,
-            messages: [
-              { role: "assistant" as const, content: [{ type: "tool_use" as const, id: "t", name: "bash", input: { command: "bun test" } }] },
-              { role: "tool" as const, content: [{ type: "tool_result" as const, tool_use_id: "t", content: "1 pass\n0 fail" }] },
-            ] as any,
+            messages: [{ role: "assistant" as const, content: [{ type: "text" as const, text: "---\nverdict: approve\n---\n" }] }] as any,
             filesChanged: [],
             testsPassed: null,
           };
@@ -115,7 +118,7 @@ describe("handlePipelineTool", () => {
       },
     };
 
-    const r = await handlePipelineTool(tmp, { taskIndex: 2 }, dispatcher, execGit);
+    const r = await handlePipelineTool(tmp, { taskIndex: 2 }, dispatcher, execGit, mockExecShell);
     expect(r.error).toBeUndefined();
     expect(r.result?.status).toBe("completed");
 
@@ -136,25 +139,19 @@ describe("handlePipelineTool", () => {
       return { stdout: "", stderr: "" };
     };
 
-    const dispatcher: Dispatcher = {
-      async dispatch(cfg) {
-        if (cfg.agent === "verifier") {
-          return {
-            exitCode: 0,
-            messages: [
-              { role: "assistant" as const, content: [{ type: "tool_use" as const, id: "t", name: "bash", input: { command: "bun test" } }] },
-              { role: "tool" as const, content: [{ type: "tool_result" as const, tool_use_id: "t", content: "0 pass\n1 fail" }] },
-            ] as any,
-            filesChanged: [],
-            testsPassed: null,
-          };
-        }
+    const failingExecShell: ExecShell = async () => ({
+      exitCode: 1,
+      stdout: "0 pass\n1 fail",
+      stderr: "",
+    });
 
+    const dispatcher: Dispatcher = {
+      async dispatch() {
         return { exitCode: 0, messages: [] as any, filesChanged: [], testsPassed: null };
       },
     };
 
-    const first = await handlePipelineTool(tmp, { taskIndex: 1 }, dispatcher, execGit);
+    const first = await handlePipelineTool(tmp, { taskIndex: 1 }, dispatcher, execGit, failingExecShell);
     expect(first.result?.status).toBe("paused");
 
     expect(first.paused).toBeDefined();
@@ -166,10 +163,87 @@ describe("handlePipelineTool", () => {
 
     const adds = gitCalls.filter((c) => c.args.includes("worktree") && c.args.includes("add")).length;
 
-    const second = await handlePipelineTool(tmp, { taskIndex: 1, resume: true, guidance: "try again" }, dispatcher, execGit);
+    const second = await handlePipelineTool(
+      tmp,
+      { taskIndex: 1, resume: true, guidance: "try again" },
+      dispatcher,
+      execGit,
+      failingExecShell,
+    );
     expect(second.result?.status).toBe("paused");
 
     const addsAfter = gitCalls.filter((c) => c.args.includes("worktree") && c.args.includes("add")).length;
     expect(addsAfter).toBe(adds);
+  });
+
+  it("pipeline dispatches exactly 2 agents (no verifier), uses shell verify via execShell (AC15)", async () => {
+    tmp = setup(`# Plan\n\n### Task 1: Do thing\n\nDo it.\n`);
+    const agentsCalled: string[] = [];
+    const execGit = async (args: string[]) => {
+      if (args.includes("--name-only") && args.includes("--diff-filter=AMCR")) {
+        return { stdout: "", stderr: "" };
+      }
+      if (args.includes("--name-only") && args.includes("--diff-filter=D")) {
+        return { stdout: "", stderr: "" };
+      }
+      if (args.includes("--name-status") && args.includes("--diff-filter=R")) {
+        return { stdout: "", stderr: "" };
+      }
+      if (args.includes("--stat")) return { stdout: "src/file.ts | 1 +\n", stderr: "" };
+      if (args.includes("diff") && args.includes("--cached") && !args.includes("--stat")) {
+        return { stdout: "diff --git ...", stderr: "" };
+      }
+      return { stdout: "", stderr: "" };
+    };
+
+    const mockExecShell: ExecShell = async () => ({
+      exitCode: 0,
+      stdout: "3 pass\n0 fail",
+      stderr: "",
+    });
+
+    const dispatcher: Dispatcher = {
+      async dispatch(cfg) {
+        agentsCalled.push(cfg.agent);
+        if (cfg.agent === "implementer") {
+          return {
+            exitCode: 0,
+            messages: [{ role: "assistant" as const, content: [{ type: "tool_use" as const, id: "w", name: "write", input: { path: "src/x.ts" } }] }] as any,
+            filesChanged: [],
+            testsPassed: null,
+          };
+        }
+        if (cfg.agent === "reviewer") {
+          return {
+            exitCode: 0,
+            messages: [{ role: "assistant" as const, content: [{ type: "text" as const, text: "---\nverdict: approve\n---\n" }] }] as any,
+            filesChanged: [],
+            testsPassed: null,
+          };
+        }
+        return { exitCode: 1, messages: [], filesChanged: [], testsPassed: null };
+      },
+    };
+
+    const r = await handlePipelineTool(tmp, { taskIndex: 1 }, dispatcher, execGit, mockExecShell);
+    expect(r.error).toBeUndefined();
+    expect(r.result?.status).toBe("completed");
+    // AC15: No "verifier" in the agents called — only implementer + reviewer
+    expect(agentsCalled).not.toContain("verifier");
+    expect(agentsCalled.filter((a) => a === "implementer").length).toBe(1);
+    expect(agentsCalled.filter((a) => a === "reviewer").length).toBe(1);
+  });
+
+  it("uses discriminated union checks (no as-any casts)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const source = readFileSync(
+      join(process.cwd(), "extensions/megapowers/subagent/pipeline-tool.ts"),
+      "utf-8",
+    );
+    expect(source).not.toContain("(ws as any).error");
+    expect(source).not.toContain("(squash as any).error");
+    // Should use .ok checks instead
+    expect(source).toContain(".ok");
   });
 });
