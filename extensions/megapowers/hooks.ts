@@ -189,11 +189,17 @@ export async function onAgentEnd(event: any, ctx: any, deps: Deps): Promise<void
       return;
     }
 
-    // Content-capture actions — need LLM-generated text > 100 chars
+    // capture-learnings: LLM writes file directly via write() — no text scraping, consume unconditionally
+    if (doneAction === "capture-learnings") {
+      writeState(ctx.cwd, { ...state, doneActions: state.doneActions.filter(a => a !== doneAction) });
+      return;
+    }
+
+    // Content-capture actions — consume on any non-empty LLM response
     const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
     if (lastAssistant) {
       const text = getAssistantText(lastAssistant);
-      if (text && text.length > 100) {
+      if (text && text.length > 0) {
         if (doneAction === "generate-docs" || doneAction === "generate-bugfix-summary") {
           store.writeFeatureDoc(state.activeIssue, text);
           if (ctx.hasUI) ctx.ui.notify(`Feature doc saved to .megapowers/docs/${state.activeIssue}.md`, "info");
