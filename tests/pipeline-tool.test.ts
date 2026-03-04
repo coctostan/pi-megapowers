@@ -9,6 +9,7 @@ import { createInitialState } from "../extensions/megapowers/state/state-machine
 import type { Dispatcher } from "../extensions/megapowers/subagent/dispatcher.js";
 import { type ExecGit } from "../extensions/megapowers/subagent/pipeline-workspace.js";
 import type { ExecShell } from "../extensions/megapowers/subagent/pipeline-steps.js";
+import { writePlanTask } from "../extensions/megapowers/state/plan-store.js";
 
 function setup(plan: string) {
   const tmp = mkdtempSync(join(tmpdir(), "pipe-tool-"));
@@ -29,6 +30,23 @@ function setup(plan: string) {
   writeFileSync(join(planDir, "plan.md"), plan);
 
   return tmp;
+}
+
+function writeTask(cwd: string, id: number, title: string, body = "Task body") {
+  writePlanTask(
+    cwd,
+    "001-test",
+    {
+      id,
+      title,
+      status: "approved",
+      depends_on: [],
+      no_test: false,
+      files_to_modify: [],
+      files_to_create: [],
+    },
+    body,
+  );
 }
 
 describe("handlePipelineTool", () => {
@@ -64,8 +82,84 @@ describe("handlePipelineTool", () => {
     expect(r.error).toContain("depends");
   });
 
+  it("uses task file body as planSection context instead of plan.md", async () => {
+    tmp = setup(`# Plan\n\n### Task 1: Plan title\n\nPLAN_MD_MARKER\n`);
+
+    writePlanTask(
+      tmp,
+      "001-test",
+      {
+        id: 1,
+        title: "Task title",
+        status: "approved",
+        depends_on: [],
+        no_test: false,
+        files_to_modify: [],
+        files_to_create: [],
+      },
+      "TASK_FILE_BODY_MARKER",
+    );
+
+    let implementContext = "";
+    const dispatcher: Dispatcher = {
+      async dispatch(cfg) {
+        if (cfg.agent === "implementer") implementContext = cfg.context ?? "";
+        return { exitCode: 0, messages: [] as any, filesChanged: [], testsPassed: null };
+      },
+    };
+
+    const execGit: ExecGit = async () => ({ stdout: "", stderr: "" });
+    const failingExecShell: ExecShell = async () => ({ exitCode: 1, stdout: "0 pass\n1 fail", stderr: "" });
+
+    const r = await handlePipelineTool(tmp, { taskIndex: 1 }, dispatcher, execGit, failingExecShell);
+    expect(r.error).toBeUndefined();
+    expect(implementContext).toContain("TASK_FILE_BODY_MARKER");
+    expect(implementContext).not.toContain("PLAN_MD_MARKER");
+  });
+
+  it("returns task-file error before workspace creation when requested task file is missing", async () => {
+    tmp = setup(`# Plan\n\n### Task 1: Do thing\n\nBody\n`); // deriveTasks fallback from plan.md
+
+    const gitCalls: string[][] = [];
+    const execGit: ExecGit = async (args) => {
+      gitCalls.push(args);
+      return { stdout: "", stderr: "" };
+    };
+    const dispatcher: Dispatcher = {
+      async dispatch() {
+        return { exitCode: 0, messages: [], filesChanged: [], testsPassed: null };
+      },
+    };
+    const r = await handlePipelineTool(tmp, { taskIndex: 1 }, dispatcher, execGit);
+    expect(r.error).toBeDefined();
+    expect(r.error).toContain("task file");
+    expect(r.error).not.toContain("plan.md");
+    expect(gitCalls.length).toBe(0);
+  });
+
+  it("returns descriptive error when task file exists but is malformed", async () => {
+    tmp = setup(`# Plan\n\n### Task 1: Do thing\n\nBody\n`);
+
+    // Write a malformed task file (no frontmatter)
+    const tasksDir = join(tmp, ".megapowers", "plans", "001-test", "tasks");
+    mkdirSync(tasksDir, { recursive: true });
+    writeFileSync(join(tasksDir, "task-001.md"), "No frontmatter here, just plain text.");
+
+    const execGit: ExecGit = async () => ({ stdout: "", stderr: "" });
+    const dispatcher: Dispatcher = {
+      async dispatch() {
+        return { exitCode: 0, messages: [], filesChanged: [], testsPassed: null };
+      },
+    };
+    const r = await handlePipelineTool(tmp, { taskIndex: 1 }, dispatcher, execGit);
+    expect(r.error).toBeDefined();
+    expect(r.error).toContain("malformed");
+    expect(r.error).not.toContain("not found");
+  });
+
   it("handlePipelineTool accepts ExecGit and surfaces workspace creation failure", async () => {
     tmp = setup(`# Plan\n\n### Task 1: Do thing\n\nDo it.\n`);
+    writeTask(tmp, 1, "Do thing");
 
     const validInput = { taskIndex: 1 };
     const mockDispatcher: Dispatcher = {
@@ -85,6 +179,8 @@ describe("handlePipelineTool", () => {
 
   it("on completed pipeline, squashes workspace and marks the specified task done even with null TDD state", async () => {
     tmp = setup(`# Plan\n\n### Task 1: First\n\nX\n\n### Task 2: Second\n\nY\n`);
+    writeTask(tmp, 1, "First");
+    writeTask(tmp, 2, "Second");
 
     const gitCalls: any[] = [];
     const execGit = async (args: string[]) => {
@@ -130,6 +226,7 @@ describe("handlePipelineTool", () => {
 
   it("paused pipeline returns log + diff + errorSummary (AC27) and resume reuses workspace", async () => {
     tmp = setup(`# Plan\n\n### Task 1: Do thing\n\nDo it.\n`);
+    writeTask(tmp, 1, "Do thing");
 
     const gitCalls: any[] = [];
     const execGit = async (args: string[]) => {
@@ -178,6 +275,7 @@ describe("handlePipelineTool", () => {
 
   it("pipeline dispatches exactly 2 agents (no verifier), uses shell verify via execShell (AC15)", async () => {
     tmp = setup(`# Plan\n\n### Task 1: Do thing\n\nDo it.\n`);
+    writeTask(tmp, 1, "Do thing");
     const agentsCalled: string[] = [];
     const execGit = async (args: string[]) => {
       if (args.includes("--name-only") && args.includes("--diff-filter=AMCR")) {

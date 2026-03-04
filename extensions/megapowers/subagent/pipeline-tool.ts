@@ -2,6 +2,7 @@ import type { Dispatcher } from "./dispatcher.js";
 import { readState, writeState } from "../state/state-io.js";
 import { deriveTasks } from "../state/derived.js";
 import { createStore } from "../state/store.js";
+import { readPlanTask } from "../state/plan-store.js";
 import { handleSignal } from "../tools/tool-signal.js";
 
 import { createPipelineWorkspace, squashPipelineWorkspace, type ExecGit } from "./pipeline-workspace.js";
@@ -79,6 +80,15 @@ export async function handlePipelineTool(
     return { error: dep.error ?? `Task ${task.index} depends on incomplete tasks: ${(dep.unmetDependencies ?? []).join(", ")}` };
   }
 
+  const taskDoc = readPlanTask(projectRoot, state.activeIssue, task.index);
+  if (!taskDoc) {
+    return { error: `Task ${task.index} task file not found. Ensure task files exist in .megapowers/plans/${state.activeIssue}/tasks/.` };
+  }
+  if ("error" in taskDoc) {
+    return { error: `Task ${task.index} task file is malformed: ${taskDoc.error}` };
+  }
+  const planSection = taskDoc.content;
+
   let pipelineId: string;
   let workspacePath: string;
 
@@ -96,8 +106,6 @@ export async function handlePipelineTool(
   }
 
   const store = createStore(projectRoot);
-  const planMd = store.readPlanFile(state.activeIssue, "plan.md") ?? "";
-  const planSection = extractTaskSection(planMd, task.index);
 
   const specFile = state.workflow === "bugfix" ? "diagnosis.md" : "spec.md";
   const specContent = store.readPlanFile(state.activeIssue, specFile) ?? undefined;

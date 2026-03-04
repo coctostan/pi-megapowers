@@ -27,6 +27,10 @@ export interface AllTasksCompleteGate {
   type: "allTasksComplete";
 }
 
+export interface RequireTaskFilesGate {
+  type: "requireTaskFiles";
+}
+
 export interface AlwaysPassGate {
   type: "alwaysPass";
 }
@@ -42,6 +46,7 @@ export type GateConfig =
   | RequireReviewApprovedGate
   | RequirePlanApprovedGate
   | AllTasksCompleteGate
+  | RequireTaskFilesGate
   | AlwaysPassGate
   | CustomGate;
 

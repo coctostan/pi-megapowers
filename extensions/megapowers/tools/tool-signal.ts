@@ -66,7 +66,7 @@ function handleTaskDone(cwd: string): SignalResult {
 
   const tasks = deriveTasks(cwd, state.activeIssue);
   if (tasks.length === 0) {
-    return { error: "No tasks found in plan.md. Check the plan format." };
+    return { error: "No tasks found. Ensure task files exist in .megapowers/plans/<issue>/tasks/." };
   }
 
   const currentTask = tasks[state.currentTaskIndex];

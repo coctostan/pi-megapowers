@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { checkGate, type GateResult } from "../extensions/megapowers/policy/gates.js";
 import { createStore } from "../extensions/megapowers/state/store.js";
+import { writePlanTask } from "../extensions/megapowers/state/plan-store.js";
 import { createInitialState, type MegapowersState } from "../extensions/megapowers/state/state-machine.js";
 import { writeState } from "../extensions/megapowers/state/state-io.js";
 import { readFileSync } from "node:fs";
@@ -62,18 +63,30 @@ describe("spec → plan", () => {
 });
 
 describe("plan → implement", () => {
-  it("fails when plan.md does not exist", () => {
+  it("fails when task files do not exist", () => {
     const store = createStore(tmp);
-    const result = checkGate(makeState({ phase: "plan" }), "implement", store);
+    const result = checkGate(makeState({ phase: "plan" }), "implement", store, tmp);
     expect(result.pass).toBe(false);
-    expect(result.reason).toContain("plan.md");
+    expect(result.reason).toContain("task files");
   });
 
-  it("passes when plan.md exists", () => {
+  it("passes when task files exist", () => {
     const store = createStore(tmp);
-    store.ensurePlanDir("001-test");
-    store.writePlanFile("001-test", "plan.md", "### Task 1: Do thing\nDetails...");
-    const result = checkGate(makeState({ phase: "plan" }), "implement", store);
+    writePlanTask(
+      tmp,
+      "001-test",
+      {
+        id: 1,
+        title: "Do thing",
+        status: "approved",
+        depends_on: [],
+        no_test: false,
+        files_to_modify: [],
+        files_to_create: [],
+      },
+      "Details...",
+    );
+    const result = checkGate(makeState({ phase: "plan" }), "implement", store, tmp);
     expect(result.pass).toBe(true);
   });
 });

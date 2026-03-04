@@ -39,6 +39,23 @@ describe("Issue #088: phase_next bypasses plan review gate", () => {
     });
   }
 
+  function writeTask(issue = "001-test") {
+    writePlanTask(
+      tmp,
+      issue,
+      {
+        id: 1,
+        title: "Do something",
+        status: "approved",
+        depends_on: [],
+        no_test: false,
+        files_to_modify: [],
+        files_to_create: [],
+      },
+      "Task body",
+    );
+  }
+
   it("phase_next rejects plan→implement when planMode is 'draft' (no review happened)", () => {
     setState({
       phase: "plan",
@@ -47,6 +64,7 @@ describe("Issue #088: phase_next bypasses plan review gate", () => {
       reviewApproved: false,
     });
     writeArtifact("001-test", "plan.md", "### Task 1: Do something\n");
+    writeTask();
 
     const result = advancePhase(tmp);
 
@@ -61,6 +79,7 @@ describe("Issue #088: phase_next bypasses plan review gate", () => {
       reviewApproved: false,
     });
     writeArtifact("001-test", "plan.md", "### Task 1: Do something\n");
+    writeTask();
 
     const result = advancePhase(tmp);
 
@@ -80,6 +99,7 @@ describe("Issue #088: phase_next bypasses plan review gate", () => {
     };
     store.ensurePlanDir("001-test");
     store.writePlanFile("001-test", "plan.md", "### Task 1: Do something\n");
+    writeTask();
     const result = checkGate(state, "implement", store, tmp);
 
     expect(result.pass).toBe(false);
@@ -93,6 +113,7 @@ describe("Issue #088: phase_next bypasses plan review gate", () => {
       reviewApproved: false,
     });
     writeArtifact("001-test", "plan.md", "### Task 1: Do something\n");
+    writeTask();
 
     const result = advancePhase(tmp);
 
