@@ -121,6 +121,20 @@ describe("handleSignal", () => {
       expect(result.error).toContain("disabled");
     });
 
+    it("error message references task files when no tasks found", () => {
+      setState(tmp, {
+        phase: "implement",
+        currentTaskIndex: 0,
+        completedTasks: [],
+        tddTaskState: null,
+      });
+      // No plan.md or task files — deriveTasks returns []
+      const result = handleSignal(tmp, "task_done");
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain("task file");
+      expect(result.error).not.toContain("plan.md");
+    });
+
     it("marks current task complete and advances index (1-based completedTasks)", () => {
       writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n\n### Task 3: C\n");
       setState(tmp, {

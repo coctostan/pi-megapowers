@@ -15,7 +15,7 @@ export const featureWorkflow: WorkflowConfig = {
   transitions: [
     { from: "brainstorm", to: "spec", gates: [{ type: "alwaysPass" }] },
     { from: "spec", to: "plan", gates: [{ type: "requireArtifact", file: "spec.md" }, { type: "noOpenQuestions", file: "spec.md" }] },
-    { from: "plan", to: "implement", gates: [{ type: "requireArtifact", file: "plan.md" }, { type: "requirePlanApproved" }] },
+    { from: "plan", to: "implement", gates: [{ type: "requireTaskFiles" }, { type: "requirePlanApproved" }] },
     { from: "implement", to: "verify", gates: [{ type: "allTasksComplete" }] },
     { from: "verify", to: "code-review", gates: [{ type: "requireArtifact", file: "verify.md" }] },
     { from: "verify", to: "implement", gates: [], backward: true },

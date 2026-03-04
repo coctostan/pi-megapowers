@@ -6,6 +6,7 @@ import { advancePhase } from "../extensions/megapowers/policy/phase-advance.js";
 import { readState, writeState } from "../extensions/megapowers/state/state-io.js";
 import { createInitialState, type MegapowersState } from "../extensions/megapowers/state/state-machine.js";
 import { featureWorkflow } from "../extensions/megapowers/workflows/feature.js";
+import { writePlanTask } from "../extensions/megapowers/state/plan-store.js";
 
 describe("advancePhase", () => {
   let tmp: string;
@@ -22,6 +23,23 @@ describe("advancePhase", () => {
     const dir = join(tmp, ".megapowers", "plans", issue);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, filename), content);
+  }
+
+  function writeTask(issue: string, id: number, title: string) {
+    writePlanTask(
+      tmp,
+      issue,
+      {
+        id,
+        title,
+        status: "approved",
+        depends_on: [],
+        no_test: false,
+        files_to_modify: [],
+        files_to_create: [],
+      },
+      `${title} body`,
+    );
   }
 
   function setState(overrides: Partial<MegapowersState>) {
@@ -54,6 +72,9 @@ describe("advancePhase", () => {
   it("advances plan→implement and sets currentTaskIndex to 0 when no tasks completed", () => {
     setState({ phase: "plan" });
     writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n\n### Task 3: C\n");
+    writeTask("001-test", 1, "A");
+    writeTask("001-test", 2, "B");
+    writeTask("001-test", 3, "C");
     const result = advancePhase(tmp);
     expect(result.ok).toBe(true);
     expect(result.newPhase).toBe("implement");
@@ -63,6 +84,9 @@ describe("advancePhase", () => {
   it("sets currentTaskIndex to first incomplete when some tasks done", () => {
     setState({ phase: "plan", completedTasks: [1] });
     writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n\n### Task 3: C\n");
+    writeTask("001-test", 1, "A");
+    writeTask("001-test", 2, "B");
+    writeTask("001-test", 3, "C");
     const result = advancePhase(tmp);
     expect(result.ok).toBe(true);
     // Task 1 (index=1) is completed, so first incomplete is tasks[1] which is Task 2
@@ -72,6 +96,9 @@ describe("advancePhase", () => {
   it("sets currentTaskIndex to first incomplete when middle task is done", () => {
     setState({ phase: "plan", completedTasks: [2] });
     writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n\n### Task 3: C\n");
+    writeTask("001-test", 1, "A");
+    writeTask("001-test", 2, "B");
+    writeTask("001-test", 3, "C");
     const result = advancePhase(tmp);
     expect(result.ok).toBe(true);
     // Task 2 is done but Task 1 is not — first incomplete is index 0
@@ -81,6 +108,9 @@ describe("advancePhase", () => {
   it("sets currentTaskIndex to first incomplete when first two tasks done", () => {
     setState({ phase: "plan", completedTasks: [1, 2] });
     writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n\n### Task 3: C\n");
+    writeTask("001-test", 1, "A");
+    writeTask("001-test", 2, "B");
+    writeTask("001-test", 3, "C");
     const result = advancePhase(tmp);
     expect(result.ok).toBe(true);
     // Tasks 1 and 2 done, first incomplete is tasks[2] = Task 3
@@ -98,6 +128,7 @@ describe("advancePhase", () => {
   it("advances to specific target when provided", () => {
     setState({ phase: "plan" });
     writeArtifact("001-test", "plan.md", "# Plan\n");
+    writeTask("001-test", 1, "A");
     const result = advancePhase(tmp, "implement");
     expect(result.ok).toBe(true);
     expect(result.newPhase).toBe("implement");
@@ -163,6 +194,7 @@ describe("advancePhase", () => {
     it("from plan, default target is implement", () => {
       setState({ phase: "plan" });
       writeArtifact("001-test", "plan.md", "# Plan\n\n### Task 1: A\n");
+      writeTask("001-test", 1, "A");
       const result = advancePhase(tmp);
       expect(result.ok).toBe(true);
       expect(result.newPhase).toBe("implement");
@@ -191,11 +223,11 @@ describe("advancePhase", () => {
       expect(result.error).toContain("spec.md");
     });
 
-    it("plan → implement gate still rejects without plan.md", () => {
+    it("plan → implement gate still rejects without task files", () => {
       setState({ phase: "plan" });
       const result = advancePhase(tmp);
       expect(result.ok).toBe(false);
-      expect(result.error).toContain("plan.md");
+      expect(result.error).toContain("task files");
     });
   });
 

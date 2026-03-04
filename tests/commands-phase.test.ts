@@ -6,6 +6,7 @@ import { join as joinPath } from "node:path";
 import { handlePhaseCommand } from "../extensions/megapowers/commands.js";
 import { writeState, readState } from "../extensions/megapowers/state/state-io.js";
 import { createInitialState } from "../extensions/megapowers/state/state-machine.js";
+import { writePlanTask } from "../extensions/megapowers/state/plan-store.js";
 
 function seed(tmp: string, phase: any, workflow = "feature") {
   writeState(tmp, {
@@ -19,6 +20,20 @@ function seed(tmp: string, phase: any, workflow = "feature") {
   const dir = join(tmp, ".megapowers", "plans", "001-test");
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "plan.md"), "# Plan\n\n### Task 1: Build\n");
+  writePlanTask(
+    tmp,
+    "001-test",
+    {
+      id: 1,
+      title: "Build",
+      status: "approved",
+      depends_on: [],
+      no_test: false,
+      files_to_modify: [],
+      files_to_create: [],
+    },
+    "Task body",
+  );
 }
 
 function makeDeps(): any {

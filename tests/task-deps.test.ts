@@ -21,4 +21,11 @@ describe("validateTaskDependencies", () => {
     expect(r.valid).toBe(false);
     expect(r.error).toContain("not found");
   });
+
+  it("error message for empty tasks references task files, not plan.md", () => {
+    const r = validateTaskDependencies(1, [], []);
+    expect(r.valid).toBe(false);
+    expect(r.error).toContain("task file");
+    expect(r.error).not.toContain("plan.md");
+  });
 });

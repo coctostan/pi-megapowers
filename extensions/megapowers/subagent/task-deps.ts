@@ -12,7 +12,7 @@ export function validateTaskDependencies(
   completedTaskIndices: number[],
 ): ValidationResult {
   if (tasks.length === 0) {
-    return { valid: false, error: "No tasks found in plan. Ensure plan.md exists and has parseable tasks." };
+    return { valid: false, error: "No tasks found. Ensure task files exist in .megapowers/plans/<issue>/tasks/." };
   }
   const task = tasks.find((t) => t.index === taskIndex);
   if (!task) {

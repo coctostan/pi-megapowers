@@ -4,6 +4,7 @@ import type { MegapowersState } from "../state/state-machine.js";
 import type { Store } from "../state/store.js";
 import { hasOpenQuestions } from "../spec-parser.js";
 import { deriveTasks } from "../state/derived.js";
+import { listPlanTasks } from "../state/plan-store.js";
 
 export function evaluateGate(
   gate: GateConfig,
@@ -50,6 +51,14 @@ export function evaluateGate(
       const incomplete = tasks.filter(t => !completedSet.has(t.index));
       if (incomplete.length > 0) {
         return { pass: false, message: `${incomplete.length} of ${tasks.length} tasks still incomplete.` };
+      }
+      return { pass: true };
+    }
+    case "requireTaskFiles": {
+      if (!state.activeIssue || !cwd) return { pass: false, message: "No active issue or cwd" };
+      const taskFiles = listPlanTasks(cwd, state.activeIssue);
+      if (taskFiles.length === 0) {
+        return { pass: false, message: `No task files found in .megapowers/plans/${state.activeIssue}/tasks/. Use megapowers_plan_task to create tasks before advancing.` };
       }
       return { pass: true };
     }

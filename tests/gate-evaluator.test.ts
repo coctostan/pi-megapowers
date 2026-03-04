@@ -130,6 +130,29 @@ describe("evaluateGate — allTasksComplete", () => {
   });
 });
 
+describe("evaluateGate — requireTaskFiles", () => {
+  it("passes when task files exist", () => {
+    const store = createStore(tmp);
+    const issueSlug = "001-test";
+    const tasksDir = join(tmp, ".megapowers", "plans", issueSlug, "tasks");
+    mkdirSync(tasksDir, { recursive: true });
+    writeFileSync(join(tasksDir, "task-001.md"), "---\nid: 1\ntitle: Do thing\nstatus: draft\n---\nBody.");
+
+    const gate: GateConfig = { type: "requireTaskFiles" };
+    const result = evaluateGate(gate, makeState({ phase: "plan" }), store, tmp);
+    expect(result.pass).toBe(true);
+  });
+
+  it("fails with descriptive task-files path when no task files exist", () => {
+    const store = createStore(tmp);
+    const gate: GateConfig = { type: "requireTaskFiles" };
+    const result = evaluateGate(gate, makeState({ phase: "plan" }), store, tmp);
+    expect(result.pass).toBe(false);
+    expect(result.message).toContain("No task files found");
+    expect(result.message).toContain(".megapowers/plans/001-test/tasks/");
+  });
+});
+
 describe("evaluateGate — alwaysPass", () => {
   it("always returns pass: true", () => {
     const store = createStore(tmp);

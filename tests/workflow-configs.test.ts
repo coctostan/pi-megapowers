@@ -32,10 +32,10 @@ describe("feature workflow config", () => {
   });
 
 
-  it("has plan → implement transition with requireArtifact + requirePlanApproved gates", () => {
+  it("has plan → implement transition with requireTaskFiles + requirePlanApproved gates", () => {
     const t = featureWorkflow.transitions.find(t => t.from === "plan" && t.to === "implement");
     expect(t).toBeDefined();
-    expect(t!.gates).toEqual([{ type: "requireArtifact", file: "plan.md" }, { type: "requirePlanApproved" }]);
+    expect(t!.gates).toEqual([{ type: "requireTaskFiles" }, { type: "requirePlanApproved" }]);
   });
 
   it("has no transitions referencing review phase", () => {
@@ -133,6 +133,12 @@ describe("bugfix workflow config", () => {
     const t = bugfixWorkflow.transitions.find(t => t.from === "diagnose" && t.to === "plan");
     expect(t).toBeDefined();
     expect(t!.gates).toEqual([{ type: "requireArtifact", file: "diagnosis.md" }]);
+  });
+
+  it("has plan → implement transition with requireTaskFiles + requirePlanApproved gates", () => {
+    const t = bugfixWorkflow.transitions.find(t => t.from === "plan" && t.to === "implement");
+    expect(t).toBeDefined();
+    expect(t!.gates).toEqual([{ type: "requireTaskFiles" }, { type: "requirePlanApproved" }]);
   });
 
   it("has no transitions referencing review phase", () => {
