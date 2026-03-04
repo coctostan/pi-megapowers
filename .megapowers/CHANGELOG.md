@@ -252,3 +252,18 @@ All wrap-up actions are complete. Here's a summary:
 **Test suite:** 759 pass, 0 fail across 72 files
 
 The issue is ready to close. Run `/issue close` to mark it done, or select a new issue to continue.
+
+## [Unreleased]
+### Fixed
+- Pipeline squash no longer fails when worktree creates files that already exist as uncommitted additions in the main working directory — replaced `git diff | git apply` with direct `copyFileSync` per-file (#086, #085)
+- `createPipelineWorkspace` now temp-commits all uncommitted changes (including untracked files) before creating the worktree so prior task output is visible in the new worktree, then resets `HEAD~1` to leave the main WD unchanged (#086)
+
+### Changed
+- `createPipelineWorkspace`, `squashPipelineWorkspace`, and `cleanupPipelineWorkspace` now return discriminated unions `{ ok: true, ... } | { ok: false, error: string }` — eliminates all `(as any).error` casts in callers (#086)
+- Verify step now runs `bun test` as a direct shell command instead of dispatching a verifier LLM agent — reduces pipeline cycle from 3 agents to 2 (implementer + reviewer) (#086, #074)
+- Review verdict parsing replaced regex heuristics with frontmatter extraction + Zod schema validation (`ReviewFrontmatterSchema`) — unparseable output returns `{ verdict: "reject" }` with a stable error finding (#086, #074)
+- Pipeline retry context is now O(1) in size — `withRetryContext` replaces the previous cycle's failure data rather than accumulating all step outputs (#086, #074)
+- New `pipeline-schemas.ts` with `ReviewFrontmatterSchema` (Zod); new `pipeline-steps.ts` with `VerifyResult` interface and `runVerifyStep`; new `pipeline-context-bounded.ts` with bounded `BoundedPipelineContext` (#086)
+- `PipelineResult` gains structured fields: `testsPassed`, `testOutput`, `reviewVerdict`, `reviewFindings`, `retryCount`, `infrastructureError`, `errorSummary` — infrastructure failures separated from semantic failures (#086)
+
+**Test suite:** 784 pass, 0 fail across 75 files

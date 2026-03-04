@@ -1,7 +1,7 @@
 ---
 id: 86
 type: feature
-status: in-progress
+status: closed
 created: 2026-03-03T20:07:00.244Z
 sources: [85, 74]
 ---
