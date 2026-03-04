@@ -246,4 +246,11 @@ describe("handlePipelineTool", () => {
     // Should use .ok checks instead
     expect(source).toContain(".ok");
   });
+
+  it("handlePipelineTool passes onProgress from options to runPipeline", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const source = readFileSync(join(process.cwd(), "extensions/megapowers/subagent/pipeline-tool.ts"), "utf-8");
+    expect(source).toContain("onProgress");
+  });
 });

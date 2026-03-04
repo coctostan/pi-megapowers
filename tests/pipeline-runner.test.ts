@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { runPipeline } from "../extensions/megapowers/subagent/pipeline-runner.js";
 import type { Dispatcher, DispatchConfig, DispatchResult } from "../extensions/megapowers/subagent/dispatcher.js";
 import type { ExecShell } from "../extensions/megapowers/subagent/pipeline-steps.js";
+import type { PipelineProgressEvent } from "../extensions/megapowers/subagent/pipeline-renderer.js";
 
 let projectRoot: string;
 
@@ -94,6 +95,238 @@ describe("runPipeline (refactored)", () => {
     expect(r.infrastructureError).toBeUndefined();
     // Only 2 agents dispatched (no verifier)
     expect(called).toEqual(["implementer", "reviewer"]);
+  });
+
+  it("emits step-start and step-end progress events for happy path", async () => {
+    const events: PipelineProgressEvent[] = [];
+
+    const dispatcher: Dispatcher = {
+      async dispatch(cfg: DispatchConfig) {
+        if (cfg.agent === "implementer") {
+          return mkDispatch(0, {
+            messages: [
+              {
+                role: "assistant" as const,
+                content: [{ type: "tool_use" as const, id: "1", name: "write", input: { path: "src/a.ts" } }],
+              },
+            ] as any,
+          });
+        }
+        if (cfg.agent === "reviewer") {
+          return mkDispatch(0, {
+            messages: [{
+              role: "assistant" as const,
+              content: [{ type: "text" as const, text: "---\nverdict: approve\n---\n\nLooks good." }],
+            }] as any,
+          });
+        }
+        return mkDispatch(1, { error: "unknown" });
+      },
+    };
+
+    const r = await runPipeline(
+      { taskDescription: "Do task" },
+      dispatcher,
+      {
+        projectRoot,
+        workspaceCwd: join(projectRoot, "workspace"),
+        pipelineId: "pipe-progress",
+        agents: { implementer: "implementer", reviewer: "reviewer" },
+        testCommand: "bun test",
+        execShell: passingShell,
+        execGit: async (args) => {
+          if (args.includes("--stat")) return { stdout: "src/a.ts | 2 ++\n", stderr: "" };
+          if (args.includes("diff") && args.includes("--cached") && !args.includes("--stat"))
+            return { stdout: "diff --git ...", stderr: "" };
+          return { stdout: "", stderr: "" };
+        },
+        onProgress: (e) => events.push(e),
+      },
+    );
+
+    expect(r.status).toBe("completed");
+
+    const types = events.map((e) => `${e.type}:${"step" in e ? e.step : ""}`);
+    expect(types).toEqual([
+      "step-start:implement",
+      "step-end:implement",
+      "step-start:verify",
+      "step-end:verify",
+      "step-start:review",
+      "step-end:review",
+    ]);
+
+    const stepEnds = events.filter((e) => e.type === "step-end") as Array<Extract<PipelineProgressEvent, { type: "step-end" }>>;
+    for (const se of stepEnds) {
+      expect(se.durationMs).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("emits retry events when verify fails and retries", async () => {
+    const events: PipelineProgressEvent[] = [];
+    let implCount = 0;
+
+    const dispatcher: Dispatcher = {
+      async dispatch(cfg: DispatchConfig) {
+        if (cfg.agent === "implementer") {
+          implCount++;
+          return mkDispatch(0, { messages: [] as any });
+        }
+        return mkDispatch(0, {
+          messages: [{ role: "assistant" as const, content: [{ type: "text" as const, text: "---\nverdict: approve\n---\n" }] }] as any,
+        });
+      },
+    };
+
+    const r = await runPipeline(
+      { taskDescription: "x" },
+      dispatcher,
+      {
+        projectRoot,
+        workspaceCwd: join(projectRoot, "workspace"),
+        pipelineId: "pipe-retry",
+        agents: { implementer: "implementer", reviewer: "reviewer" },
+        testCommand: "bun test",
+        execShell: failingShell,
+        maxRetries: 1,
+        execGit: async (args) => {
+          if (args.includes("diff") && args.includes("--cached") && !args.includes("--stat"))
+            return { stdout: "diff --git ...", stderr: "" };
+          return { stdout: "", stderr: "" };
+        },
+        onProgress: (e) => events.push(e),
+      },
+    );
+
+    expect(r.status).toBe("paused");
+
+    const retryEvents = events.filter((e) => e.type === "retry") as Array<Extract<PipelineProgressEvent, { type: "retry" }>>;
+    expect(retryEvents).toHaveLength(1);
+    expect(retryEvents[0].retryCount).toBe(1);
+    expect(retryEvents[0].reason).toContain("verify_failed");
+  });
+
+  it("runs without error when onProgress is omitted (AC5)", async () => {
+    const dispatcher: Dispatcher = {
+      async dispatch(cfg: DispatchConfig) {
+        if (cfg.agent === "implementer") {
+          return mkDispatch(0, {
+            messages: [
+              { role: "assistant" as const, content: [{ type: "tool_use" as const, id: "1", name: "write", input: { path: "src/a.ts" } }] },
+            ] as any,
+          });
+        }
+        if (cfg.agent === "reviewer") {
+          return mkDispatch(0, {
+            messages: [{ role: "assistant" as const, content: [{ type: "text" as const, text: "---\nverdict: approve\n---\n" }] }] as any,
+          });
+        }
+        return mkDispatch(1, { error: "unknown" });
+      },
+    };
+
+    const r = await runPipeline(
+      { taskDescription: "Do task" },
+      dispatcher,
+      {
+        projectRoot,
+        workspaceCwd: join(projectRoot, "workspace"),
+        pipelineId: "pipe-no-progress",
+        agents: { implementer: "implementer", reviewer: "reviewer" },
+        testCommand: "bun test",
+        execShell: passingShell,
+        execGit: async (args) => {
+          if (args.includes("--stat")) return { stdout: "src/a.ts | 2 ++\n", stderr: "" };
+          if (args.includes("diff") && args.includes("--cached") && !args.includes("--stat"))
+            return { stdout: "diff --git ...", stderr: "" };
+          return { stdout: "", stderr: "" };
+        },
+        // onProgress intentionally omitted
+      },
+    );
+
+    expect(r.status).toBe("completed");
+    expect(r.reviewVerdict).toBe("approve");
+  });
+
+  it("step-end events for implement and review include messages (AC16)", async () => {
+    const events: PipelineProgressEvent[] = [];
+
+    const implMessages = [
+      {
+        role: "assistant" as const,
+        content: [{ type: "tool_use" as const, id: "1", name: "write", input: { path: "src/a.ts" } }],
+        usage: {
+          input: 100,
+          output: 50,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 150,
+          cost: { input: 0.01, output: 0.02, cacheRead: 0, cacheWrite: 0, total: 0.03 },
+        },
+        model: "claude-sonnet-4-20250514",
+      },
+    ] as any;
+
+    const reviewMessages = [
+      {
+        role: "assistant" as const,
+        content: [{ type: "text" as const, text: "---\nverdict: approve\n---\n\nLooks good." }],
+        usage: {
+          input: 200,
+          output: 30,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 230,
+          cost: { input: 0.02, output: 0.01, cacheRead: 0, cacheWrite: 0, total: 0.03 },
+        },
+        model: "claude-sonnet-4-20250514",
+      },
+    ] as any;
+
+    const dispatcher: Dispatcher = {
+      async dispatch(cfg: DispatchConfig) {
+        if (cfg.agent === "implementer") return mkDispatch(0, { messages: implMessages });
+        if (cfg.agent === "reviewer") return mkDispatch(0, { messages: reviewMessages });
+        return mkDispatch(1, { error: "unknown" });
+      },
+    };
+
+    await runPipeline(
+      { taskDescription: "Do task" },
+      dispatcher,
+      {
+        projectRoot,
+        workspaceCwd: join(projectRoot, "workspace"),
+        pipelineId: "pipe-msgs",
+        agents: { implementer: "implementer", reviewer: "reviewer" },
+        testCommand: "bun test",
+        execShell: passingShell,
+        execGit: async (args) => {
+          if (args.includes("--stat")) return { stdout: "src/a.ts | 2 ++\n", stderr: "" };
+          if (args.includes("diff") && args.includes("--cached") && !args.includes("--stat"))
+            return { stdout: "diff --git ...", stderr: "" };
+          return { stdout: "", stderr: "" };
+        },
+        onProgress: (e) => events.push(e),
+      },
+    );
+
+    const stepEnds = events.filter((e) => e.type === "step-end") as Array<Extract<PipelineProgressEvent, { type: "step-end" }>>;
+
+    const implEnd = stepEnds.find((e) => e.step === "implement");
+    expect(implEnd).toBeDefined();
+    expect(implEnd!.messages).toBeDefined();
+    expect(implEnd!.messages).toHaveLength(1);
+
+    const reviewEnd = stepEnds.find((e) => e.step === "review");
+    expect(reviewEnd).toBeDefined();
+    expect(reviewEnd!.messages).toBeDefined();
+    expect(reviewEnd!.messages).toHaveLength(1);
+
+    const verifyEnd = stepEnds.find((e) => e.step === "verify");
+    expect(verifyEnd).toBeDefined();
+    expect(verifyEnd!.messages).toBeUndefined();
   });
 
   it("verify failure retries with bounded test output (not accumulated)", async () => {

@@ -9,6 +9,7 @@ import { runPipeline } from "./pipeline-runner.js";
 import type { ExecShell } from "./pipeline-steps.js";
 import { validateTaskDependencies } from "./task-deps.js";
 import { writePipelineMeta, readPipelineMeta, clearPipelineMeta } from "./pipeline-meta.js";
+import type { PipelineProgressEvent } from "./pipeline-renderer.js";
 
 export interface PipelineToolInput {
   taskIndex: number;
@@ -57,6 +58,7 @@ export async function handlePipelineTool(
   dispatcher: Dispatcher,
   execGit: ExecGit,
   execShell?: ExecShell,
+  onProgress?: (event: PipelineProgressEvent) => void,
 ): Promise<PipelineToolOutput> {
   const state = readState(projectRoot);
 
@@ -115,6 +117,7 @@ export async function handlePipelineTool(
       agents: { implementer: "implementer", reviewer: "reviewer" },
       execGit,
       execShell,
+      onProgress,
     },
   );
 
