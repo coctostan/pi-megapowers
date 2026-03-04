@@ -1,7 +1,7 @@
 ---
 id: 81
 type: bugfix
-status: open
+status: done
 created: 2026-03-03T13:28:41.826Z
 ---
 # close-issue wrap-up action not executed in prompt-driven done phase

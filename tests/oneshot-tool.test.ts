@@ -46,14 +46,11 @@ describe("handleOneshotTool", () => {
 
   it("returns an error when squash fails after successful dispatch", async () => {
     const execGit = async (args: string[]) => {
-      // return non-empty diff so apply is called
-      if (args.includes("diff") && args.includes("--cached") && !args.includes("--stat")) {
-        return { stdout: "diff --git a/f.ts b/f.ts\n+x", stderr: "" };
+      if (args.includes("--name-only") && args.includes("--diff-filter=AMCR")) {
+        throw new Error("diff name-only failed: squash boom");
       }
-      if (args.includes("apply")) throw new Error("git apply failed: squash boom");
       return { stdout: "", stderr: "" };
     };
-
     const dispatcher: Dispatcher = {
       async dispatch() {
         return {
@@ -64,10 +61,9 @@ describe("handleOneshotTool", () => {
         };
       },
     };
-
     const r = await handleOneshotTool(tmp, { task: "do it" }, dispatcher, execGit);
     expect(r.error).toContain("Squash failed");
-    expect(r.error).toContain("git apply failed");
+    expect(r.error).toContain("diff name-only failed");
   });
 
   it("returns cleanup errors when dispatch fails", async () => {
@@ -93,5 +89,20 @@ describe("handleOneshotTool", () => {
     const r = await handleOneshotTool(tmp, { task: "do it" }, dispatcher, execGit);
     expect(r.error).toContain("Cleanup failed");
     expect(r.error).toContain("forget boom");
+  });
+
+  it("uses discriminated union checks (no as-any casts)", async () => {
+    // Verify the source code has no (as any).error casts
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const source = readFileSync(
+      join(process.cwd(), "extensions/megapowers/subagent/oneshot-tool.ts"),
+      "utf-8",
+    );
+    expect(source).not.toContain("(ws as any).error");
+    expect(source).not.toContain("(squash as any).error");
+    expect(source).not.toContain("(cleanup as any).error");
+    // Should use .ok checks instead
+    expect(source).toContain(".ok");
   });
 });

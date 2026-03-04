@@ -1,6 +1,5 @@
-import { join } from "node:path";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import { mkdirSync, copyFileSync, unlinkSync, existsSync } from "node:fs";
 
 // AC13
 export type ExecGit = (args: string[]) => Promise<{ stdout: string; stderr: string }>;
@@ -19,71 +18,166 @@ function inDir(cwd: string, args: string[]): string[] {
 }
 
 // AC14
-export async function createPipelineWorkspace(projectRoot: string, pipelineId: string, execGit: ExecGit) {
+export type CreateWorkspaceResult =
+  | { ok: true; workspaceName: string; workspacePath: string }
+  | { ok: false; error: string };
+
+export async function createPipelineWorkspace(
+  projectRoot: string,
+  pipelineId: string,
+  execGit: ExecGit,
+): Promise<CreateWorkspaceResult> {
   const workspaceName = pipelineWorkspaceName(pipelineId);
   const workspacePath = pipelineWorkspacePath(projectRoot, pipelineId);
-
   try {
     mkdirSync(join(projectRoot, ".megapowers", "workspaces"), { recursive: true });
   } catch {
-    // best effort; execGit surfaces actionable errors
+    // best effort
   }
 
+  // AC1/AC2: Temp-commit all uncommitted changes (including untracked) with injected identity
+  let stagedAll = false;
+  let tempCommitted = false;
+  let worktreeError: string | undefined;
+
   try {
+    await execGit(inDir(projectRoot, ["add", "-A"]));
+    stagedAll = true;
+
+    await execGit(
+      inDir(projectRoot, [
+        "-c",
+        "user.name=megapowers",
+        "-c",
+        "user.email=megapowers@local",
+        "commit",
+        "--allow-empty",
+        "--no-gpg-sign",
+        "-m",
+        "temp-pipeline-commit",
+      ]),
+    );
+    tempCommitted = true;
     await execGit(inDir(projectRoot, ["worktree", "add", "--detach", workspacePath]));
-    return { workspaceName, workspacePath };
-  } catch (err: any) {
-    return { workspaceName, workspacePath, error: err?.message ?? "git worktree add failed" };
+  } catch (err) {
+    worktreeError = err instanceof Error ? err.message : String(err);
+  } finally {
+    // If we staged but never successfully created the temp commit, undo staging.
+    if (stagedAll && !tempCommitted) {
+      try {
+        await execGit(inDir(projectRoot, ["reset"]));
+      } catch {
+        // ignore reset cleanup error
+      }
+    }
   }
+
+  // AC1/AC5: always reset if temp commit succeeded, even on worktree failure
+  if (tempCommitted) {
+    try {
+      await execGit(inDir(projectRoot, ["reset", "HEAD~1"]));
+    } catch (resetErr) {
+      const resetMsg = resetErr instanceof Error ? resetErr.message : String(resetErr);
+      const combined = worktreeError
+        ? `${worktreeError}; reset failed: ${resetMsg}`
+        : `Worktree created but reset failed: ${resetMsg}`;
+      return { ok: false, error: combined };
+    }
+  }
+
+  if (worktreeError) {
+    return { ok: false, error: worktreeError };
+  }
+    return { ok: true, workspaceName, workspacePath };
 }
 
 // AC15 + AC16
-export async function squashPipelineWorkspace(projectRoot: string, pipelineId: string, execGit: ExecGit) {
-  const workspacePath = pipelineWorkspacePath(projectRoot, pipelineId);
+export type SquashWorkspaceResult = { ok: true } | { ok: false; error: string };
 
+export async function squashPipelineWorkspace(
+  projectRoot: string,
+  pipelineId: string,
+  execGit: ExecGit,
+): Promise<SquashWorkspaceResult> {
+  const workspacePath = pipelineWorkspacePath(projectRoot, pipelineId);
   try {
     await execGit(inDir(workspacePath, ["add", "-A"]));
-    const diff = await execGit(inDir(workspacePath, ["diff", "--cached", "HEAD"]));
+    const changed = await execGit(
+      inDir(workspacePath, ["diff", "--cached", "--name-only", "--diff-filter=AMCR"]),
+    );
+    // AC7: Get deleted files
+    const deleted = await execGit(
+      inDir(workspacePath, ["diff", "--cached", "--name-only", "--diff-filter=D"]),
+    );
+    // Get rename entries to clean up old paths
+    const renames = await execGit(
+      inDir(workspacePath, ["diff", "--cached", "--name-status", "--diff-filter=R"]),
+    );
 
-    if (!diff.stdout.trim()) {
-      // nothing to apply; remove worktree
-      try {
-        await execGit(inDir(projectRoot, ["worktree", "remove", "--force", workspacePath]));
-      } catch {
-        // ignore cleanup failure
+    const changedFiles = changed.stdout.trim().split("\n").filter(Boolean);
+    const deletedFiles = deleted.stdout.trim().split("\n").filter(Boolean);
+
+    // Parse rename lines: "R100\told/path.ts\tnew/path.ts"
+    const renameOldPaths: string[] = [];
+    for (const line of renames.stdout.trim().split("\n").filter(Boolean)) {
+      const parts = line.split("\t");
+      if (parts.length >= 2) {
+        renameOldPaths.push(parts[1]);
       }
-      return {};
     }
 
-    const patchPath = join(tmpdir(), `mega-squash-${pipelineId}.patch`);
-    writeFileSync(patchPath, diff.stdout);
+    // Copy changed files from worktree to main WD
+    for (const file of changedFiles) {
+      const src = join(workspacePath, file);
+      const dest = join(projectRoot, file);
+      mkdirSync(dirname(dest), { recursive: true });
+      copyFileSync(src, dest);
+    }
 
-    // apply in main working directory (AC15)
-    await execGit(["apply", "--allow-empty", patchPath]);
+    // Remove deleted files from main WD
+    for (const file of deletedFiles) {
+      const dest = join(projectRoot, file);
+      if (existsSync(dest)) {
+        unlinkSync(dest);
+      }
+    }
 
-    // remove worktree after successful apply
+    // Remove old paths from renames
+    for (const file of renameOldPaths) {
+      const dest = join(projectRoot, file);
+      if (existsSync(dest)) {
+        unlinkSync(dest);
+      }
+    }
+
+    // Clean up worktree
     try {
       await execGit(inDir(projectRoot, ["worktree", "remove", "--force", workspacePath]));
     } catch {
       // ignore cleanup failure
     }
 
-    return {};
+    return { ok: true };
   } catch (err: any) {
-    // AC16: preserve worktree for inspection on failure
-    return { error: err?.message ?? "git squash failed" };
+    // AC9: preserve worktree for inspection on failure
+    return { ok: false, error: err?.message ?? "git squash failed" };
   }
 }
 
 // AC17
-export async function cleanupPipelineWorkspace(projectRoot: string, pipelineId: string, execGit: ExecGit) {
-  const workspacePath = pipelineWorkspacePath(projectRoot, pipelineId);
+export type CleanupWorkspaceResult = { ok: true } | { ok: false; error: string };
 
+export async function cleanupPipelineWorkspace(
+  projectRoot: string,
+  pipelineId: string,
+  execGit: ExecGit,
+): Promise<CleanupWorkspaceResult> {
+  const workspacePath = pipelineWorkspacePath(projectRoot, pipelineId);
   try {
     await execGit(inDir(projectRoot, ["worktree", "remove", "--force", workspacePath]));
-    return {};
+    return { ok: true };
   } catch (err: any) {
-    return { error: err?.message ?? "git worktree remove failed" };
+    return { ok: false, error: err?.message ?? "git worktree remove failed" };
   }
 }
 

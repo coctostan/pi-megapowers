@@ -11,3 +11,4 @@ dist/
 # Megapowers runtime state
 .megapowers/state.json
 .megapowers/subagents/
+.megapowers/workspaces/

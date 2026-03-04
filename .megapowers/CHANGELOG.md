@@ -1,6 +1,18 @@
 
 ## [Unreleased]
 ### Fixed
+- Pipeline squash no longer fails when prior-task files exist uncommitted in the main working directory; `createPipelineWorkspace` now makes a temporary commit before creating the worktree so the worktree sees all uncommitted additions, then resets it so the main WD is unchanged (#085, #086)
+- `squashPipelineWorkspace` replaced `git diff | git apply` with direct `copyFileSync`/`unlinkSync` — cannot fail on "already exists in working directory" (#085, #086)
+
+### Changed
+- Pipeline cycle now dispatches exactly 2 LLM agents (implementer + reviewer); verification runs `bun test` as a direct shell command instead of a third LLM dispatch (#086)
+- `createPipelineWorkspace`, `squashPipelineWorkspace`, and `cleanupPipelineWorkspace` return discriminated union types (`{ ok: true, ... } | { ok: false, error }`) — eliminates `(as any).error` casts throughout (#086)
+- Retry context is O(1) in size: each retry replaces the previous failure context rather than accumulating all prior step output (#086)
+- Reviewer output parsed via `gray-matter` frontmatter + Zod validation instead of regex; invalid output reliably returns `verdict: reject` with a parse error finding (#086)
+- `PipelineResult` now includes structured fields: `testsPassed`, `testOutput`, `reviewVerdict`, `reviewFindings`, `infrastructureError` — infrastructure failures (LLM crash, timeout) separated from semantic failures (test failures, review rejections) (#086)
+
+## [Prior]
+### Fixed
 - Headless done-phase now auto-populates `doneActions` with default-checked items instead of silently no-op-ing, ensuring `close-issue` always executes when running without a TUI (#081)
 - Done-phase checklist deferred from `megapowers_signal execute()` to `onAgentEnd`, so users see the full code-review narrative before committing to wrap-up actions (#083)
 - Added `doneChecklistShown` state flag to prevent checklist re-display on dismiss/re-entry
@@ -217,3 +229,26 @@ All wrap-up actions are complete. Here's the summary:
 - **751 tests passing**, 9/9 acceptance criteria met
 
 The issue is ready to close. Run `/issue close` or activate a new issue to continue.
+### Action 4: close-issue
+
+All wrap-up actions are complete. Here's a summary:
+
+---
+
+## ✅ Issue #084 — Wrap-up Complete
+
+**Completed actions:**
+
+| Action | Result |
+|--------|--------|
+| **write-changelog** | Entry appended to `.megapowers/CHANGELOG.md` — two `Fixed` items for #081 and #083 |
+| **capture-learnings** | 7 learnings written to `.megapowers/plans/084-done-phase-close-issue-bug-and-code-revi/learnings.md` |
+| **push-and-pr** | Branch pushed; PR #40 opened → https://github.com/coctostan/pi-megapowers/pull/40 |
+
+**What was fixed:**
+- **#081** — `showDoneChecklist` now auto-populates `doneActions` with all default-checked items in headless mode instead of silently returning, ensuring `close-issue` always executes
+- **#083** — `showDoneChecklist` deferred from `megapowers_signal execute()` to `onAgentEnd`, so the TUI checklist only appears after the full code-review narrative is visible
+
+**Test suite:** 759 pass, 0 fail across 72 files
+
+The issue is ready to close. Run `/issue close` to mark it done, or select a new issue to continue.

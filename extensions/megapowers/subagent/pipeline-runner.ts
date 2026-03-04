@@ -1,14 +1,14 @@
 import type { Dispatcher, DispatchConfig, DispatchResult } from "./dispatcher.js";
-import { buildInitialContext, appendStepOutput, setRetryContext, renderContextPrompt } from "./pipeline-context.js";
-import { parseStepResult, parseReviewVerdict } from "./pipeline-results.js";
+import { buildInitialContext, withRetryContext, renderContextPrompt } from "./pipeline-context-bounded.js";
+import { parseStepResult, parseReviewOutput } from "./pipeline-results.js";
 import { writeLogEntry, readPipelineLog, type PipelineLogEntry } from "./pipeline-log.js";
-import { extractToolCalls, extractTestOutput } from "./message-utils.js";
+import { extractToolCalls } from "./message-utils.js";
 import { auditTddCompliance } from "./tdd-auditor.js";
 import { getWorkspaceDiff, type ExecGit } from "./pipeline-workspace.js";
+import { runVerifyStep, type ExecShell } from "./pipeline-steps.js";
 
 export interface PipelineAgents {
   implementer: string;
-  verifier: string;
   reviewer: string;
 }
 
@@ -22,6 +22,8 @@ export interface PipelineOptions {
   stepTimeoutMs?: number;
 
   execGit: ExecGit;
+  testCommand?: string;
+  execShell?: ExecShell;
 }
 
 export type PipelineStatus = "completed" | "paused";
@@ -41,6 +43,7 @@ export interface PipelineResult {
   logEntries?: PipelineLogEntry[];
   diff?: string;
   errorSummary?: string;
+  infrastructureError?: string;
 }
 
 function asDispatchFailure(err: unknown): DispatchResult {
@@ -61,6 +64,19 @@ async function safeDispatch(dispatcher: Dispatcher, cfg: DispatchConfig): Promis
   }
 }
 
+const defaultExecShell: ExecShell = async (cmd, cwd) => {
+  const { exec } = await import("child_process");
+  return new Promise((resolve) => {
+    exec(cmd, { cwd, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+      resolve({
+        exitCode: error && typeof (error as any).code === "number" ? (error as any).code : error ? 1 : 0,
+        stdout: stdout ?? "",
+        stderr: stderr ?? "",
+      });
+    });
+  });
+};
+
 export async function runPipeline(
   input: { taskDescription: string; planSection?: string; specContent?: string; learnings?: string },
   dispatcher: Dispatcher,
@@ -68,6 +84,8 @@ export async function runPipeline(
 ): Promise<PipelineResult> {
   const maxRetries = options.maxRetries ?? 3;
   const stepTimeoutMs = options.stepTimeoutMs ?? 10 * 60 * 1000;
+  const testCommand = options.testCommand ?? "bun test";
+  const execShell = options.execShell ?? defaultExecShell;
 
   let retryCount = 0;
   let filesChanged: string[] = [];
@@ -88,17 +106,8 @@ export async function runPipeline(
     const implParsed = parseStepResult(impl);
     filesChanged = [...new Set([...filesChanged, ...implParsed.filesChanged])];
 
-    // AC16: audit TDD compliance after implement
     const toolCalls = extractToolCalls(impl.messages);
     const tddReport = auditTddCompliance(toolCalls);
-
-    ctx = appendStepOutput(ctx, {
-      step: "implement",
-      filesChanged: implParsed.filesChanged,
-      finalOutput: implParsed.finalOutput,
-      error: implParsed.error,
-      tddReportJson: JSON.stringify(tddReport),
-    });
 
     writeLogEntry(options.projectRoot, options.pipelineId, {
       step: "implement",
@@ -119,41 +128,30 @@ export async function runPipeline(
           logEntries: readPipelineLog(options.projectRoot, options.pipelineId),
           diff,
           errorSummary: `Retry budget exhausted — implement failed: ${implParsed.error ?? "unknown"}`,
+          infrastructureError: implParsed.error,
         };
       }
-      ctx = setRetryContext(ctx, `Implement failed: ${implParsed.error ?? "unknown"}`);
+      ctx = withRetryContext(ctx, {
+        reason: "implement_failed",
+        detail: implParsed.error ?? "unknown",
+      });
       continue;
     }
 
-    // ---------------- verify ----------------
+    // ---------------- verify (shell command) ----------------
     const t1 = Date.now();
-    const verify = await safeDispatch(dispatcher, {
-      agent: options.agents.verifier,
-      task: "Run the test suite and report pass/fail with output",
-      cwd: options.workspaceCwd,
-      context: renderContextPrompt(ctx),
-      timeoutMs: stepTimeoutMs,
-    });
-
-    const verifyParsed = parseStepResult(verify);
-
-    ctx = appendStepOutput(ctx, {
-      step: "verify",
-      filesChanged: verifyParsed.filesChanged,
-      finalOutput: verifyParsed.finalOutput,
-      testsPassed: verifyParsed.testsPassed,
-      error: verifyParsed.error,
-    });
-
-    writeLogEntry(options.projectRoot, options.pipelineId, {
-      step: "verify",
-      status: verifyParsed.testsPassed ? "completed" : "failed",
-      durationMs: Date.now() - t1,
-      summary: verifyParsed.testsPassed ? "tests passed" : "tests failed",
-      error: verifyParsed.error,
-    });
-
-    if (!verifyParsed.testsPassed) {
+    let verify: { passed: boolean; exitCode: number; output: string; durationMs: number };
+    try {
+      verify = await runVerifyStep(testCommand, options.workspaceCwd, execShell);
+    } catch (verifyErr) {
+      const verifyMsg = verifyErr instanceof Error ? verifyErr.message : String(verifyErr);
+      writeLogEntry(options.projectRoot, options.pipelineId, {
+        step: "verify",
+        status: "failed",
+        durationMs: Date.now() - t1,
+        summary: "verify infrastructure failure",
+        error: verifyMsg,
+      });
       retryCount++;
       if (cycle >= maxRetries) {
         const { diff } = await getWorkspaceDiff(options.workspaceCwd, options.execGit);
@@ -163,44 +161,73 @@ export async function runPipeline(
           retryCount,
           logEntries: readPipelineLog(options.projectRoot, options.pipelineId),
           diff,
+          errorSummary: `Retry budget exhausted — verify infrastructure failure: ${verifyMsg}`,
+          infrastructureError: verifyMsg,
+        };
+      }
+      ctx = withRetryContext(ctx, {
+        reason: "verify_failed",
+        detail: verifyMsg,
+      });
+      continue;
+    }
+    writeLogEntry(options.projectRoot, options.pipelineId, {
+      step: "verify",
+      status: verify.passed ? "completed" : "failed",
+      durationMs: verify.durationMs,
+      summary: verify.passed ? "tests passed" : "tests failed",
+      error: verify.passed ? undefined : `exit code ${verify.exitCode}`,
+    });
+    if (!verify.passed) {
+      retryCount++;
+      if (cycle >= maxRetries) {
+        const { diff } = await getWorkspaceDiff(options.workspaceCwd, options.execGit);
+        return {
+          status: "paused",
+          filesChanged,
+          retryCount,
+          logEntries: readPipelineLog(options.projectRoot, options.pipelineId),
+          diff,
+          testsPassed: false,
+          testOutput: verify.output,
           errorSummary: "Retry budget exhausted — tests still failing",
         };
       }
-
-      // AC5: propagate raw failing test output to next implement cycle
-      const testOutput = extractTestOutput(verify.messages);
-      const failureDetail = testOutput || verifyParsed.finalOutput || verifyParsed.error || "unknown";
-      ctx = setRetryContext(ctx, `Verify failed:\n\n${failureDetail}`);
+      ctx = withRetryContext(ctx, {
+        reason: "verify_failed",
+        detail: verify.output,
+      });
       continue;
     }
 
-    // ---------------- review ----------------
+    // ---------------- review (frontmatter-parsed) ----------------
     const t2 = Date.now();
+    const { diff: reviewDiff } = await getWorkspaceDiff(options.workspaceCwd, options.execGit);
     const review = await safeDispatch(dispatcher, {
       agent: options.agents.reviewer,
-      task: "Review the implementation against the spec and the provided context. End with Verdict: approve|reject and bullet findings.",
+      task: `Review the implementation. Output your verdict as frontmatter:\n---\nverdict: approve\n---\nor\n---\nverdict: reject\n---\nThen list findings as bullet points.`,
       cwd: options.workspaceCwd,
-      context: renderContextPrompt(ctx),
+      context: [
+        renderContextPrompt(ctx),
+        `## Test Results\n\n${verify.output}`,
+        `## TDD Audit\n\n${JSON.stringify(tddReport)}`,
+        reviewDiff ? `## Diff\n\n\`\`\`\n${reviewDiff}\n\`\`\`` : "",
+      ].filter(Boolean).join("\n\n"),
       timeoutMs: stepTimeoutMs,
     });
 
     const reviewParsed = parseStepResult(review);
-    if (review.exitCode !== 0) {
-      ctx = appendStepOutput(ctx, {
-        step: "review",
-        filesChanged: [],
-        finalOutput: reviewParsed.finalOutput,
-        error: reviewParsed.error,
-      });
 
+    if (review.exitCode !== 0) {
       writeLogEntry(options.projectRoot, options.pipelineId, {
         step: "review",
         status: "failed",
         durationMs: Date.now() - t2,
-        summary: "review failed",
+        summary: "review dispatch failed",
         error: reviewParsed.error,
       });
-    retryCount++;
+
+      retryCount++;
       if (cycle >= maxRetries) {
         const { diff } = await getWorkspaceDiff(options.workspaceCwd, options.execGit);
         return {
@@ -210,22 +237,17 @@ export async function runPipeline(
           logEntries: readPipelineLog(options.projectRoot, options.pipelineId),
           diff,
           errorSummary: `Retry budget exhausted — review failed: ${reviewParsed.error ?? "unknown"}`,
+          infrastructureError: reviewParsed.error,
         };
       }
-
-      ctx = setRetryContext(ctx, `Review step failed: ${reviewParsed.error ?? "unknown"}`);
+      ctx = withRetryContext(ctx, {
+        reason: "review_failed",
+        detail: `Review dispatch failed: ${reviewParsed.error ?? "unknown"}`,
+      });
       continue;
     }
 
-    const verdict = parseReviewVerdict(reviewParsed.finalOutput);
-    ctx = appendStepOutput(ctx, {
-      step: "review",
-      filesChanged: [],
-      finalOutput: reviewParsed.finalOutput,
-      reviewVerdict: verdict.verdict,
-      reviewFindings: verdict.findings,
-      error: reviewParsed.error,
-    });
+    const verdict = parseReviewOutput(reviewParsed.finalOutput);
 
     writeLogEntry(options.projectRoot, options.pipelineId, {
       step: "review",
@@ -234,18 +256,19 @@ export async function runPipeline(
       summary: `verdict: ${verdict.verdict}`,
       error: verdict.verdict === "reject" ? verdict.findings.join("; ") : undefined,
     });
+
     if (verdict.verdict === "approve") {
       return {
         status: "completed",
         filesChanged,
         retryCount,
         testsPassed: true,
-        testOutput: [verifyParsed.finalOutput, extractTestOutput(verify.messages) ?? ""].filter(Boolean).join("\n\n"),
+        testOutput: verify.output,
         reviewVerdict: "approve",
         reviewFindings: verdict.findings,
       };
     }
-    // AC6: review rejection triggers full re-run with findings
+
     retryCount++;
     if (cycle >= maxRetries) {
       const { diff } = await getWorkspaceDiff(options.workspaceCwd, options.execGit);
@@ -255,12 +278,18 @@ export async function runPipeline(
         retryCount,
         logEntries: readPipelineLog(options.projectRoot, options.pipelineId),
         diff,
+        reviewVerdict: "reject",
+        reviewFindings: verdict.findings,
         errorSummary: "Retry budget exhausted — review still rejecting",
       };
     }
-    ctx = setRetryContext(ctx, `Review rejected`, verdict.findings.join("\n"));
+    ctx = withRetryContext(ctx, {
+      reason: "review_rejected",
+      detail: verdict.findings.join("\n"),
+    });
   }
 
+  // Safety net: only reachable if maxRetries < 0 (no iterations ran).
   const { diff } = await getWorkspaceDiff(options.workspaceCwd, options.execGit);
   return {
     status: "paused",
@@ -268,6 +297,6 @@ export async function runPipeline(
     retryCount,
     logEntries: readPipelineLog(options.projectRoot, options.pipelineId),
     diff,
-    errorSummary: "Unexpected pipeline exit",
+    errorSummary: "Pipeline exited without completing (maxRetries < 0?)",
   };
 }

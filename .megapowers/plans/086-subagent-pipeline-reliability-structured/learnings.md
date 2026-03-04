@@ -1,0 +1,15 @@
+# Learnings — #086 Pipeline Reliability & Structured Handoff
+
+- **Temp-commit-then-reset is the correct pattern for worktree isolation.** Creating a worktree at HEAD silently excludes all uncommitted files, which breaks multi-task pipelines. The fix — `git add -A` → temp commit → `git worktree add` → `git reset HEAD~1` — is clean, reversible, and requires no changes to the squash logic. The `finally` block to undo staging on commit failure is essential; without it a failed temp-commit leaves the index in a dirty staged state.
+
+- **File-copy is strictly superior to `git apply` for cross-worktree squash.** `git apply` fails on "new file already exists", can choke on binary files, and requires generating a valid patch. `copyFileSync` + `unlinkSync` cannot fail for any of those reasons and is trivially testable with real temp dirs. There is no case where `git apply` is preferable here.
+
+- **Shell-based verify eliminates a full LLM round-trip per cycle.** The verifier agent existed solely to run `bun test` and return pass/fail. Replacing it with `child_process.exec` + exit-code check cuts cycle cost by 33% and eliminates a class of "verifier timeout" infrastructure failures. The exit code is ground truth; the LLM was just proxying it.
+
+- **Discriminated union return types pay for themselves immediately.** The three workspace functions had been returning `{} | { error: string }` for months, forcing `(as any).error` casts everywhere. Switching to `{ ok: true; ... } | { ok: false; error: string }` took ~20 lines of change and eliminated all casts. TypeScript's narrowing makes every error path explicit and impossible to silently ignore.
+
+- **Single-slot retry context (`retryContext` replaces, not appends) is the right default.** The implementer only needs to know what went wrong *last time*, not everything that went wrong across all prior cycles. Accumulating all prior step output is a mistake that causes context growth proportional to retry count. The new `withRetryContext` replaces the slot unconditionally — simple, correct, testable.
+
+- **Zod + frontmatter for structured LLM output is more reliable than regex.** The old `parseReviewVerdict` could match "verdict: approve" anywhere in the text, including in code samples or examples. Frontmatter extraction + Zod validation is structurally unambiguous — the verdict must be in the YAML header, not the prose body. The Zod error message on validation failure feeds directly into the `findings` array, so parse failures are always visible to the next implementer cycle.
+
+- **Separating infra errors from semantic failures in `PipelineResult` matters for retry strategy.** A `TimeoutError` on the implementer dispatch is not the same as `exit code 1` from `bun test`. The former suggests retrying later; the latter suggests fixing the code. Callers that distinguish `infrastructureError` from `testsPassed === false` can route to different strategies. Without this separation, the parent agent must guess from `errorSummary` text.
