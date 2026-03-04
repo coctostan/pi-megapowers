@@ -1,7 +1,7 @@
 # Milestones
 
 > Operational tracking for milestone → issue mapping and progress.
-> Updated: 2026-03-02
+> Updated: 2026-03-03
 
 ---
 
@@ -20,31 +20,36 @@ All issues shipped: #070 (directory restructure), #043 (extract slash commands).
 |-----|-------|----------|--------|
 | ~~061~~ | ~~jj mismatch dialog frozen~~ | ~~1~~ | ✅ done |
 | 051 | UX feedback, visibility & transparency | 2 | open |
-| 073 | /mp command hub & issue management UX | 2 | open |
+| ~~073~~ | ~~/mp command hub & issue management UX~~ | ~~2~~ | ✅ done |
+| 087 | push-and-pr done action fails when not on feature branch | 2 | open |
 
-**Notes:** #051 absorbs #042. #073 absorbs #058. #061 resolved as part of jj removal (#091).
-
----
-
-## ✅ M2: Subagent Pipeline — MOSTLY COMPLETE
-
-Core pipeline shipped: #067 (workspace squash), #076 (per-task chain). One issue remains for polish:
-
-| ID  | Title | Priority | Status |
-|-----|-------|----------|--------|
-| 074 | Subagent structured handoff & rich UI | 2 | open |
-
-**Notes:** #074 absorbs #075. Pipeline-runner does implement→verify→review. This issue adds structured result format and user-facing display.
+**Notes:** #051 absorbs #042. #073 absorbs #058. #061 resolved as part of jj removal (#091). #087 is a done-phase bugfix that blocks clean wrap-up.
 
 ---
 
-## ✅ M3: Plan/Review Loop — MOSTLY COMPLETE
+## ✅ M2: Subagent Pipeline — COMPLETE
 
-Core loop shipped: #066 (iterative plan-review), #085 (wiring & API). Bugs fixed: #088/#089 via batch #090. One issue remains:
+All issues shipped via batch #086: #085 (squash fix), #074 (TUI visibility panel with onProgress, renderCall/renderResult, live step tracking).
 
 | ID  | Title | Priority | Status |
 |-----|-------|----------|--------|
+| ~~085~~ | ~~Pipeline squash fails with existing files~~ | ~~1~~ | ✅ done |
+| ~~074~~ | ~~Subagent structured handoff & rich UI~~ | ~~2~~ | ✅ done |
+
+---
+
+## M3: Plan/Review Loop
+
+**Status:** In progress (2 issues remaining)
+**Theme:** Improve plan iteration quality and context handoff between review cycles.
+
+Core loop shipped: #066 (iterative plan-review), #085 (wiring & API). Bugs fixed: #088/#089 via batch #090.
+
+| ID  | Title | Priority | Status |
+|-----|-------|----------|--------|
+| ~~082~~ | ~~Reviewer-authored revise-instructions handoff~~ | ~~1~~ | ✅ done |
 | 059 | Workflow iteration quality — context management | 2 | open |
+| 088 | Use individual task files instead of plan.md | 2 | open |
 
 ---
 
@@ -63,13 +68,14 @@ All issues shipped: #083 (comprehensive VCS integration), #091 (jj removal → g
 
 ## M5: TDD Flexibility + Issue Management
 
-**Status:** Not started (2 issues)
+**Status:** Not started (3 issues)
 **Theme:** Polish the dev workflow.
 
 | ID  | Title | Priority | Status |
 |-----|-------|----------|--------|
 | 068 | `[prompt-test]` task type | 2 | open |
 | 077 | Issue priority, archiving, list UI | 3 | open |
+| 089 | Add Zod frontmatter schemas to phase artifact files | 3 | open |
 
 ---
 
@@ -95,10 +101,10 @@ All issues shipped: #083 (comprehensive VCS integration), #091 (jj removal → g
 | Milestone | Total | Done | Remaining |
 |-----------|-------|------|-----------|
 | M0 | 2 | 2 | 0 ✅ |
-| M1 | 3 | 1 | 2 |
-| M2 | 1 | 0 | 1 |
-| M3 | 1 | 0 | 1 |
+| M1 | 4 | 2 | 2 |
+| M2 | 2 | 2 | 0 ✅ |
+| M3 | 3 | 1 | 2 |
 | M4 | 2 | 2 | 0 ✅ |
-| M5 | 2 | 0 | 2 |
+| M5 | 3 | 0 | 3 |
 | M6 | 4 | 0 | 4 |
-| **Total** | **15** | **5** | **10** |
+| **Total** | **20** | **9** | **11** |

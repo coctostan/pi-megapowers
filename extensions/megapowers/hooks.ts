@@ -142,6 +142,18 @@ export async function onAgentEnd(event: any, ctx: any, deps: Deps): Promise<void
         return;
       }
 
+      // Check whether the local feature branch still exists.
+      // If it was deleted after merging (e.g. git branch -d feat/...), the push
+      // would permanently fail with "src refspec does not match any". Skip and
+      // consume the action so close-issue can run (FC1, FC3 — BUG #087).
+      try {
+        await deps.execGit(["rev-parse", "--verify", state.branchName]);
+      } catch {
+        writeState(ctx.cwd, { ...state, doneActions: state.doneActions.filter((a) => a !== doneAction) });
+        if (ctx.hasUI) ctx.ui.notify("Feature branch not found locally — push skipped. PR may already be merged.", "info");
+        return;
+      }
+
       const baseBranch = state.baseBranch;
       const issue = store.getIssue(state.activeIssue);
       const commitPrefix = state.workflow === "bugfix" ? "fix" : "feat";
