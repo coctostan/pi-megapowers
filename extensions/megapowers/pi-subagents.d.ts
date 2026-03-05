@@ -1,36 +1,103 @@
 /**
  * Ambient module declarations for pi-subagents.
- * Provides correct types for our usage without type-checking the library's
- * source files (which have an internal AgentSource type inconsistency in v0.11.0).
+ * Shadows the library's .ts source files so TypeScript doesn't type-check them
+ * directly (pi-subagents v0.11.0 has an internal AgentSource type inconsistency).
  */
+
 declare module "pi-subagents/agents.js" {
   export type AgentSource = "builtin" | "user" | "project";
 
   export interface AgentConfig {
-    id: string;
+    name: string;
+    description: string;
+    tools?: string[];
+    mcpDirectTools?: string[];
+    model?: string;
+    thinking?: string;
+    systemPrompt: string;
+    source: AgentSource;
+    filePath: string;
+    skills?: string[];
+    extensions?: string[];
+    output?: string;
+    defaultReads?: string[];
+    defaultProgress?: boolean;
+    interactive?: boolean;
+    extraFields?: Record<string, string>;
+  }
+
+  export interface ChainConfig {
     name: string;
     description: string;
     source: AgentSource;
-    file: string;
+    filePath: string;
+    steps: unknown[];
+    extraFields?: Record<string, string>;
   }
 
   export interface AgentDiscoveryResult {
     agents: AgentConfig[];
-    chains: unknown[];
+    projectAgentsDir: string | null;
   }
 
   export function discoverAgents(cwd: string, scope: unknown): AgentDiscoveryResult;
-  export function discoverAgentsAll(cwd: string): {
-    builtin: AgentConfig[];
-    user: AgentConfig[];
-    project: AgentConfig[];
-  };
 }
 
 declare module "pi-subagents/execution.js" {
+  import type { AgentConfig } from "pi-subagents/agents.js";
+  import type { RunSyncOptions, SingleResult } from "pi-subagents/types.js";
+
   export function runSync(
-    cwd: string,
-    agent: string,
-    args: unknown,
-  ): Promise<{ stdout: string; stderr: string; exitCode: number }>;
+    runtimeCwd: string,
+    agents: AgentConfig[],
+    agentName: string,
+    task: string,
+    options: RunSyncOptions,
+  ): Promise<SingleResult>;
+}
+
+declare module "pi-subagents/types.js" {
+  export interface Message {
+    role: string;
+    content: unknown;
+  }
+
+  export interface Usage {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+  }
+
+  export interface SingleResult {
+    agent: string;
+    task: string;
+    exitCode: number;
+    messages: Message[];
+    usage: Usage;
+    model?: string;
+    error?: string;
+    sessionFile?: string;
+    skills?: string[];
+    skillsWarning?: string;
+    progress?: unknown;
+    progressSummary?: unknown;
+    artifactPaths?: unknown;
+    truncation?: unknown;
+  }
+
+  export interface RunSyncOptions {
+    cwd?: string;
+    signal?: AbortSignal;
+    onUpdate?: (r: unknown) => void;
+    maxOutput?: unknown;
+    artifactsDir?: string;
+    artifactConfig?: unknown;
+    runId: string;
+    index?: number;
+    sessionDir?: string;
+    share?: boolean;
+    modelOverride?: string;
+    skills?: string[];
+  }
 }
