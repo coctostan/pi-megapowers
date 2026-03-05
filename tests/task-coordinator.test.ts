@@ -8,9 +8,9 @@ import {
 
 describe("dead exports", () => {
   it("does not export deprecated task change helpers", () => {
-    expect(taskCoordinator.shouldCreateTaskChange).toBeUndefined();
-    expect(taskCoordinator.abandonTaskChange).toBeUndefined();
-    expect(taskCoordinator.squashTaskChanges).toBeUndefined();
+    expect((taskCoordinator as any).shouldCreateTaskChange).toBeUndefined();
+    expect((taskCoordinator as any).abandonTaskChange).toBeUndefined();
+    expect((taskCoordinator as any).squashTaskChanges).toBeUndefined();
   });
 });
 

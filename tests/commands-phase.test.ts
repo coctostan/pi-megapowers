@@ -5,10 +5,10 @@ import { tmpdir } from "node:os";
 import { join as joinPath } from "node:path";
 import { handlePhaseCommand } from "../extensions/megapowers/commands.js";
 import { writeState, readState } from "../extensions/megapowers/state/state-io.js";
-import { createInitialState } from "../extensions/megapowers/state/state-machine.js";
+import { createInitialState, type WorkflowType } from "../extensions/megapowers/state/state-machine.js";
 import { writePlanTask } from "../extensions/megapowers/state/plan-store.js";
 
-function seed(tmp: string, phase: any, workflow = "feature") {
+function seed(tmp: string, phase: any, workflow: WorkflowType = "feature") {
   writeState(tmp, {
     ...createInitialState(),
     activeIssue: "001-test",
