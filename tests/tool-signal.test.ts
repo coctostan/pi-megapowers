@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { handleSignal } from "../extensions/megapowers/tools/tool-signal.js";
 import { readState, writeState } from "../extensions/megapowers/state/state-io.js";
+import { createStore } from "../extensions/megapowers/state/store.js";
 import { createInitialState, type MegapowersState } from "../extensions/megapowers/state/state-machine.js";
 
 function setState(tmp: string, overrides: Partial<MegapowersState>) {
@@ -169,6 +170,20 @@ describe("handleSignal", () => {
       expect(state.completedTasks).toContain(1);
     });
 
+    it("returns triggerNewSession when auto-advancing to verify (all tasks complete)", () => {
+      writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: Only task\n");
+      setState(tmp, {
+        phase: "implement",
+        currentTaskIndex: 0,
+        completedTasks: [],
+        tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
+      });
+      const result = handleSignal(tmp, "task_done");
+      expect(result.error).toBeUndefined();
+      expect(result.message).toContain("verify");
+      expect(result.triggerNewSession).toBe(true);
+    });
+
     it("resets tddTaskState for next task", () => {
       writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n");
       setState(tmp, {
@@ -196,6 +211,19 @@ describe("handleSignal", () => {
       const state = readState(tmp);
       expect(state.completedTasks).toEqual(expect.arrayContaining([1, 2]));
       expect(state.currentTaskIndex).toBe(2); // Skipped Task 2 (already done), landed on Task 3
+    });
+
+    it("returns triggerNewSession when advancing to next task", () => {
+      writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n\n### Task 3: C\n");
+      setState(tmp, {
+        phase: "implement",
+        currentTaskIndex: 0,
+        completedTasks: [],
+        tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
+      });
+      const result = handleSignal(tmp, "task_done");
+      expect(result.error).toBeUndefined();
+      expect(result.triggerNewSession).toBe(true);
     });
   });
 
@@ -334,6 +362,13 @@ describe("handleSignal", () => {
       expect(result.error).toBeUndefined();
       expect(readState(tmp).phase).toBe("implement");
     });
+
+    it("returns triggerNewSession on successful phase advance", () => {
+      setState(tmp, { phase: "brainstorm" });
+      const result = handleSignal(tmp, "phase_next");
+      expect(result.error).toBeUndefined();
+      expect(result.triggerNewSession).toBe(true);
+    });
   });
 
   describe("phase_back", () => {
@@ -371,6 +406,13 @@ describe("handleSignal", () => {
       expect(result.error).toBeUndefined();
       expect(result.message).toContain("implement");
       expect(readState(tmp).phase).toBe("implement");
+    });
+
+    it("returns triggerNewSession on successful backward transition", () => {
+      setState(tmp, { phase: "verify" });
+      const result = handleSignal(tmp, "phase_back");
+      expect(result.error).toBeUndefined();
+      expect(result.triggerNewSession).toBe(true);
     });
     it("transitions code-review → implement (AC4)", () => {
       setState(tmp, { phase: "code-review" });
@@ -653,6 +695,90 @@ describe("handleSignal", () => {
       expect(source).toContain("handleSignal(ctx.cwd, params.action, params.target)");
       expect(source).not.toContain("handleSignal(ctx.cwd, params.action, jj");
     });
+
+    it("megapowers_signal schema includes close_issue action", () => {
+      const source = readFileSync(join(process.cwd(), "extensions/megapowers/register-tools.ts"), "utf8");
+      expect(source).toContain('Type.Literal("close_issue")');
+    });
+
+    it("megapowers-protocol.md documents close_issue signal", () => {
+      const source = readFileSync(join(process.cwd(), "prompts/megapowers-protocol.md"), "utf8");
+      expect(source).toContain("close_issue");
+    });
+  });
+
+  describe("close_issue signal", () => {
+    function makeIssueFile(cwd: string, slug: string, id: number, status = "in-progress") {
+      const issuesDir = join(cwd, ".megapowers", "issues");
+      mkdirSync(issuesDir, { recursive: true });
+      writeFileSync(
+        join(issuesDir, `${slug}.md`),
+        `---\nid: ${id}\ntype: feature\nstatus: ${status}\ncreated: 2026-01-01T00:00:00.000Z\n---\n# Test Issue ${id}\nDescription`,
+      );
+    }
+
+    it("marks issue as done and resets state when in done phase", () => {
+      makeIssueFile(tmp, "001-test", 1);
+      setState(tmp, { phase: "done", doneActions: ["close-issue"] });
+
+      const result = handleSignal(tmp, "close_issue");
+
+      expect(result.error).toBeUndefined();
+      expect(result.message).toContain("done");
+
+      const state = readState(tmp);
+      expect(state.activeIssue).toBeNull();
+      expect(state.phase).toBeNull();
+
+      const store = createStore(tmp);
+      expect(store.getIssue("001-test")?.status).toBe("done");
+    });
+
+    it("preserves megaEnabled across state reset", () => {
+      makeIssueFile(tmp, "001-test", 1);
+      setState(tmp, { phase: "done", megaEnabled: true });
+      handleSignal(tmp, "close_issue");
+      expect(readState(tmp).megaEnabled).toBe(true);
+    });
+
+    it("returns error when not in done phase", () => {
+      setState(tmp, { phase: "implement" });
+      const result = handleSignal(tmp, "close_issue");
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain("done phase");
+    });
+
+    it("closes source issues before the batch issue (batch auto-close)", () => {
+      const issuesDir = join(tmp, ".megapowers", "issues");
+      mkdirSync(issuesDir, { recursive: true });
+      writeFileSync(
+        join(issuesDir, "010-source-a.md"),
+        "---\nid: 10\ntype: feature\nstatus: in-progress\ncreated: 2026-01-01T00:00:00.000Z\n---\n# Source A\nDesc",
+      );
+      writeFileSync(
+        join(issuesDir, "011-source-b.md"),
+        "---\nid: 11\ntype: feature\nstatus: in-progress\ncreated: 2026-01-01T00:00:00.000Z\n---\n# Source B\nDesc",
+      );
+      writeFileSync(
+        join(issuesDir, "020-batch.md"),
+        "---\nid: 20\ntype: feature\nstatus: in-progress\ncreated: 2026-01-01T00:00:00.000Z\nsources: [10, 11]\n---\n# Batch\nCombined",
+      );
+
+      setState(tmp, { activeIssue: "020-batch", phase: "done" });
+
+      const result = handleSignal(tmp, "close_issue");
+
+      expect(result.error).toBeUndefined();
+      expect(result.message).toContain("2 source issues");
+
+      const store = createStore(tmp);
+      expect(store.getIssue("010-source-a")?.status).toBe("done");
+      expect(store.getIssue("011-source-b")?.status).toBe("done");
+      expect(store.getIssue("020-batch")?.status).toBe("done");
+
+      const state = readState(tmp);
+      expect(state.activeIssue).toBeNull();
+    });
   });
 
   // ======================================================================
@@ -664,6 +790,77 @@ describe("handleSignal", () => {
       setState(tmp, { phase: "brainstorm" });
       const result = handleSignal(tmp, "unknown" as any);
       expect(result.error).toBeDefined();
+    });
+  });
+
+  describe("triggerNewSession — error cases", () => {
+    it("does NOT return triggerNewSession when phase_next fails", () => {
+      setState(tmp, { phase: "spec" }); // spec.md missing — gate will fail
+      const result = handleSignal(tmp, "phase_next");
+      expect(result.error).toBeDefined();
+      expect(result.triggerNewSession).toBeUndefined();
+    });
+
+    it("does NOT return triggerNewSession when phase_back fails", () => {
+      setState(tmp, { phase: "brainstorm" }); // no backward transition
+      const result = handleSignal(tmp, "phase_back");
+      expect(result.error).toBeDefined();
+      expect(result.triggerNewSession).toBeUndefined();
+    });
+
+    it("does NOT return triggerNewSession when task_done fails", () => {
+      setState(tmp, {
+        phase: "implement",
+        currentTaskIndex: 0,
+        completedTasks: [],
+        tddTaskState: null, // Will fail TDD check
+      });
+      writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: Build\n");
+      const result = handleSignal(tmp, "task_done");
+      expect(result.error).toBeDefined();
+      expect(result.triggerNewSession).toBeUndefined();
+    });
+
+    it("does NOT return triggerNewSession when plan_draft_done fails", () => {
+      setState(tmp, { phase: "implement", planMode: null });
+      const result = handleSignal(tmp, "plan_draft_done");
+      expect(result.error).toBeDefined();
+      expect(result.triggerNewSession).toBeUndefined();
+    });
+  });
+
+  describe("triggerNewSession — non-transition actions", () => {
+    it("does NOT return triggerNewSession for tests_failed", () => {
+      setState(tmp, {
+        phase: "implement",
+        tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
+      });
+      const result = handleSignal(tmp, "tests_failed");
+      expect(result.error).toBeUndefined();
+      expect(result.triggerNewSession).toBeUndefined();
+    });
+
+    it("does NOT return triggerNewSession for tests_passed", () => {
+      setState(tmp, {
+        phase: "implement",
+        tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
+      });
+      const result = handleSignal(tmp, "tests_passed");
+      expect(result.error).toBeUndefined();
+      expect(result.triggerNewSession).toBeUndefined();
+    });
+
+    it("does NOT return triggerNewSession for close_issue", () => {
+      const issuesDir = join(tmp, ".megapowers", "issues");
+      mkdirSync(issuesDir, { recursive: true });
+      writeFileSync(
+        join(issuesDir, "001-test.md"),
+        "---\nid: 1\ntype: feature\nstatus: in-progress\ncreated: 2026-01-01T00:00:00.000Z\n---\n# Test\nDesc",
+      );
+      setState(tmp, { phase: "done" });
+      const result = handleSignal(tmp, "close_issue");
+      expect(result.error).toBeUndefined();
+      expect(result.triggerNewSession).toBeUndefined();
     });
   });
 });

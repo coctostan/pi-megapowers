@@ -215,6 +215,19 @@ describe("handlePlanReview — approve verdict", () => {
     expect(result.message).toContain("2");
     expect(result.message).toContain("implement");
   });
+
+  it("returns triggerNewSession on approve", () => {
+    setState(tmp, { phase: "plan", planMode: "review", planIteration: 1 });
+    createTaskFile(tmp, 1, "T1");
+
+    const result = handlePlanReview(tmp, {
+      verdict: "approve",
+      feedback: "All good.",
+      approved_tasks: [1],
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.triggerNewSession).toBe(true);
+  });
 });
 
 

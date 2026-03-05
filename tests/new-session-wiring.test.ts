@@ -98,9 +98,98 @@ describe("newSession wiring", () => {
     }
   });
 
-  it("uses a type-safe any-cast for sessionManager newSession access", () => {
+  it("megapowers_signal(phase_next) starts a new session on successful transition", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "new-session-phase-next-"));
+    try {
+      setState(tmp, { phase: "brainstorm" });
+
+      const tools: Record<string, any> = {};
+      const pi = {
+        registerTool: (tool: any) => {
+          tools[tool.name] = tool;
+        },
+        exec: async () => ({ code: 1, stdout: "", stderr: "" }),
+      } as any;
+
+      registerTools(pi, {} as any);
+
+      const sessionManager = makeSessionManager();
+      const ctx = { cwd: tmp, hasUI: false, sessionManager } as any;
+
+      await tools.megapowers_signal.execute("1", { action: "phase_next" }, undefined, undefined, ctx);
+
+      expect(sessionManager.newSessionCalls).toBe(1);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("megapowers_signal(task_done) starts a new session when advancing to next task", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "new-session-task-done-"));
+    try {
+      setState(tmp, {
+        phase: "implement",
+        currentTaskIndex: 0,
+        completedTasks: [],
+        tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
+      });
+      const planDir = join(tmp, ".megapowers", "plans", "001-test");
+      mkdirSync(planDir, { recursive: true });
+      writeFileSync(join(planDir, "plan.md"), "# Plan\n\n### Task 1: A\n\n### Task 2: B\n");
+
+      const tools: Record<string, any> = {};
+      const pi = {
+        registerTool: (tool: any) => {
+          tools[tool.name] = tool;
+        },
+        exec: async () => ({ code: 1, stdout: "", stderr: "" }),
+      } as any;
+
+      registerTools(pi, {} as any);
+
+      const sessionManager = makeSessionManager();
+      const ctx = { cwd: tmp, hasUI: false, sessionManager } as any;
+
+      await tools.megapowers_signal.execute("1", { action: "task_done" }, undefined, undefined, ctx);
+
+      expect(sessionManager.newSessionCalls).toBe(1);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("megapowers_signal does NOT call newSession on error", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "new-session-error-"));
+    try {
+      setState(tmp, { phase: "spec" });
+
+      const tools: Record<string, any> = {};
+      const pi = {
+        registerTool: (tool: any) => {
+          tools[tool.name] = tool;
+        },
+        exec: async () => ({ code: 1, stdout: "", stderr: "" }),
+      } as any;
+
+      registerTools(pi, {} as any);
+
+      const sessionManager = makeSessionManager();
+      const ctx = { cwd: tmp, hasUI: false, sessionManager } as any;
+
+      await tools.megapowers_signal.execute("1", { action: "phase_next" }, undefined, undefined, ctx);
+
+      expect(sessionManager.newSessionCalls).toBe(0);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("calls newSession via sessionManager cast without parentSession arg", () => {
     const source = readFileSync(join(process.cwd(), "extensions/megapowers/register-tools.ts"), "utf8");
-    expect(source).not.toContain("ctx.sessionManager?.newSession?.(");
-    expect(source).toContain("(ctx.sessionManager as any)?.newSession?.(");
+    // Should use the simplified cast pattern
+    expect(source).toContain("(ctx.sessionManager as any)?.newSession?.()");
+    // Should NOT use the old pattern with parentSession
+    expect(source).not.toContain("parentSession");
+    expect(source).not.toContain("getSessionFile");
   });
 });

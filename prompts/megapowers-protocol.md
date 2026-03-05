@@ -10,6 +10,7 @@ Call this for workflow/TDD signals:
 - `{ action: "tests_failed" }` — Record RED in TDD (unlocks production writes)
 - `{ action: "tests_passed" }` — Record GREEN in TDD
 - `{ action: "plan_draft_done" }` — Submit plan draft/revision for review (plan mode: draft/revise → review)
+- `{ action: "close_issue" }` — Mark the active issue as done and reset state (done phase only — call after all wrap-up actions are complete)
 
 Do **not** use `{ action: "review_approve" }` (deprecated).
 

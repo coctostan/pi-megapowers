@@ -244,6 +244,34 @@ describe("done phase — doneActions prompt injection (AC16, AC17)", () => {
     expect(result).toContain("close-issue");
     expect(result!.length).toBeGreaterThan(200);
   });
+
+  it("includes branch_name and base_branch in done phase prompt when set", () => {
+    setState(tmp, {
+      phase: "done",
+      megaEnabled: true,
+      doneActions: ["push-and-pr", "close-issue"],
+      branchName: "feat/091-test-branch",
+      baseBranch: "main",
+    });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).not.toBeNull();
+    expect(result).toContain("feat/091-test-branch");
+    expect(result).toContain("main");
+  });
+
+  it("does not leave raw branch template vars when branch/base are null", () => {
+    setState(tmp, {
+      phase: "done",
+      megaEnabled: true,
+      doneActions: ["close-issue"],
+      branchName: null,
+      baseBranch: null,
+    });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).not.toBeNull();
+    expect(result).not.toContain("{{branch_name}}");
+    expect(result).not.toContain("{{base_branch}}");
+  });
 });
 
 describe("buildInjectedPrompt — idle mode", () => {

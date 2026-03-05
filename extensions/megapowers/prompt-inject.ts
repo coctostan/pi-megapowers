@@ -127,10 +127,15 @@ export function buildInjectedPrompt(cwd: string, store?: Store): string | null {
     vars.roadmap = store.readRoadmap();
   }
 
-  // Done phase learnings
-  if (state.phase === "done" && store) {
-    vars.learnings = store.getLearnings();
+  // Done phase: learnings + VCS context for LLM-driven push
+  if (state.phase === "done") {
+    if (store) {
+      vars.learnings = store.getLearnings();
+    }
     if (!vars.files_changed) vars.files_changed = "";
+    // IMPORTANT: always set these so interpolatePrompt does not leave raw {{...}} markers
+    vars.branch_name = state.branchName ?? "";
+    vars.base_branch = state.baseBranch ?? "";
   }
 
   // Plan phase: inject plan_iteration and revise_instructions (AC1-4)
