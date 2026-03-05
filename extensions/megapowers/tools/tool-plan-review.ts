@@ -126,6 +126,7 @@ function handleApproveVerdict(
       `  ✅ All ${tasks.length} tasks approved\n` +
       "  → Generated plan.md for downstream consumers\n" +
       "  → Advancing to implement phase",
+    triggerNewSession: true,
   };
 }
 

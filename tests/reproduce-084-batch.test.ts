@@ -130,35 +130,6 @@ describe("#081 — close-issue not executed when no TUI (prompt-driven path)", (
     expect(prompt).toContain("close-issue");
   });
 
-  it("CONTROL: onAgentEnd DOES close issue when doneActions contains close-issue", async () => {
-    // The TUI path works correctly
-    setupIssue(tmp);
-    setState(tmp, { phase: "done", doneActions: ["close-issue"] });
-
-    const statusUpdates: { slug: string; status: string }[] = [];
-    const deps = {
-      store: {
-        ...makeStore(tmp),
-        updateIssueStatus: (slug: string, status: string) => {
-          statusUpdates.push({ slug, status });
-        },
-        getSourceIssues: () => [],
-      },
-      ui: { renderDashboard: () => {} },
-    };
-
-    await onAgentEnd(
-      makeAgentEndEvent("done"),
-      { ...makeCtx(tmp, true), ui: { notify: () => {} } },
-      deps as any,
-    );
-
-    // close-issue WAS executed — issue status updated
-    expect(statusUpdates).toEqual([{ slug: "001-test", status: "done" }]);
-    // State was reset
-    const state = readState(tmp);
-    expect(state.activeIssue).toBeNull();
-  });
 
   it("CONTROL: buildInjectedPrompt injects done template when doneActions is populated", () => {
     setState(tmp, {

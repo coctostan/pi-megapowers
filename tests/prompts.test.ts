@@ -108,9 +108,9 @@ describe("getPhasePromptTemplate — new templates", () => {
 describe("buildImplementTaskVars", () => {
   it("builds vars for current task", () => {
     const tasks: PlanTask[] = [
-      { index: 1, description: "Set up DB schema", completed: true },
-      { index: 2, description: "Create API endpoint", completed: false },
-      { index: 3, description: "Write integration tests", completed: false },
+      { index: 1, description: "Set up DB schema", completed: true, noTest: false },
+      { index: 2, description: "Create API endpoint", completed: false, noTest: false },
+      { index: 3, description: "Write integration tests", completed: false, noTest: false },
     ];
     const vars = buildImplementTaskVars(tasks, 1);
     expect(vars.current_task_index).toBe("2");
@@ -122,7 +122,7 @@ describe("buildImplementTaskVars", () => {
 
   it("handles first task with no previous", () => {
     const tasks: PlanTask[] = [
-      { index: 1, description: "First task", completed: false },
+      { index: 1, description: "First task", completed: false, noTest: false },
     ];
     const vars = buildImplementTaskVars(tasks, 0);
     expect(vars.current_task_index).toBe("1");
@@ -132,9 +132,9 @@ describe("buildImplementTaskVars", () => {
 
   it("handles all tasks complete — provides summary instead of task vars", () => {
     const tasks: PlanTask[] = [
-      { index: 1, description: "Set up DB schema", completed: true },
-      { index: 2, description: "Create API endpoint", completed: true },
-      { index: 3, description: "Write integration tests", completed: true },
+      { index: 1, description: "Set up DB schema", completed: true, noTest: false },
+      { index: 2, description: "Create API endpoint", completed: true, noTest: false },
+      { index: 3, description: "Write integration tests", completed: true, noTest: false },
     ];
     const vars = buildImplementTaskVars(tasks, 3);
     expect(vars.current_task_description).toContain("All tasks complete");
@@ -148,16 +148,16 @@ describe("buildImplementTaskVars", () => {
 describe("allTasksComplete", () => {
   it("returns true when all tasks are completed", () => {
     const tasks: PlanTask[] = [
-      { index: 1, description: "A", completed: true },
-      { index: 2, description: "B", completed: true },
+      { index: 1, description: "A", completed: true, noTest: false },
+      { index: 2, description: "B", completed: true, noTest: false },
     ];
     expect(allTasksComplete(tasks)).toBe(true);
   });
 
   it("returns false when some tasks are incomplete", () => {
     const tasks: PlanTask[] = [
-      { index: 1, description: "A", completed: true },
-      { index: 2, description: "B", completed: false },
+      { index: 1, description: "A", completed: true, noTest: false },
+      { index: 2, description: "B", completed: false, noTest: false },
     ];
     expect(allTasksComplete(tasks)).toBe(false);
   });

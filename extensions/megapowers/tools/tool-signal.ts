@@ -4,8 +4,9 @@ import { readState, writeState } from "../state/state-io.js";
 import { listPlanTasks } from "../state/plan-store.js";
 import { advancePhase } from "../policy/phase-advance.js";
 import { deriveTasks } from "../state/derived.js";
-import { transition, type Phase } from "../state/state-machine.js";
+import { transition, createInitialState, type Phase } from "../state/state-machine.js";
 import { getWorkflowConfig } from "../workflows/registry.js";
+import { createStore } from "../state/store.js";
 import { versionArtifact } from "../artifacts/version-artifact.js";
 
 export interface SignalResult {
@@ -24,6 +25,7 @@ export function handleSignal(
     | "tests_failed"
     | "tests_passed"
     | "plan_draft_done"
+    | "close_issue"
     | string,
   target?: string,
 ): SignalResult {
@@ -48,6 +50,8 @@ export function handleSignal(
       return handleTestsPassed(cwd);
     case "plan_draft_done":
       return handlePlanDraftDone(cwd);
+    case "close_issue":
+      return handleCloseIssue(cwd);
     default:
       return { error: `Unknown signal action: ${String(action)}` };
   }
@@ -138,6 +142,7 @@ function handleTaskDone(cwd: string): SignalResult {
     writeState(cwd, newState);
     return {
       message: `Task ${currentTask.index} (${currentTask.description}) marked complete. All ${tasks.length} tasks done! Phase advanced to verify. Begin verification.`,
+      triggerNewSession: true,
     };
   }
 
@@ -155,6 +160,7 @@ function handleTaskDone(cwd: string): SignalResult {
   const remaining = tasks.length - completedTasks.length;
   return {
     message: `Task ${currentTask.index} (${currentTask.description}) marked complete. ${remaining} task${remaining === 1 ? "" : "s"} remaining. Next: Task ${nextTask.index}: ${nextTask.description}`,
+    triggerNewSession: true,
   };
 }
 
@@ -249,6 +255,7 @@ function handlePhaseNext(cwd: string, target?: string): SignalResult {
   }
   return {
     message: `Phase advanced to ${result.newPhase}. Proceed with ${result.newPhase} phase work.`,
+    triggerNewSession: true,
   };
 }
 
@@ -297,5 +304,31 @@ function handlePhaseBack(cwd: string): SignalResult {
 
   return {
     message: `Phase moved back to ${result.newPhase}. Rework needed — continue with the ${result.newPhase} phase.`,
+    triggerNewSession: true,
   };
+}
+
+// ---------------------------------------------------------------------------
+// close_issue
+// ---------------------------------------------------------------------------
+
+function handleCloseIssue(cwd: string): SignalResult {
+  const state = readState(cwd);
+
+  if (!state.activeIssue || state.phase !== "done") {
+    return { error: "close_issue can only be called during the done phase." };
+  }
+
+  const store = createStore(cwd);
+  // Batch auto-close: close source issues first (before the batch issue)
+  const sources = store.getSourceIssues(state.activeIssue);
+  for (const source of sources) {
+    store.updateIssueStatus(source.slug, "done");
+  }
+
+  // Close the active issue
+  store.updateIssueStatus(state.activeIssue, "done");
+  writeState(cwd, { ...createInitialState(), megaEnabled: state.megaEnabled });
+  const sourceInfo = sources.length > 0 ? ` (+ ${sources.length} source issues)` : "";
+  return { message: `Issue ${state.activeIssue} marked as done${sourceInfo}.` };
 }

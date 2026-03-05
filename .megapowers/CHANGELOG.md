@@ -1,9 +1,11 @@
 
 ## [Unreleased]
 ### Added
+- Every workflow phase/task transition (`phase_next`, `phase_back`, `task_done`, `plan_draft_done`, `plan_review`) now triggers a fresh session via `megapowers_signal`, giving the agent a clean context window at each phase boundary; the old broken `parentSession` argument is removed (#080)
 - `pipeline` tool now renders live step-by-step progress in the TUI (implement → verify → review) with per-step timing, usage stats (tokens, cost, model), and a persistent collapsed/expanded result panel after completion; replaced silent-run-then-JSON-blob behavior with `renderCall`, `renderResult`, and `onUpdate` partial streaming (#074)
 ### Fixed
 - Fix done-phase deadlock: `capture-learnings` and `write-changelog` doneActions never consumed due to `text.length > 100` guard; added unconditional handler for `capture-learnings`, lowered content-capture guard to `text.length > 0` (#090)
+- Redesigned done-phase action execution: LLM now executes all wrap-up actions in a single turn via its own tools (`write`, `edit`, `bash`) then calls `megapowers_signal({ action: "close_issue" })` — eliminates N-message loop, push-and-pr deadlock, and text-scraping deadlock that caused #081, #084, #087, #090 (#091)
 - Pipeline squash no longer fails when prior-task files exist uncommitted in the main working directory; `createPipelineWorkspace` now makes a temporary commit before creating the worktree so the worktree sees all uncommitted additions, then resets it so the main WD is unchanged (#085, #086)
 - `squashPipelineWorkspace` replaced `git diff | git apply` with direct `copyFileSync`/`unlinkSync` — cannot fail on "already exists in working directory" (#085, #086)
 

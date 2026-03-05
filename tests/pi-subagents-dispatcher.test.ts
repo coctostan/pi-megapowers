@@ -20,7 +20,7 @@ describe("PiSubagentsDispatcher", () => {
         task,
         exitCode: 0,
         messages: [],
-        usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 1 },
+        usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0 },
       };
     };
 

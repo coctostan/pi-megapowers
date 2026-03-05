@@ -179,8 +179,8 @@ describe("Issue #089: deriveTasks ignores task files", () => {
     const slug = "001-test";
     const planDir = join(tmp, ".megapowers", "plans", slug);
     mkdirSync(planDir, { recursive: true });
-    const task1: PlanTask = { id: 1, title: "Set up schema", status: "approved" };
-    const task2: PlanTask = { id: 2, title: "Build API", status: "approved" };
+    const task1: PlanTask = { id: 1, title: "Set up schema", status: "approved", depends_on: [], no_test: false, files_to_modify: [], files_to_create: [] };
+    const task2: PlanTask = { id: 2, title: "Build API", status: "approved", depends_on: [], no_test: false, files_to_modify: [], files_to_create: [] };
     writePlanTask(tmp, slug, task1, "Create tables for users and roles.");
     writePlanTask(tmp, slug, task2, "Build REST endpoints.");
     writeFileSync(join(planDir, "plan.md"), "# Plan\nSee task files.\n");

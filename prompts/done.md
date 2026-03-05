@@ -1,4 +1,4 @@
-You are executing wrap-up actions for a completed issue. Execute each selected action in order.
+You are executing wrap-up actions for a completed issue. Execute ALL selected actions in a SINGLE turn using your tools, then close the issue.
 
 > **Workflow:** ... → verify → code-review → **done**
 
@@ -19,43 +19,64 @@ Issue: {{issue_slug}}
 
 ## Selected Wrap-up Actions
 
-Execute the following wrap-up actions in order:
+Execute the following wrap-up actions in order using your tools:
 
 {{done_actions_list}}
 
 ## Action Instructions
 
-For each action listed above:
+For each action listed above, execute it directly using your tools:
 
 ### generate-docs
-Generate a feature document summarizing what was built and why. Use the spec, plan, and verify artifacts, and inspect actual changed files via `git diff` when needed. Present the full document in your response; the system persists it to `.megapowers/docs/{{issue_slug}}.md`.
+Generate a feature document summarizing what was built and why. Use the spec, plan, and verify artifacts. Inspect actual changed files via `bash("git diff --stat")` when needed.
+Write the document directly:
+```
+write({ path: ".megapowers/docs/{{issue_slug}}.md", content: "<feature document>" })
+```
 
 ### generate-bugfix-summary
-Generate a bugfix summary document including root cause, fix approach, files changed, and how to verify the fix. Present the full summary in your response; the system persists it to `.megapowers/docs/{{issue_slug}}.md`.
+Generate a bugfix summary document including root cause, fix approach, files changed, and how to verify the fix.
+Write it directly:
+```
+write({ path: ".megapowers/docs/{{issue_slug}}.md", content: "<bugfix summary>" })
+```
 
 ### write-changelog
-Generate a changelog entry intended for `.megapowers/CHANGELOG.md`. Format:
+Generate a changelog entry and append it directly:
 ```
-## [Unreleased]
-### <Added|Fixed|Changed>
-- <description> (#<issue-number>)
+edit({ path: ".megapowers/CHANGELOG.md", edits: [{ insert_after: { anchor: "<last-line-anchor>", new_text: "\n## [Unreleased]\n### <Added|Fixed|Changed>\n- <description> (#<issue-number>)\n" } }] })
 ```
-Return only the entry block; the system appends it automatically.
+Or if the file doesn't exist:
+```
+write({ path: ".megapowers/CHANGELOG.md", content: "## [Unreleased]\n### <Added|Fixed|Changed>\n- <description> (#<issue-number>)\n" })
+```
 
 ### capture-learnings
-Reflect on the implementation: what was learned, what was surprising, what to do differently. Write 3–7 bullet-point learnings to `.megapowers/plans/{{issue_slug}}/learnings.md`:
+Reflect on the implementation: what was learned, what was surprising, what to do differently. Write 3–7 bullet-point learnings directly:
 ```
 write({ path: ".megapowers/plans/{{issue_slug}}/learnings.md", content: "<markdown bullet list>" })
 ```
-(Use `edit` for incremental revisions.)
 
-### squash-task-changes
-Consolidate per-task changes into the phase-level history using the project's automatic VCS flow. Do not run manual VCS commands.
+### push-and-pr
+Push the feature branch and create a PR using bash:
+```
+bash("git push origin {{branch_name}}")
+bash("gh pr create --base {{base_branch}} --head {{branch_name}} --title '<issue title>' --body 'Resolves {{issue_slug}}'")
+```
+If `{{branch_name}}` is empty or the push fails, report the error and move on — do not block other actions.
+If `gh` is not available, skip PR creation and inform the user.
+After a successful push+PR (or after any push/PR errors), continue to the next action.
 
 ### close-issue
-All other actions are complete. Report the full list of completed wrap-up actions to the user. Inform them the issue is ready to close — they can run `/issue close` or select a new issue to continue.
+All other actions are complete. Call the close_issue signal to mark the issue as done:
+```
+megapowers_signal({ action: "close_issue" })
+```
+This resets the workflow state. Do NOT call phase_next — use close_issue.
 
 ---
+
+**Important:** Execute ALL actions listed above in THIS turn. Do not wait for user messages between actions. After completing all actions, the final action should always be calling `megapowers_signal({ action: "close_issue" })`.
 
 Only execute the actions listed in **Selected Wrap-up Actions**. Skip any action not in that list.
 

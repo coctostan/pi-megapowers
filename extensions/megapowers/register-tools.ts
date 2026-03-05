@@ -21,7 +21,7 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
   pi.registerTool({
     name: "megapowers_signal",
     label: "Megapowers Signal",
-    description: "Signal a megapowers state transition. Actions: task_done (mark current implement task complete), plan_draft_done (signal draft is complete — transitions planMode from draft/revise to review and starts a new session), phase_next (advance to the next workflow phase), phase_back (go back one phase — e.g. verify→implement, code-review→implement; errors if no backward transition exists), tests_failed (mark RED after a failing test run), tests_passed (acknowledge GREEN after a passing test run). Note: review_approve is deprecated — use the megapowers_plan_review tool instead.",
+    description: "Signal a megapowers state transition. Actions: task_done (mark current implement task complete), plan_draft_done (signal draft is complete — transitions planMode from draft/revise to review and starts a new session), phase_next (advance to the next workflow phase), phase_back (go back one phase — e.g. verify→implement, code-review→implement; errors if no backward transition exists), tests_failed (mark RED after a failing test run), tests_passed (acknowledge GREEN after a passing test run), close_issue (mark issue as done, reset state — done phase only). Note: review_approve is deprecated — use the megapowers_plan_review tool instead.",
     parameters: Type.Object({
       action: Type.Union([
         Type.Literal("task_done"),
@@ -31,6 +31,7 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
         Type.Literal("tests_failed"),
         Type.Literal("tests_passed"),
         Type.Literal("plan_draft_done"),
+        Type.Literal("close_issue"),
       ]),
       target: Type.Optional(Type.String({ description: "Target phase for phase_next (enables backward transitions)" })),
     }),
@@ -41,8 +42,7 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
         return { content: [{ type: "text", text: `Error: ${result.error}` }], details: undefined };
       }
       if (result.triggerNewSession) {
-        const parent = ctx.sessionManager?.getSessionFile?.();
-        (ctx.sessionManager as any)?.newSession?.({ parentSession: parent ?? undefined });
+        (ctx.sessionManager as any)?.newSession?.();
       }
 
 
@@ -95,8 +95,7 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
         return { content: [{ type: "text", text: `Error: ${result.error}` }], details: undefined };
       }
       if (result.triggerNewSession) {
-        const parent = ctx.sessionManager?.getSessionFile?.();
-        (ctx.sessionManager as any)?.newSession?.({ parentSession: parent ?? undefined });
+        (ctx.sessionManager as any)?.newSession?.();
       }
 
       return { content: [{ type: "text", text: result.message ?? "OK" }], details: undefined };

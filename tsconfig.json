@@ -9,7 +9,10 @@
     "outDir": "dist",
     "rootDir": ".",
     "declaration": true,
-    "types": ["bun-types"]
+    "types": ["bun-types"],
+    "paths": {
+      "pi-subagents/*.js": ["./extensions/megapowers/pi-subagents.d.ts"]
+    }
   },
   "include": ["extensions/**/*.ts", "tests/**/*.ts"],
   "exclude": ["node_modules", "dist"]
