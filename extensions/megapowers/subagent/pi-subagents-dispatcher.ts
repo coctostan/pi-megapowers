@@ -56,7 +56,7 @@ export class PiSubagentsDispatcher implements Dispatcher {
 
       return {
         exitCode: result.exitCode,
-        messages: result.messages,
+        messages: result.messages as DispatchResult["messages"],
         filesChanged: [],
         testsPassed: null,
         error: (result as any).error,
