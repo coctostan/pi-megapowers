@@ -57,16 +57,20 @@ declare module "pi-subagents/execution.js" {
 }
 
 declare module "pi-subagents/types.js" {
-  export interface Message {
-    role: string;
-    content: unknown;
-  }
+  // Use `any` to avoid structural conflicts with @mariozechner/pi-ai Message type
+  export type Message = any;
 
   export interface Usage {
     inputTokens: number;
     outputTokens: number;
     cacheReadTokens?: number;
     cacheWriteTokens?: number;
+    input?: number;
+    output?: number;
+    cacheRead?: number;
+    cacheWrite?: number;
+    cost?: number;
+    turns?: number;
   }
 
   export interface SingleResult {
