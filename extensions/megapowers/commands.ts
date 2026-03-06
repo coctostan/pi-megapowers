@@ -6,6 +6,7 @@ import { handleSignal } from "./tools/tool-signal.js";
 import { deriveTasks } from "./state/derived.js";
 import { ensureBranch, switchAwayCommit } from "./vcs/branch-manager.js";
 import type { ExecGit } from "./vcs/git-ops.js";
+import { checkBranchSync } from "./vcs/sync-check.js";
 import type { ExecCmd } from "./vcs/pr-creator.js";
 
 export type RuntimeDeps = { store?: Store; ui?: MegapowersUI; execGit?: ExecGit; execCmd?: ExecCmd };
@@ -80,10 +81,35 @@ export async function handleIssueCommand(args: string, ctx: any, deps: Deps): Pr
       // Already on a feature branch — preserve the known base
       baseBranch = prevState.baseBranch;
     } else {
+      // Fresh activation — detect stale feature branch
       try {
         const r = await deps.execGit(["rev-parse", "--abbrev-ref", "HEAD"]);
-        baseBranch = r.stdout.trim() || null;
+        const currentBranch = r.stdout.trim();
+        // If on a feat/* or fix/* branch with no state tracking it, checkout main
+        if (currentBranch && /^(feat|fix)\//.test(currentBranch)) {
+          await deps.execGit(["checkout", "main"]);
+          baseBranch = "main";
+        } else {
+          baseBranch = currentBranch || null;
+        }
       } catch { /* ignore — baseBranch stays null */ }
+      // Check if local base is behind remote
+      if (baseBranch && deps.execGit) {
+        const syncStatus = await checkBranchSync(deps.execGit, baseBranch);
+        if (syncStatus.hasRemote && syncStatus.behind > 0 && ctx.hasUI && ctx.ui.select) {
+          const choice = await ctx.ui.select(
+            `Local \`${baseBranch}\` is ${syncStatus.behind} commit(s) behind remote.`,
+            ["Pull latest (recommended)", "Use local as-is"],
+          );
+          if (choice === "Pull latest (recommended)") {
+            try {
+              await deps.execGit(["pull"]);
+            } catch (err: any) {
+              if (ctx.hasUI) ctx.ui.notify(`VCS: git pull failed: ${err?.message}`, "error");
+            }
+          }
+        }
+      }
     }
     const result = await ensureBranch(deps.execGit, newState.activeIssue, newState.workflow);
     if ("branchName" in result) {

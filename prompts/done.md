@@ -58,17 +58,39 @@ write({ path: ".megapowers/plans/{{issue_slug}}/learnings.md", content: "<markdo
 ```
 
 ### push-and-pr
-Push the feature branch and create a PR using bash:
+Push the feature branch and create a PR:
+
+**Step 1 — Push the branch:**
 ```
 bash("git push origin {{branch_name}}")
+```
+
+**Step 2 — Check GitHub CLI availability:**
+```
+bash("which gh && gh auth status")
+```
+
+- If `gh` is **not installed**: Ask the user if they'd like help installing it (e.g., `brew install gh`). If they decline, skip PR creation and tell them: "Push succeeded. Create your PR manually at the GitHub repo page."
+- If `gh` is installed but **not authenticated**: Ask the user if they'd like to run `gh auth login`. If they decline, skip PR creation with the same message.
+- If both checks pass: proceed to Step 3.
+
+**Step 3 — Create the PR:**
+```
 bash("gh pr create --base {{base_branch}} --head {{branch_name}} --title '<issue title>' --body 'Resolves {{issue_slug}}'")
 ```
+
 If `{{branch_name}}` is empty or the push fails, report the error and move on — do not block other actions.
-If `gh` is not available, skip PR creation and inform the user.
-After a successful push+PR (or after any push/PR errors), continue to the next action.
+After push+PR (or after any errors), tell the user:
+
+> After your PR is merged on GitHub, run these cleanup commands:
+> ```
+> git checkout main && git pull && git branch -d {{branch_name}}
+> ```
 
 ### close-issue
-All other actions are complete. Call the close_issue signal to mark the issue as done:
+All other actions are complete. Before closing:
+1. Run `git checkout main` to return to the base branch — do not leave the user on the feature branch.
+2. Then call the close_issue signal:
 ```
 megapowers_signal({ action: "close_issue" })
 ```
