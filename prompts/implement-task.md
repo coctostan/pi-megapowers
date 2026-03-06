@@ -22,25 +22,8 @@ Check `AGENTS.md` for the project's language, test framework, and test runner. I
 {{plan_content}}
 
 ## Execution Mode
-### Work inline (default)
 Work directly in this session. TDD is enforced via tdd-guard.
-### Delegate to subagent (when available)
-If the `subagent` tool is available and there are independent remaining tasks, delegate them for parallel execution.
-**How subagents work:**
-- Each subagent runs in its own **git worktree** (isolated copy)
-- The subagent receives task description, plan context, spec, and learnings
-- Workspace management is automatic
-**How to invoke:**
-- `subagent({ agent: "worker", task: "Implement Task N: <description>. Follow TDD: write failing test, make it pass, refactor. Files: <files>. Plan context: <task section>", taskIndex: N })`
-**After dispatching:**
-1. Continue your own task
-2. Poll with `subagent_status({ id: "<id>" })`
-3. If `state: "completed"` and `testsPassed: true`, re-read overlapping files and call `megapowers_signal({ action: "task_done" })`
-4. If failed, inspect error/diff and retry or complete inline
-**Do NOT delegate when:**
-- Task has unmet dependencies (`[blocked]`)
-- Only one task remains
-- Task touches same files or test files as your current task
+**Do NOT use `pipeline` or `subagent` tools.** They are broken and will produce garbage code. Do all work inline in this session.
 
 ## Strict Red-Green-Refactor
 
