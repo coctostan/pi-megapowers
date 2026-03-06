@@ -1,6 +1,7 @@
 
 ## [Unreleased]
 ### Added
+- `checkBranchSync` helper detects whether local base branch is behind remote; `handleIssueCommand` auto-checkouts `main` when activated on an untracked `feat/*`/`fix/*` branch, then prompts user to pull if main is behind origin (#091)
 - Every workflow phase/task transition (`phase_next`, `phase_back`, `task_done`, `plan_draft_done`, `plan_review`) now triggers a fresh session via `megapowers_signal`, giving the agent a clean context window at each phase boundary; the old broken `parentSession` argument is removed (#080)
 - `pipeline` tool now renders live step-by-step progress in the TUI (implement → verify → review) with per-step timing, usage stats (tokens, cost, model), and a persistent collapsed/expanded result panel after completion; replaced silent-run-then-JSON-blob behavior with `renderCall`, `renderResult`, and `onUpdate` partial streaming (#074)
 ### Fixed

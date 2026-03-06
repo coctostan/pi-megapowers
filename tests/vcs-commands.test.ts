@@ -257,3 +257,217 @@ describe("handleIssueCommand — VCS switchAwayCommit on issue switch (AC15)", (
     expect(readState(tmp).activeIssue).toBe("002-new-issue");
   });
 });
+
+describe("handleIssueCommand — stale branch detection (AC1)", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "vcs-stale-"));
+    mkdirSync(join(tmp, ".megapowers"), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("checks out main when on feat/* branch with no state.branchName (AC1)", async () => {
+    const calls: string[][] = [];
+    const execGit: ExecGit = async (args) => {
+      calls.push(args);
+      if (args[0] === "rev-parse" && args[1] === "--abbrev-ref") return { stdout: "feat/old-issue\n", stderr: "" };
+      if (args[0] === "remote") return { stdout: "", stderr: "" };
+      if (args[0] === "rev-parse" && args[1] === "--verify") throw new Error("not found");
+      return { stdout: "", stderr: "" };
+    };
+
+    // State has no branchName — simulates post-close_issue state
+    writeState(tmp, createInitialState());
+
+    const deps = {
+      store: { listIssues: () => [] } as any,
+      ui: makeMockUI("002-new-feature"),
+      execGit,
+    } as any;
+
+    const ctx = { cwd: tmp, hasUI: false, ui: { notify: () => {} } };
+    await handleIssueCommand("list", ctx, deps);
+
+    // Should have checked out main before proceeding
+    expect(calls.some(c => c[0] === "checkout" && c[1] === "main")).toBe(true);
+    // The checkout main should come BEFORE the ensureBranch checkout -b
+    const checkoutMainIdx = calls.findIndex(c => c[0] === "checkout" && c[1] === "main");
+    const createBranchIdx = calls.findIndex(c => c[0] === "checkout" && c[1] === "-b");
+    expect(checkoutMainIdx).toBeLessThan(createBranchIdx);
+  });
+
+  it("does NOT checkout main when on main already (no branchName in state)", async () => {
+    const calls: string[][] = [];
+    const execGit: ExecGit = async (args) => {
+      calls.push(args);
+      if (args[0] === "rev-parse" && args[1] === "--abbrev-ref") return { stdout: "main\n", stderr: "" };
+      if (args[0] === "remote") return { stdout: "", stderr: "" };
+      if (args[0] === "rev-parse" && args[1] === "--verify") throw new Error("not found");
+      return { stdout: "", stderr: "" };
+    };
+
+    writeState(tmp, createInitialState());
+
+    const deps = {
+      store: { listIssues: () => [] } as any,
+      ui: makeMockUI("002-new-feature"),
+      execGit,
+    } as any;
+
+    const ctx = { cwd: tmp, hasUI: false, ui: { notify: () => {} } };
+    await handleIssueCommand("list", ctx, deps);
+
+    // Should NOT have a plain checkout main (only checkout -b for new branch)
+    expect(calls.some(c => c[0] === "checkout" && c.length === 2 && c[1] === "main")).toBe(false);
+  });
+});
+
+describe("handleIssueCommand — remote sync check (AC7/AC8/AC9/AC10)", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "vcs-sync-"));
+    mkdirSync(join(tmp, ".megapowers"), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("prompts user and pulls when behind remote and user selects 'Pull latest' (AC7/AC8)", async () => {
+    const calls: string[][] = [];
+    const execGit: ExecGit = async (args) => {
+      calls.push(args);
+      if (args[0] === "rev-parse" && args[1] === "--abbrev-ref") return { stdout: "main\n", stderr: "" };
+      if (args[0] === "remote") return { stdout: "origin\n", stderr: "" };
+      if (args[0] === "fetch") return { stdout: "", stderr: "" };
+      if (args[0] === "rev-list") return { stdout: "0\t3\n", stderr: "" };
+      if (args[0] === "rev-parse" && args[1] === "--verify") throw new Error("not found");
+      return { stdout: "", stderr: "" };
+    };
+
+    writeState(tmp, createInitialState());
+
+    let selectCalled = false;
+    const deps = {
+      store: { listIssues: () => [] } as any,
+      ui: makeMockUI("003-new-feature"),
+      execGit,
+    } as any;
+
+    const ctx = {
+      cwd: tmp,
+      hasUI: true,
+      ui: {
+        notify: () => {},
+        select: async () => {
+          selectCalled = true;
+          return "Pull latest (recommended)";
+        },
+      },
+    };
+    await handleIssueCommand("list", ctx, deps);
+
+    expect(selectCalled).toBe(true);
+    expect(calls.some(c => c[0] === "pull")).toBe(true);
+  });
+
+  it("skips pull when user selects 'Use local as-is' (AC9)", async () => {
+    const calls: string[][] = [];
+    const execGit: ExecGit = async (args) => {
+      calls.push(args);
+      if (args[0] === "rev-parse" && args[1] === "--abbrev-ref") return { stdout: "main\n", stderr: "" };
+      if (args[0] === "remote") return { stdout: "origin\n", stderr: "" };
+      if (args[0] === "fetch") return { stdout: "", stderr: "" };
+      if (args[0] === "rev-list") return { stdout: "0\t3\n", stderr: "" };
+      if (args[0] === "rev-parse" && args[1] === "--verify") throw new Error("not found");
+      return { stdout: "", stderr: "" };
+    };
+
+    writeState(tmp, createInitialState());
+
+    const deps = {
+      store: { listIssues: () => [] } as any,
+      ui: makeMockUI("003-new-feature"),
+      execGit,
+    } as any;
+
+    const ctx = {
+      cwd: tmp,
+      hasUI: true,
+      ui: {
+        notify: () => {},
+        select: async () => "Use local as-is",
+      },
+    };
+    await handleIssueCommand("list", ctx, deps);
+
+    expect(calls.some(c => c[0] === "pull")).toBe(false);
+  });
+
+  it("proceeds silently when local is in sync with remote — no prompt (AC10)", async () => {
+    const execGit: ExecGit = async (args) => {
+      if (args[0] === "rev-parse" && args[1] === "--abbrev-ref") return { stdout: "main\n", stderr: "" };
+      if (args[0] === "remote") return { stdout: "origin\n", stderr: "" };
+      if (args[0] === "fetch") return { stdout: "", stderr: "" };
+      if (args[0] === "rev-list") return { stdout: "0\t0\n", stderr: "" };
+      if (args[0] === "rev-parse" && args[1] === "--verify") throw new Error("not found");
+      return { stdout: "", stderr: "" };
+    };
+
+    writeState(tmp, createInitialState());
+
+    let selectCalled = false;
+    const deps = {
+      store: { listIssues: () => [] } as any,
+      ui: makeMockUI("003-new-feature"),
+      execGit,
+    } as any;
+
+    const ctx = {
+      cwd: tmp,
+      hasUI: true,
+      ui: {
+        notify: () => {},
+        select: async () => { selectCalled = true; return "Pull latest (recommended)"; },
+      },
+    };
+    await handleIssueCommand("list", ctx, deps);
+
+    expect(selectCalled).toBe(false);
+  });
+
+  it("proceeds silently when no remote — no prompt (AC10)", async () => {
+    const execGit: ExecGit = async (args) => {
+      if (args[0] === "rev-parse" && args[1] === "--abbrev-ref") return { stdout: "main\n", stderr: "" };
+      if (args[0] === "remote") return { stdout: "", stderr: "" };
+      if (args[0] === "rev-parse" && args[1] === "--verify") throw new Error("not found");
+      return { stdout: "", stderr: "" };
+    };
+
+    writeState(tmp, createInitialState());
+
+    let selectCalled = false;
+    const deps = {
+      store: { listIssues: () => [] } as any,
+      ui: makeMockUI("003-new-feature"),
+      execGit,
+    } as any;
+
+    const ctx = {
+      cwd: tmp,
+      hasUI: true,
+      ui: {
+        notify: () => {},
+        select: async () => { selectCalled = true; return "Pull latest (recommended)"; },
+      },
+    };
+    await handleIssueCommand("list", ctx, deps);
+
+    expect(selectCalled).toBe(false);
+  });
+});
