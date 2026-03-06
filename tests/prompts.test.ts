@@ -305,21 +305,17 @@ describe("prompt templates — bugfix plan variable injection", () => {
 });
 
 describe("implement prompt — subagent delegation instructions", () => {
-  it("implement-task template includes concrete subagent tool name and invocation format", () => {
+  it("implement-task template explicitly prohibits subagent/pipeline tools", () => {
     const template = getPhasePromptTemplate("implement");
-    // The prompt should tell the LLM the actual tool name to invoke
-    expect(template).toContain("subagent");
-    // It should include concrete invocation syntax, not just a vague mention
-    // Currently fails: the prompt says "delegate to a subagent tool (if available)"
-    // but never specifies the tool name, parameters, or agent to use
-    expect(template).toMatch(/agent.*worker|worker.*agent/i);
+    // Since pipeline/subagent infrastructure was removed (#091), the prompt should
+    // explicitly say NOT to use these tools rather than how to invoke them
+    expect(template).toMatch(/do not use.*pipeline|do not use.*subagent|pipeline.*broken|subagent.*broken/i);
   });
 
-  it("implement-task template specifies when to delegate vs work inline", () => {
+  it("implement-task template specifies inline execution mode", () => {
     const template = getPhasePromptTemplate("implement");
-    // The prompt should have clear criteria for delegation decisions
-    // e.g., "delegate when the task has no dependencies on incomplete tasks"
-    expect(template).toMatch(/when to delegate|delegation criteria|delegate.*independent|independent.*delegate/i);
+    // The prompt should direct the LLM to work directly in the session
+    expect(template).toMatch(/work directly|inline|this session/i);
   });
 
   it("buildImplementTaskVars includes information about independent tasks for delegation", () => {

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { handleSignal } from "../extensions/megapowers/tools/tool-signal.js";
+import { handleSignal, handlePlanDraftDone } from "../extensions/megapowers/tools/tool-signal.js";
 import { readState, writeState } from "../extensions/megapowers/state/state-io.js";
 import { createStore } from "../extensions/megapowers/state/store.js";
 import { createInitialState, type MegapowersState } from "../extensions/megapowers/state/state-machine.js";
@@ -264,71 +264,68 @@ describe("handleSignal", () => {
   // ======================================================================
 
   describe("plan_draft_done signal", () => {
-    it("transitions planMode from draft to review", () => {
+    it("transitions planMode from draft to review", async () => {
       setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
       const tasksDir = join(tmp, ".megapowers", "plans", "001-test", "tasks");
       mkdirSync(tasksDir, { recursive: true });
       writeFileSync(join(tasksDir, "task-001.md"), "---\nid: 1\ntitle: T\nstatus: draft\n---\nBody.");
 
-      const result = handleSignal(tmp, "plan_draft_done");
+      const result = await handlePlanDraftDone(tmp);
       expect(result.error).toBeUndefined();
       expect(result.message).toContain("review mode");
-
       const state = readState(tmp);
       expect(state.planMode).toBe("review");
     });
 
-    it("transitions planMode from revise to review", () => {
+    it("transitions planMode from revise to review", async () => {
       setState(tmp, { phase: "plan", planMode: "revise", planIteration: 2 });
       const tasksDir = join(tmp, ".megapowers", "plans", "001-test", "tasks");
       mkdirSync(tasksDir, { recursive: true });
       writeFileSync(join(tasksDir, "task-001.md"), "---\nid: 1\ntitle: T\nstatus: draft\n---\nBody.");
 
-      const result = handleSignal(tmp, "plan_draft_done");
+      const result = await handlePlanDraftDone(tmp);
       expect(result.error).toBeUndefined();
 
       const state = readState(tmp);
       expect(state.planMode).toBe("review");
     });
 
-    it("returns error when not in plan phase", () => {
+    it("returns error when not in plan phase", async () => {
       setState(tmp, { phase: "implement", planMode: null });
-      const result = handleSignal(tmp, "plan_draft_done");
+      const result = await handlePlanDraftDone(tmp);
       expect(result.error).toBeDefined();
       expect(result.error).toContain("plan phase");
     });
 
-    it("returns error when planMode is review", () => {
+    it("returns error when planMode is review", async () => {
       setState(tmp, { phase: "plan", planMode: "review", planIteration: 1 });
-      const result = handleSignal(tmp, "plan_draft_done");
+      const result = await handlePlanDraftDone(tmp);
       expect(result.error).toBeDefined();
     });
 
-    it("returns error when no task files exist", () => {
+    it("returns error when no task files exist", async () => {
       setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
-      const result = handleSignal(tmp, "plan_draft_done");
+      const result = await handlePlanDraftDone(tmp);
       expect(result.error).toBeDefined();
       expect(result.error).toContain("task");
     });
 
-    it("reports task count in success message", () => {
+    it("reports task count in success message", async () => {
       setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
       const tasksDir = join(tmp, ".megapowers", "plans", "001-test", "tasks");
       mkdirSync(tasksDir, { recursive: true });
       writeFileSync(join(tasksDir, "task-001.md"), "---\nid: 1\ntitle: T1\nstatus: draft\n---\nB1.");
       writeFileSync(join(tasksDir, "task-002.md"), "---\nid: 2\ntitle: T2\nstatus: draft\n---\nB2.");
-
-      const result = handleSignal(tmp, "plan_draft_done");
+      const result = await handlePlanDraftDone(tmp);
       expect(result.message).toContain("2 tasks");
     });
 
-    it("sets triggerNewSession flag", () => {
+    it("sets triggerNewSession flag", async () => {
       setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
       const tasksDir = join(tmp, ".megapowers", "plans", "001-test", "tasks");
       mkdirSync(tasksDir, { recursive: true });
       writeFileSync(join(tasksDir, "task-001.md"), "---\nid: 1\ntitle: T\nstatus: draft\n---\nB.");
-
-      const result = handleSignal(tmp, "plan_draft_done");
+      const result = await handlePlanDraftDone(tmp);
       expect(result.triggerNewSession).toBe(true);
     });
   });
@@ -821,9 +818,9 @@ describe("handleSignal", () => {
       expect(result.triggerNewSession).toBeUndefined();
     });
 
-    it("does NOT return triggerNewSession when plan_draft_done fails", () => {
+    it("does NOT return triggerNewSession when plan_draft_done fails", async () => {
       setState(tmp, { phase: "implement", planMode: null });
-      const result = handleSignal(tmp, "plan_draft_done");
+      const result = await handlePlanDraftDone(tmp);
       expect(result.error).toBeDefined();
       expect(result.triggerNewSession).toBeUndefined();
     });
@@ -862,5 +859,129 @@ describe("handleSignal", () => {
       expect(result.error).toBeUndefined();
       expect(result.triggerNewSession).toBeUndefined();
     });
+  });
+});
+
+describe("handlePlanDraftDone — async T1 lint integration", () => {
+  let tmp2: string;
+
+  beforeEach(() => {
+    tmp2 = mkdtempSync(join(tmpdir(), "tool-signal-plan-draft-done-"));
+    writeState(tmp2, { ...createInitialState(), activeIssue: "001-test", workflow: "feature" });
+  });
+
+  afterEach(() => {
+    rmSync(tmp2, { recursive: true, force: true });
+  });
+
+  function writeTask(tmpDir: string, id: number, title = `Task ${id}`) {
+    const tasksDir = join(tmpDir, ".megapowers", "plans", "001-test", "tasks");
+    mkdirSync(tasksDir, { recursive: true });
+    writeFileSync(
+      join(tasksDir, `task-${String(id).padStart(3, "0")}.md`),
+      `---\nid: ${id}\ntitle: ${title}\nstatus: draft\ndepends_on: []\nno_test: false\nfiles_to_modify: [src/foo.ts]\nfiles_to_create: []\n---\n` + "A".repeat(220),
+    );
+  }
+
+  it("blocks transition when model lint returns fail findings", async () => {
+    writeState(tmp2, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "plan", planMode: "draft", planIteration: 1 });
+    writeTask(tmp2, 1);
+
+    writeFileSync(
+      join(tmp2, ".megapowers", "plans", "001-test", "spec.md"),
+      "## Acceptance Criteria\n1. AC1",
+    );
+    const failFn = async () => JSON.stringify({
+      verdict: "fail",
+      findings: ["AC1 is not covered by any task"],
+    });
+    const result = await handlePlanDraftDone(tmp2, failFn);
+    expect(result.error).toContain("T1 plan lint failed");
+    expect(result.error).toContain("AC1 is not covered by any task");
+    expect(readState(tmp2).planMode).toBe("draft");
+  });
+
+  it("uses derived acceptance criteria for bugfix workflow (diagnosis/fixed-when)", async () => {
+    writeState(tmp2, { ...createInitialState(), activeIssue: "001-test", workflow: "bugfix", phase: "plan", planMode: "draft", planIteration: 1 });
+    writeTask(tmp2, 1);
+
+    writeFileSync(
+      join(tmp2, ".megapowers", "plans", "001-test", "diagnosis.md"),
+      "## Fixed When\n1. Crash no longer occurs when input is empty",
+    );
+
+    let seenPrompt = "";
+    const captureFn = async (prompt: string) => {
+      seenPrompt = prompt;
+      return JSON.stringify({ verdict: "pass", findings: [] });
+    };
+
+    const result = await handlePlanDraftDone(tmp2, captureFn);
+    expect(result.error).toBeUndefined();
+    expect(seenPrompt).toContain("Crash no longer occurs when input is empty");
+  });
+
+  it("transitions planMode to review and sets triggerNewSession on pass", async () => {
+    writeState(tmp2, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "plan", planMode: "draft", planIteration: 1 });
+    writeTask(tmp2, 1);
+
+    writeFileSync(
+      join(tmp2, ".megapowers", "plans", "001-test", "spec.md"),
+      "## Acceptance Criteria\n1. AC1",
+    );
+
+    const passFn = async () => JSON.stringify({ verdict: "pass", findings: [] });
+
+    const result = await handlePlanDraftDone(tmp2, passFn);
+    expect(result.error).toBeUndefined();
+    expect(result.triggerNewSession).toBe(true);
+    expect(readState(tmp2).planMode).toBe("review");
+  });
+});
+
+describe("handlePlanDraftDone — graceful degradation", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "tool-signal-t1-graceful-"));
+    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature" });
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  function writeValidTask() {
+    const dir = join(tmp, ".megapowers", "plans", "001-test", "tasks");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, "task-001.md"),
+      "---\nid: 1\ntitle: T1\nstatus: draft\ndepends_on: []\nno_test: false\nfiles_to_modify: [src/a.ts]\nfiles_to_create: []\n---\n" + "A".repeat(220),
+    );
+  }
+
+  it("adds warning when completeFn is unavailable (no API key)", async () => {
+    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "plan", planMode: "draft", planIteration: 1 });
+    writeValidTask();
+
+    const result = await handlePlanDraftDone(tmp, undefined);
+
+    expect(result.error).toBeUndefined();
+    expect(result.triggerNewSession).toBe(true);
+    expect(result.message).toContain("⚠️");
+    expect(result.message).toContain("skipped");
+    expect(readState(tmp).planMode).toBe("review");
+  });
+
+  it("adds warning when model response is malformed (fail-open)", async () => {
+    writeState(tmp, { ...createInitialState(), activeIssue: "001-test", workflow: "feature", phase: "plan", planMode: "draft", planIteration: 1 });
+    writeValidTask();
+
+    const malformedFn = async () => "not-json";
+    const result = await handlePlanDraftDone(tmp, malformedFn);
+    expect(result.error).toBeUndefined();
+    expect(result.triggerNewSession).toBe(true);
+    expect(result.message).toContain("⚠️");
+    expect(result.message).toContain("malformed");
   });
 });

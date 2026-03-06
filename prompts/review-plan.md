@@ -16,7 +16,7 @@ Task files are stored in `.megapowers/plans/{{issue_slug}}/tasks/`. Read them no
 
 ## Evaluate against these criteria:
 
-The drafter has a pre-submit checklist matching these criteria. Basic structural issues (missing steps, obvious placeholders) should be rare. **Focus your review on code correctness:** Are the tests testing the right behavior? Does the implementation use the correct APIs from the actual codebase? Will this code work when executed?
+The plan has already passed deterministic structural lint (T0) and a fast-model coherence check (T1). Mechanical issues — empty descriptions, missing file targets, placeholder text, spec coverage gaps, dependency ordering — have been caught and fixed. **Focus your review entirely on higher-order concerns:** code correctness, architectural soundness, and implementation feasibility.
 
 ### 1. Coverage
 Does every acceptance criterion have at least one task addressing it? List any gaps. Check that tasks explicitly call out which AC they cover.
@@ -25,14 +25,13 @@ Does every acceptance criterion have at least one task addressing it? List any g
 Are dependencies respected? Will task N have everything it needs from tasks 1..N-1? Are `[depends: N]` annotations present and correct? Flag cycles or missing prereqs.
 
 ### 3. TDD Completeness
-Each task must have all 5 steps:
-- **Step 1** — Full test code (not pseudocode, not "similar to above")
-- **Step 2** — Exact run command + specific expected failure message
-- **Step 3** — Full implementation code (minimal, just enough to pass)
+Each task must have all 5 steps with **correct, working code**:
+- **Step 1** — Test code tests the right behavior (not just structural presence)
+- **Step 2** — Expected failure message is accurate for the actual error that will occur
+- **Step 3** — Implementation uses correct APIs from the actual codebase
 - **Step 4** — Same run command, expected PASS
 - **Step 5** — Full test suite command, expected all passing
-
-Flag any task missing steps, using vague expected output, or with incomplete code.
+Flag any task where the code won't actually work — wrong function signatures, incorrect import paths, missing error handling.
 
 ### 4. Granularity
 Each task should be one test + one implementation. Flag tasks that:
@@ -50,7 +49,7 @@ Tasks marked `[no-test]` must have a justification. Flag any `[no-test]` task th
 Valid `[no-test]` reasons: config-only, documentation, pure refactor with existing coverage, CI/tooling setup, prompt/skill file changes (should include subagent verification step when possible).
 
 ### 6. Self-Containment
-Could a developer with zero context execute each task from the plan alone? Flag: missing file paths, references to "the above pattern", unclear inputs/outputs.
+Can a developer execute each task from the plan alone? Focus on: Are the APIs and function signatures correct? Do the imports exist? Is the error handling complete? (Structural completeness — file paths, non-empty descriptions — is already verified by T0 lint.)
 
 ## Output format
 

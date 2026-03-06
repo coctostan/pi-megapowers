@@ -1,7 +1,8 @@
 import { readState } from "../state/state-io.js";
-import { readPlanTask, writePlanTask } from "../state/plan-store.js";
+import { readPlanTask, writePlanTask, listPlanTasks } from "../state/plan-store.js";
 import { PlanTaskSchema, type PlanTask } from "../state/plan-schemas.js";
 import type { EntityDoc } from "../state/entity-parser.js";
+import { lintTask } from "../validation/plan-task-linter.js";
 
 export interface PlanTaskParams {
   id: number;
@@ -62,6 +63,15 @@ export function handlePlanTask(cwd: string, params: PlanTaskParams): PlanTaskRes
     files_to_create: params.files_to_create ?? [],
   };
 
+  const lintInput = { ...task, description: params.description! };
+  const existingTasks = listPlanTasks(cwd, slug).map((doc) => doc.data);
+  const lintResult = lintTask(lintInput, existingTasks);
+  if (!lintResult.pass) {
+    return {
+      error: `❌ Task ${params.id} lint failed:\n${lintResult.errors.map((e) => `  • ${e}`).join("\n")}`,
+    };
+  }
+
   const validation = PlanTaskSchema.safeParse(task);
   if (!validation.success) {
     const issues = validation.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
@@ -117,6 +127,14 @@ function handleUpdate(
     changed.push("description");
   }
 
+  const lintInput = { ...merged, description: body };
+  const allTasks = listPlanTasks(cwd, slug).map((doc) => doc.data);
+  const lintResult = lintTask(lintInput, allTasks);
+  if (!lintResult.pass) {
+    return {
+      error: `❌ Task ${params.id} lint failed:\n${lintResult.errors.map((e) => `  • ${e}`).join("\n")}`,
+    };
+  }
   writePlanTask(cwd, slug, merged, body);
 
   const taskPath = `.megapowers/plans/${slug}/tasks/task-${String(merged.id).padStart(3, "0")}.md`;

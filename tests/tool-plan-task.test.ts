@@ -40,7 +40,7 @@ describe("handlePlanTask — create", () => {
 
   it("creates a task file in draft mode with all defaults", () => {
     setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
-    const result = handlePlanTask(tmp, { id: 1, title: "First task", description: "Task body content." });
+    const result = handlePlanTask(tmp, { id: 1, title: "First task", description: "A".repeat(200), files_to_modify: ["src/foo.ts"] });
     expect(result.error).toBeUndefined();
     expect(result.message).toContain("Task 1");
     expect(result.message).toContain("First task");
@@ -51,9 +51,9 @@ describe("handlePlanTask — create", () => {
     expect(doc.data.status).toBe("draft");
     expect(doc.data.depends_on).toEqual([]);
     expect(doc.data.no_test).toBe(false);
-    expect(doc.data.files_to_modify).toEqual([]);
+    expect(doc.data.files_to_modify).toEqual(["src/foo.ts"]);
     expect(doc.data.files_to_create).toEqual([]);
-    expect(doc.content).toBe("Task body content.");
+    expect(doc.content).toBe("A".repeat(200));
   });
 
   it("returns validation error when title is missing on create", () => {
@@ -75,8 +75,8 @@ describe("handlePlanTask — create", () => {
     const result = handlePlanTask(tmp, {
       id: 2,
       title: "Second",
-      description: "Body.",
-      depends_on: [1],
+      description: "A".repeat(200),
+      depends_on: [],
       no_test: true,
       files_to_modify: ["src/foo.ts"],
       files_to_create: ["src/bar.ts"],
@@ -84,7 +84,7 @@ describe("handlePlanTask — create", () => {
     expect(result.error).toBeUndefined();
 
     const doc = readPlanTask(tmp, "001-test", 2) as EntityDoc<PlanTask>;
-    expect(doc.data.depends_on).toEqual([1]);
+    expect(doc.data.depends_on).toEqual([]);
     expect(doc.data.no_test).toBe(true);
     expect(doc.data.files_to_modify).toEqual(["src/foo.ts"]);
     expect(doc.data.files_to_create).toEqual(["src/bar.ts"]);
@@ -92,7 +92,7 @@ describe("handlePlanTask — create", () => {
 
   it("create response includes title, file path, and change summary", () => {
     setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
-    const result = handlePlanTask(tmp, { id: 1, title: "T", description: "B" });
+    const result = handlePlanTask(tmp, { id: 1, title: "T", description: "A".repeat(200), files_to_modify: ["src/t.ts"] });
     expect(result.message).toContain('"T"');
     expect(result.message).toContain("task-001.md");
     expect(result.message).toContain("Changed:");
@@ -114,61 +114,55 @@ describe("handlePlanTask — update (partial merge)", () => {
 
   it("merges only provided fields, preserving existing values", () => {
     setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
-    handlePlanTask(tmp, { id: 1, title: "Original", description: "Original body.", depends_on: [2] });
+    handlePlanTask(tmp, { id: 1, title: "Original", description: "A".repeat(200), files_to_modify: ["src/a.ts"] });
 
-    const result = handlePlanTask(tmp, { id: 1, depends_on: [2, 3] });
+    const result = handlePlanTask(tmp, { id: 1, files_to_modify: ["src/a.ts", "src/b.ts"] });
     expect(result.error).toBeUndefined();
-
     const doc = readPlanTask(tmp, "001-test", 1) as EntityDoc<PlanTask>;
     expect(doc.data.title).toBe("Original");
-    expect(doc.data.depends_on).toEqual([2, 3]);
-    expect(doc.content).toBe("Original body.");
+    expect(doc.data.files_to_modify).toEqual(["src/a.ts", "src/b.ts"]);
+    expect(doc.content).toBe("A".repeat(200));
   });
 
   it("replaces body when description is provided in update", () => {
     setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
-    handlePlanTask(tmp, { id: 1, title: "T", description: "Old body." });
+    handlePlanTask(tmp, { id: 1, title: "T", description: "A".repeat(200), files_to_modify: ["src/t.ts"] });
 
-    const result = handlePlanTask(tmp, { id: 1, description: "New body." });
+    const result = handlePlanTask(tmp, { id: 1, description: "A".repeat(200) + "extra" });
     expect(result.error).toBeUndefined();
-
     const doc = readPlanTask(tmp, "001-test", 1) as EntityDoc<PlanTask>;
-    expect(doc.content).toBe("New body.");
+    expect(doc.content).toBe("A".repeat(200) + "extra");
   });
 
   it("preserves body when description is omitted in update", () => {
     setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
-    handlePlanTask(tmp, { id: 1, title: "T", description: "Keep this body." });
-
+    handlePlanTask(tmp, { id: 1, title: "T", description: "A".repeat(200), files_to_modify: ["src/t.ts"] });
     const result = handlePlanTask(tmp, { id: 1, title: "Updated title" });
     expect(result.error).toBeUndefined();
-
     const doc = readPlanTask(tmp, "001-test", 1) as EntityDoc<PlanTask>;
     expect(doc.data.title).toBe("Updated title");
-    expect(doc.content).toBe("Keep this body.");
+    expect(doc.content).toBe("A".repeat(200));
   });
 
   it("update response includes title, file path, and changed field list", () => {
     setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
-    handlePlanTask(tmp, { id: 1, title: "T", description: "B." });
-    const result = handlePlanTask(tmp, { id: 1, depends_on: [1, 2] });
+    handlePlanTask(tmp, { id: 1, title: "T", description: "A".repeat(200), files_to_modify: ["src/t.ts"] });
+    const result = handlePlanTask(tmp, { id: 1, files_to_modify: ["src/t.ts", "src/u.ts"] });
     expect(result.message).toContain('"T"');
     expect(result.message).toContain("task-001.md");
     expect(result.message).toContain("Changed:");
-    expect(result.message).toContain("depends_on");
+    expect(result.message).toContain("files_to_modify");
   });
 
   it("works in revise mode (updates existing task)", () => {
     setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
-    handlePlanTask(tmp, { id: 1, title: "T", description: "B." });
-
+    handlePlanTask(tmp, { id: 1, title: "T", description: "A".repeat(200), files_to_modify: ["src/t.ts"] });
     setState(tmp, { phase: "plan", planMode: "revise", planIteration: 2 });
     const result = handlePlanTask(tmp, { id: 1, no_test: true });
     expect(result.error).toBeUndefined();
-
     const doc = readPlanTask(tmp, "001-test", 1) as EntityDoc<PlanTask>;
     expect(doc.data.no_test).toBe(true);
-  });
+  })
 
   it("returns error when existing task file is corrupt (parse failure)", () => {
     setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
@@ -181,5 +175,84 @@ describe("handlePlanTask — update (partial merge)", () => {
     const result = handlePlanTask(tmp, { id: 1, title: "T", description: "Body" });
     expect(result.error).toBeDefined();
     expect(result.error).toContain("corrupt");
+  });
+});
+
+describe("handlePlanTask — T0 lint integration", () => {
+  let tmp: string;
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "tool-plan-task-lint-"));
+  });
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("rejects create when description is shorter than 200 characters", () => {
+    setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
+
+    const result = handlePlanTask(tmp, {
+      id: 1,
+      title: "Valid title",
+      description: "too short",
+      files_to_modify: ["src/foo.ts"],
+    });
+
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain("Task 1 lint failed");
+    expect(result.error).toContain("Description must be at least 200 characters");
+    expect(readPlanTask(tmp, "001-test", 1)).toBeNull();
+  });
+
+  it("returns all lint errors in one aggregated response", () => {
+    setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
+
+    const result = handlePlanTask(tmp, {
+      id: 1,
+      title: "   ",
+      description: "short",
+      files_to_modify: [],
+      files_to_create: [],
+    });
+
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain("Task 1 lint failed");
+    expect(result.error).toContain("Title must not be empty");
+    expect(result.error).toContain("Description must be at least 200 characters");
+    expect(result.error).toContain("Task must specify at least one file");
+  });
+
+  it("rejects update when merged task fails lint", () => {
+    setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
+
+    const created = handlePlanTask(tmp, {
+      id: 1,
+      title: "Valid",
+      description: "A".repeat(200),
+      files_to_modify: ["src/a.ts"],
+    });
+    expect(created.error).toBeUndefined();
+
+    const result = handlePlanTask(tmp, {
+      id: 1,
+      files_to_modify: [],
+      files_to_create: [],
+    });
+
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain("Task 1 lint failed");
+    expect(result.error).toContain("Task must specify at least one file");
+  });
+
+  it("allows valid task to be saved", () => {
+    setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
+
+    const result = handlePlanTask(tmp, {
+      id: 1,
+      title: "Valid task",
+      description: "A".repeat(220),
+      files_to_modify: ["src/foo.ts"],
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.message).toContain("Task 1");
   });
 });
