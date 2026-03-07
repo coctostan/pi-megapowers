@@ -860,46 +860,34 @@ describe("handleSignal", () => {
       expect(result.triggerNewSession).toBeUndefined();
     });
   });
-});
 
-describe("handlePlanDraftDone — no T1 model gating", () => {
-  it("ignores failing model lint input and still transitions to review", async () => {
-    const tmp2 = mkdtempSync(join(tmpdir(), "tool-signal-plan-draft-done-no-t1-"));
+  describe("T1 dead code removal verification", () => {
+    it("plan-lint-model.ts does not exist", () => {
+      expect(() =>
+        readFileSync(join(process.cwd(), "extensions/megapowers/validation/plan-lint-model.ts"), "utf-8")
+      ).toThrow();
+    });
 
-    try {
-      writeState(tmp2, {
-        ...createInitialState(),
-        activeIssue: "001-test",
-        workflow: "feature",
-        phase: "plan",
-        planMode: "draft",
-        planIteration: 1,
-      });
+    it("lint-plan-prompt.md does not exist", () => {
+      expect(() =>
+        readFileSync(join(process.cwd(), "prompts/lint-plan-prompt.md"), "utf-8")
+      ).toThrow();
+    });
 
-      const tasksDir = join(tmp2, ".megapowers", "plans", "001-test", "tasks");
-      mkdirSync(tasksDir, { recursive: true });
-      writeFileSync(
-        join(tasksDir, "task-001.md"),
-        "---\nid: 1\ntitle: Task 1\nstatus: draft\ndepends_on: []\nno_test: false\nfiles_to_modify: [src/foo.ts]\nfiles_to_create: []\n---\n" + "A".repeat(220),
+    it("plan-lint-model.test.ts does not exist", () => {
+      expect(() =>
+        readFileSync(join(process.cwd(), "tests/plan-lint-model.test.ts"), "utf-8")
+      ).toThrow();
+    });
+
+    it("no runtime imports reference plan-lint-model", () => {
+      const extensionsDir = join(process.cwd(), "extensions");
+      const { execSync } = require("child_process");
+      const result = execSync(
+        `grep -rn "from.*plan-lint-model" "${extensionsDir}" --include="*.ts" || true`,
+        { encoding: "utf-8" }
       );
-      writeFileSync(
-        join(tmp2, ".megapowers", "plans", "001-test", "spec.md"),
-        "## Acceptance Criteria\n1. AC1",
-      );
-    const failFn = async () => JSON.stringify({
-        verdict: "fail",
-        findings: ["AC1 is not covered by any task"],
-      });
-
-      const result = await (handlePlanDraftDone as any)(tmp2, failFn);
-
-      expect(result.error).toBeUndefined();
-      expect(result.triggerNewSession).toBe(true);
-      expect(result.message).toContain("Transitioning to review mode");
-      expect(result.message).not.toContain("T1");
-      expect(readState(tmp2).planMode).toBe("review");
-    } finally {
-      rmSync(tmp2, { recursive: true, force: true });
-    }
+      expect(result.trim()).toBe("");
+    });
   });
 });
