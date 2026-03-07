@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { ensureBranch, switchAwayCommit, squashAndPush } from "../extensions/megapowers/vcs/branch-manager.js";
+import { ensureBranch, switchAwayCommit, squashAndPush, squashBranchToSingleCommit } from "../extensions/megapowers/vcs/branch-manager.js";
 import type { ExecGit } from "../extensions/megapowers/vcs/git-ops.js";
 
 describe("ensureBranch", () => {
@@ -81,6 +81,23 @@ describe("switchAwayCommit", () => {
 });
 
 describe("squashAndPush", () => {
+  it("soft-resets onto the base branch and writes one clean squash commit", async () => {
+    const calls: string[][] = [];
+    const execGit: ExecGit = async (args) => {
+      calls.push(args);
+      if (args[0] === "status") return { stdout: "M file.ts\n", stderr: "" };
+      return { stdout: "", stderr: "" };
+    };
+
+    const result = await squashBranchToSingleCommit(execGit, "main", "feat: ship 093");
+
+    expect(result).toEqual({ ok: true, committed: true });
+    expect(calls).toEqual([
+      ["reset", "--soft", "main"],
+      ["status", "--porcelain"],
+      ["commit", "-m", "feat: ship 093"],
+    ]);
+  });
   it("squashes onto base and force-pushes on success (AC10)", async () => {
     const calls: string[][] = [];
     const execGit: ExecGit = async (args) => {

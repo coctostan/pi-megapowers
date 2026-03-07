@@ -1,6 +1,7 @@
 
 ## [Unreleased]
 ### Added
+- Code-owned VCS shipping pipeline (`shipping.ts`, `ship-cli.ts`): `push-and-pr` now runs finalize → squash → push → PR as a single typed orchestration; denylist blocks `.env*`/OS cruft before push; clean squash commit collapses branch history; `done.md` delegates entirely to `bun ship-cli.ts` instead of raw git/gh commands; 37 new tests including real-git integration (#093)
 - `checkBranchSync` helper detects whether local base branch is behind remote; `handleIssueCommand` auto-checkouts `main` when activated on an untracked `feat/*`/`fix/*` branch, then prompts user to pull if main is behind origin (#091)
 - Two-tier plan validation: deterministic per-task lint (T0) in `megapowers_plan_task` catches empty titles, short descriptions, missing file targets, invalid `depends_on` refs, and duplicate `files_to_create` paths before saving; fast-model whole-plan lint (T1) in `plan_draft_done` checks spec coverage, dependency coherence, description quality, and file path plausibility before transitioning to review — both tiers fire before the expensive T2 deep-review session break (#092)
 - Every workflow phase/task transition (`phase_next`, `phase_back`, `task_done`, `plan_draft_done`, `plan_review`) now triggers a fresh session via `megapowers_signal`, giving the agent a clean context window at each phase boundary; the old broken `parentSession` argument is removed (#080)

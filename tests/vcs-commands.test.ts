@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { handleIssueCommand } from "../extensions/megapowers/commands.js";
+import { handleIssueCommand, maybeSwitchAwayFromIssue } from "../extensions/megapowers/commands.js";
 import { readState, writeState } from "../extensions/megapowers/state/state-io.js";
 import { createInitialState } from "../extensions/megapowers/state/state-machine.js";
 import type { ExecGit } from "../extensions/megapowers/vcs/git-ops.js";
@@ -154,6 +154,22 @@ describe("handleIssueCommand — VCS switchAwayCommit on issue switch (AC15)", (
     expect(calls.some(c => c[0] === "commit" && c[2] === "WIP: feat/001-old-issue")).toBe(true);
     const state = readState(tmp);
     expect(state.branchName).toBe("feat/002-new-issue");
+  });
+
+  it("returns committed: false and does not commit when switching away from a clean branch", async () => {
+    const calls: string[][] = [];
+    const execGit: ExecGit = async (args) => {
+      calls.push(args);
+      if (args[0] === "add") return { stdout: "", stderr: "" };
+      if (args[0] === "status") return { stdout: "", stderr: "" };
+      return { stdout: "", stderr: "" };
+    };
+
+    await expect(maybeSwitchAwayFromIssue(execGit, "feat/001-old-issue")).resolves.toEqual({
+      ok: true,
+      committed: false,
+    });
+    expect(calls.some((c) => c[0] === "commit")).toBe(false);
   });
 
   it("propagates prevState.baseBranch (not current HEAD) as baseBranch on issue switch", async () => {

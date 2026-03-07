@@ -3,7 +3,7 @@ import { describe, it, expect } from "bun:test";
 import { createPR, type ExecCmd } from "../extensions/megapowers/vcs/pr-creator.js";
 
 describe("createPR", () => {
-  it("creates PR with correct gh arguments and returns URL (AC12)", async () => {
+  it("checks gh availability, passes explicit base/head arguments, and returns the PR URL", async () => {
     const calls: { cmd: string; args: string[] }[] = [];
     const execCmd: ExecCmd = async (cmd, args) => {
       calls.push({ cmd, args });
@@ -11,11 +11,23 @@ describe("createPR", () => {
       return { stdout: "gh version 2.0.0\n", stderr: "" };
     };
 
-    const result = await createPR(execCmd, "feat/my-feature", "Add feature", "Feature body");
+    const result = await createPR(execCmd, "main", "feat/my-feature", "Add feature", "Feature body");
     expect(result).toEqual({ ok: true, url: "https://github.com/org/repo/pull/42" });
+    expect(calls[0]).toEqual({ cmd: "gh", args: ["--version"] });
     expect(calls[1]).toEqual({
       cmd: "gh",
-      args: ["pr", "create", "--title", "Add feature", "--body", "Feature body", "--head", "feat/my-feature"],
+      args: [
+        "pr",
+        "create",
+        "--base",
+        "main",
+        "--head",
+        "feat/my-feature",
+        "--title",
+        "Add feature",
+        "--body",
+        "Feature body",
+      ],
     });
   });
 
@@ -24,7 +36,7 @@ describe("createPR", () => {
       throw new Error("command not found: gh");
     };
 
-    const result = await createPR(execCmd, "feat/my-feature", "Title", "Body");
+    const result = await createPR(execCmd, "main", "feat/my-feature", "Title", "Body");
     expect(result).toEqual({ skipped: true, reason: "gh CLI not installed" });
   });
 
@@ -34,7 +46,7 @@ describe("createPR", () => {
       return { stdout: "gh version 2.0.0\n", stderr: "" };
     };
 
-    const result = await createPR(execCmd, "feat/my-feature", "Title", "Body");
+    const result = await createPR(execCmd, "main", "feat/my-feature", "Title", "Body");
     expect(result).toEqual({ ok: false, error: "authentication required" });
   });
 });

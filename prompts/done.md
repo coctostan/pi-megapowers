@@ -58,35 +58,23 @@ write({ path: ".megapowers/plans/{{issue_slug}}/learnings.md", content: "<markdo
 ```
 
 ### push-and-pr
-Push the feature branch and create a PR:
+Ship the current issue through the code-owned VCS lifecycle helper. Do not run raw `git push` or `gh pr create` commands yourself.
 
-**Step 1 — Push the branch:**
-```
-bash("git push origin {{branch_name}}")
-```
-
-**Step 2 — Check GitHub CLI availability:**
-```
-bash("which gh && gh auth status")
+Run:
+```bash
+bun extensions/megapowers/vcs/ship-cli.ts
 ```
 
-- If `gh` is **not installed**: Ask the user if they'd like help installing it (e.g., `brew install gh`). If they decline, skip PR creation and tell them: "Push succeeded. Create your PR manually at the GitHub repo page."
-- If `gh` is installed but **not authenticated**: Ask the user if they'd like to run `gh auth login`. If they decline, skip PR creation with the same message.
-- If both checks pass: proceed to Step 3.
+Interpret the JSON result from that command as follows:
+- if finalization blocks suspicious files, stop and report the blocked file list
+- if push fails, do not attempt PR creation
+- if PR is skipped because `gh` is unavailable, report that push succeeded and PR must be created manually
+- after a successful ship result, print the cleanup reminder
 
-**Step 3 — Create the PR:**
+After your PR is merged on GitHub, run these cleanup commands:
 ```
-bash("gh pr create --base {{base_branch}} --head {{branch_name}} --title '<issue title>' --body 'Resolves {{issue_slug}}'")
+git checkout main && git pull && git branch -d {{branch_name}}
 ```
-
-If `{{branch_name}}` is empty or the push fails, report the error and move on — do not block other actions.
-After push+PR (or after any errors), tell the user:
-
-> After your PR is merged on GitHub, run these cleanup commands:
-> ```
-> git checkout main && git pull && git branch -d {{branch_name}}
-> ```
-
 ### close-issue
 All other actions are complete. Before closing:
 1. Run `git checkout main` to return to the base branch — do not leave the user on the feature branch.
