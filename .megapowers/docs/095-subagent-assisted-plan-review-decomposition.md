@@ -80,6 +80,16 @@ If subagent-assisted planning is introduced before reviewer ownership is restore
 
 ## Phase 2 — Subagent-Assisted Plan/Review/Revise (Issue #095)
 
+## V1 project-scoped scout rollout
+
+For the first rollout, use the project agent `.pi/agents/plan-scout.md` through the external `pi-subagents` extension rather than adding new megapowers runtime orchestration.
+
+For v1, `plan-scout` writes `.megapowers/plans/<issue-slug>/context.md` at the plan directory root.
+
+`context.md` is a planning handoff consumed by the main planning session. It is advisory only and is not canonical workflow state.
+
+The main planning session reads `context.md`, verifies details as needed, and remains responsible for `megapowers_plan_task`, `megapowers_plan_review`, and `megapowers_signal({ action: "plan_draft_done" })`.
+
 ## Draft Assist
 
 ### Goal
@@ -141,6 +151,7 @@ It writes `revise-proposal.md` containing:
 The main session then applies actual edits and resubmits.
 
 ## Artifact Layout
+For the v1 scout rollout, the draft handoff lives at the plan root as `.megapowers/plans/<issue-slug>/context.md`. The `subagents/draft/` layout below is reserved for future expanded chains.
 
 Recommended layout under the active plan directory:
 
