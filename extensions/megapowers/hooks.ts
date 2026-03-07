@@ -1,8 +1,11 @@
 import type { Deps } from "./commands.js";
 import { readState, writeState } from "./state/state-io.js";
+import { deriveTasks } from "./state/derived.js";
 import { buildInjectedPrompt } from "./prompt-inject.js";
 import { showDoneChecklist } from "./ui.js";
 import { evaluateWriteOverride, recordTestFileWritten } from "./tools/tool-overrides.js";
+import { runFocusedReviewFanout, type FocusedReviewFanoutResult } from "./plan-review/focused-review-runner.js";
+import { shouldRunFocusedReviewFanout } from "./plan-review/focused-review.js";
 
 // --- Hook handlers ---
 
@@ -31,12 +34,35 @@ export async function onSessionStart(_event: any, ctx: any, deps: Deps): Promise
   }
 }
 
+export async function preparePlanReviewContext(
+  cwd: string,
+  runFocusedReviewFanoutFn: typeof runFocusedReviewFanout = runFocusedReviewFanout,
+): Promise<FocusedReviewFanoutResult | void> {
+  const state = readState(cwd);
+  if (state.phase !== "plan" || state.planMode !== "review" || !state.activeIssue || !state.workflow) {
+    return;
+  }
+
+  const taskCount = deriveTasks(cwd, state.activeIssue).length;
+  if (!shouldRunFocusedReviewFanout(taskCount)) return;
+
+  try {
+    return await runFocusedReviewFanoutFn({
+      cwd,
+      issueSlug: state.activeIssue,
+      workflow: state.workflow,
+      taskCount,
+    });
+  } catch {
+    return;
+  }
+}
+
 export async function onBeforeAgentStart(_event: any, ctx: any, deps: Deps): Promise<any> {
   const { store } = deps;
-
+  await preparePlanReviewContext(ctx.cwd);
   const prompt = buildInjectedPrompt(ctx.cwd, store);
   if (!prompt) return;
-
   return {
     message: {
       customType: "megapowers-context",

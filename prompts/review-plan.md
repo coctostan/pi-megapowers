@@ -14,6 +14,8 @@ Issue: {{issue_slug}}
 
 Task files are stored in `.megapowers/plans/{{issue_slug}}/tasks/`. Read them now before proceeding with the review — list the directory, then read each `task-NNN.md` file.
 
+{{focused_review_artifacts}}
+
 ## Evaluate against these criteria:
 
 Treat any deterministic checks or earlier validation as advisory hints, not as authoritative approval. You still own the full review verdict. Re-check coverage, dependency ordering, TDD completeness, self-containment, and codebase realism yourself before approving or requesting revisions.
