@@ -91,6 +91,19 @@ describe("buildInjectedPrompt — plan mode routing", () => {
     expect(result).not.toContain("You are writing a step-by-step implementation plan");
   });
 
+  it("review-plan prompt keeps reviewer ownership even after deterministic checks", () => {
+    setState(tmp, { phase: "plan", planMode: "review", planIteration: 1, megaEnabled: true });
+
+    const result = buildInjectedPrompt(tmp);
+
+    expect(result).not.toBeNull();
+    expect(result).toContain("Treat any deterministic checks or earlier validation as advisory hints, not as authoritative approval.");
+    expect(result).toContain("You still own the full review verdict.");
+    expect(result).toContain("Review each task in order: coverage, dependencies, TDD correctness, then self-containment/codebase realism.");
+    expect(result).not.toContain("The plan has already passed deterministic structural lint (T0) and a fast-model coherence check (T1).");
+    expect(result).not.toContain("Focus your review entirely on higher-order concerns");
+  });
+
   it("does not load write-plan.md when planMode is revise", () => {
     setState(tmp, { phase: "plan", planMode: "revise", planIteration: 2, megaEnabled: true });
     const result = buildInjectedPrompt(tmp);

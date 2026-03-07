@@ -3,12 +3,11 @@ import { join } from "node:path";
 import { readState, writeState } from "../state/state-io.js";
 import { listPlanTasks } from "../state/plan-store.js";
 import { advancePhase } from "../policy/phase-advance.js";
-import { deriveTasks, deriveAcceptanceCriteria } from "../state/derived.js";
+import { deriveTasks } from "../state/derived.js";
 import { transition, createInitialState, type Phase } from "../state/state-machine.js";
 import { getWorkflowConfig } from "../workflows/registry.js";
 import { createStore } from "../state/store.js";
 import { versionArtifact } from "../artifacts/version-artifact.js";
-import { lintPlanWithModel, type CompleteFn } from "../validation/plan-lint-model.js";
 
 export interface SignalResult {
   message?: string;
@@ -207,7 +206,7 @@ function handleTestsPassed(cwd: string): SignalResult {
 // plan_draft_done
 // ---------------------------------------------------------------------------
 
-export async function handlePlanDraftDone(cwd: string, completeFn?: CompleteFn): Promise<SignalResult> {
+export async function handlePlanDraftDone(cwd: string): Promise<SignalResult> {
   const state = readState(cwd);
   if (state.phase !== "plan") {
     return { error: "plan_draft_done can only be called during the plan phase." };
@@ -219,34 +218,11 @@ export async function handlePlanDraftDone(cwd: string, completeFn?: CompleteFn):
   if (tasks.length === 0) {
     return { error: "No task files found. Use megapowers_plan_task to create tasks before signaling draft done." };
   }
-
-  let lintWarning = "";
-  if (!completeFn) {
-    // T1 skipped — no API key available
-    lintWarning = "\n  ⚠️ T1 lint skipped: no model API key available.";
-  } else {
-    const criteria = deriveAcceptanceCriteria(cwd, state.activeIssue!, state.workflow!);
-    const criteriaText = criteria.map((c) => `${c.id}. ${c.text}`).join("\n");
-    const taskSummaries = tasks.map((t) => ({
-      id: t.data.id,
-      title: t.data.title,
-      description: t.content,
-      files: [...t.data.files_to_modify, ...t.data.files_to_create],
-    }));
-    const lintResult = await lintPlanWithModel(taskSummaries, criteriaText, completeFn);
-    if (!lintResult.pass) {
-      return { error: `❌ T1 plan lint failed:\n${lintResult.errors.map((e) => `  • ${e}`).join("\n")}` };
-    }
-    if (lintResult.warning) {
-      lintWarning = `\n  ⚠️ ${lintResult.warning}`;
-    }
-  }
-
   writeState(cwd, { ...state, planMode: "review" });
   return {
     message:
       `📝 Draft complete: ${tasks.length} task${tasks.length === 1 ? "" : "s"} saved\n` +
-      `  → Transitioning to review mode.${lintWarning}`,
+      "  → Transitioning to review mode.",
     triggerNewSession: true,
   };
 }
