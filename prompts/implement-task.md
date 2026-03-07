@@ -23,7 +23,9 @@ Check `AGENTS.md` for the project's language, test framework, and test runner. I
 
 ## Execution Mode
 Work directly in this session. TDD is enforced via tdd-guard.
-**Do NOT use `pipeline` or `subagent` tools.** They are broken and will produce garbage code. Do all work inline in this session.
+**Do NOT use `pipeline` or `subagent` tools for implementation work in this session.** Do all implementation work inline here.
+
+This restriction is specific to implement-phase task execution. Advisory planning-scout usage in the plan phase is separate.
 
 ## Strict Red-Green-Refactor
 

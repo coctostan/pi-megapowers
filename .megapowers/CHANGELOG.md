@@ -342,3 +342,11 @@ All selected wrap-up actions executed:
 | **close-issue** | Ready |
 
 **The issue is ready to close.** Run `/issue close` or select a new issue to continue.
+
+## [Unreleased]
+### Added
+- Project-scoped `plan-scout` agent at `.pi/agents/plan-scout.md` — advisory-only planning scout that produces a bounded `context.md` handoff (AC mapping, key files, conventions, risks, task slices) before plan drafting; delivered via `pi-subagents` extension with no new megapowers runtime (#102)
+- V1 rollout section in `095-subagent-assisted-plan-review-decomposition.md` documenting `context.md` as advisory planning handoff, artifact layout scoping, and experiment success criteria (#109)
+
+### Changed
+- `prompts/implement-task.md` Execution Mode wording narrowed: `pipeline`/`subagent` restriction now scoped to implement-phase execution only, explicitly exempting advisory planning-scout usage in the plan phase (#113)
