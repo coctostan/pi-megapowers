@@ -58,6 +58,36 @@ export async function handleMegaCommand(args: string, ctx: any, deps: Deps): Pro
   deps.ui.renderDashboard(ctx, readState(ctx.cwd), deps.store);
 }
 
+export async function maybeSwitchAwayFromIssue(
+  execGit: ExecGit | undefined,
+  previousBranchName: string | null,
+): Promise<{ ok: true; committed: boolean } | { ok: false; error: string }> {
+  if (!execGit || !previousBranchName) {
+    return { ok: true, committed: false };
+  }
+
+  const switchResult = await switchAwayCommit(execGit, previousBranchName);
+  if ("error" in switchResult) {
+    return { ok: false, error: switchResult.error };
+  }
+
+  return { ok: true, committed: switchResult.committed };
+}
+
+export async function resolveActivationBaseBranch(execGit: ExecGit): Promise<string | null> {
+  try {
+    const r = await execGit(["rev-parse", "--abbrev-ref", "HEAD"]);
+    const currentBranch = r.stdout.trim();
+    if (currentBranch && /^(feat|fix)\//.test(currentBranch)) {
+      await execGit(["checkout", "main"]);
+      return "main";
+    }
+    return currentBranch || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function handleIssueCommand(args: string, ctx: any, deps: Deps): Promise<void> {
   const prevState = readState(ctx.cwd);
   const newState = await deps.ui.handleIssueCommand(ctx, prevState, deps.store, args);
@@ -66,10 +96,9 @@ export async function handleIssueCommand(args: string, ctx: any, deps: Deps): Pr
   if (deps.execGit && newState.activeIssue && newState.activeIssue !== prevState.activeIssue && newState.workflow) {
     // AC15: WIP commit on previous issue's branch before switching away
     if (prevState.branchName) {
-      const switchResult = await switchAwayCommit(deps.execGit, prevState.branchName);
-      if (!switchResult.ok) {
-        // AC16: surface error, don't block
-        if (ctx.hasUI) ctx.ui.notify(`VCS: ${switchResult.error}`, "error");
+      const switchResult = await maybeSwitchAwayFromIssue(deps.execGit, prevState.branchName);
+      if (!switchResult.ok && ctx.hasUI) {
+        ctx.ui.notify(`VCS: ${switchResult.error}`, "error");
       }
     }
     // Capture baseBranch for the new issue:
@@ -81,18 +110,7 @@ export async function handleIssueCommand(args: string, ctx: any, deps: Deps): Pr
       // Already on a feature branch — preserve the known base
       baseBranch = prevState.baseBranch;
     } else {
-      // Fresh activation — detect stale feature branch
-      try {
-        const r = await deps.execGit(["rev-parse", "--abbrev-ref", "HEAD"]);
-        const currentBranch = r.stdout.trim();
-        // If on a feat/* or fix/* branch with no state tracking it, checkout main
-        if (currentBranch && /^(feat|fix)\//.test(currentBranch)) {
-          await deps.execGit(["checkout", "main"]);
-          baseBranch = "main";
-        } else {
-          baseBranch = currentBranch || null;
-        }
-      } catch { /* ignore — baseBranch stays null */ }
+      baseBranch = await resolveActivationBaseBranch(deps.execGit);
       // Check if local base is behind remote
       if (baseBranch && deps.execGit) {
         const syncStatus = await checkBranchSync(deps.execGit, baseBranch);

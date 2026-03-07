@@ -12,6 +12,7 @@ export type PRResult =
  */
 export async function createPR(
   execCmd: ExecCmd,
+  baseBranch: string,
   branchName: string,
   title: string,
   body: string,
@@ -26,12 +27,14 @@ export async function createPR(
     const result = await execCmd("gh", [
       "pr",
       "create",
+      "--base",
+      baseBranch,
+      "--head",
+      branchName,
       "--title",
       title,
       "--body",
       body,
-      "--head",
-      branchName,
     ]);
 
     return { ok: true, url: result.stdout.trim() };

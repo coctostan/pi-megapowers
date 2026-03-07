@@ -52,6 +52,23 @@ export async function switchAwayCommit(
 
 export type SquashAndPushResult = { ok: true } | { ok: false; error: string; step: "squash" | "push" };
 
+export type SquashStepResult =
+  | { ok: true; committed: boolean }
+  | { ok: false; error: string; step: "squash" };
+
+export async function squashBranchToSingleCommit(
+  execGit: ExecGit,
+  baseBranch: string,
+  commitMessage: string,
+): Promise<SquashStepResult> {
+  const squashResult = await squashOnto(execGit, baseBranch, commitMessage);
+  if (!squashResult.ok) {
+    return { ok: false, error: squashResult.error, step: "squash" };
+  }
+
+  return { ok: true, committed: squashResult.committed };
+}
+
 /**
  * AC10: Squash all commits onto base branch and force-push.
  * Returns the failing step name on error for targeted retry/reporting.
@@ -62,15 +79,13 @@ export async function squashAndPush(
   baseBranch: string,
   commitMessage: string,
 ): Promise<SquashAndPushResult> {
-  const squashResult = await squashOnto(execGit, baseBranch, commitMessage);
+  const squashResult = await squashBranchToSingleCommit(execGit, baseBranch, commitMessage);
   if (!squashResult.ok) {
     return { ok: false, error: squashResult.error, step: "squash" };
   }
-
   const pushResult = await pushBranch(execGit, branchName, true);
   if (!pushResult.ok) {
     return { ok: false, error: pushResult.error, step: "push" };
   }
-
   return { ok: true };
 }
