@@ -417,3 +417,73 @@ it("buildInjectedPrompt signature no longer includes _jj", () => {
   expect(source).not.toContain("_jj?:");
   expect(source).toContain("export function buildInjectedPrompt(cwd: string, store?: Store)");
 });
+
+
+describe("buildInjectedPrompt — focused review artifacts", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "prompt-inject-focused-review-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  function createTaskFiles(count: number) {
+    const dir = join(tmp, ".megapowers", "plans", "001-test", "tasks");
+    mkdirSync(dir, { recursive: true });
+    for (let i = 1; i <= count; i++) {
+      writeFileSync(
+        join(dir, `task-${String(i).padStart(3, "0")}.md`),
+        `---\nid: ${i}\ntitle: Task ${i}\nstatus: draft\nfiles_to_modify:\n  - tests/fake-${i}.ts\nfiles_to_create: []\n---\nTask body ${i}.`,
+      );
+    }
+  }
+
+  it("keeps existing review behavior when focused review fan-out is not triggered", () => {
+    setState(tmp, { phase: "plan", planMode: "review", planIteration: 1, megaEnabled: true });
+    createTaskFiles(4);
+
+    const result = buildInjectedPrompt(tmp);
+
+    expect(result).not.toContain("Focused Review Advisory Artifacts");
+    expect(result).not.toContain("coverage-review.md");
+    expect(result).not.toContain("dependency-review.md");
+    expect(result).not.toContain("task-quality-review.md");
+  });
+
+  it("includes all available focused review artifacts before the final review verdict is generated", () => {
+    setState(tmp, { phase: "plan", planMode: "review", planIteration: 1, megaEnabled: true });
+    createTaskFiles(5);
+    const planDir = join(tmp, ".megapowers", "plans", "001-test");
+    mkdirSync(planDir, { recursive: true });
+    writeFileSync(join(planDir, "coverage-review.md"), "## Coverage Summary\n- Overall: covered");
+    writeFileSync(join(planDir, "dependency-review.md"), "## Dependency Summary\n- Overall ordering: sound");
+    writeFileSync(join(planDir, "task-quality-review.md"), "## Task Quality Summary\n- Overall: strong");
+
+    const result = buildInjectedPrompt(tmp);
+
+    expect(result).toContain("## Focused Review Advisory Artifacts");
+    expect(result).toContain("## Coverage Summary");
+    expect(result).toContain("## Dependency Summary");
+    expect(result).toContain("## Task Quality Summary");
+    expect(result).toContain("The main plan-review session still owns the final approve/revise decision and the only allowed `megapowers_plan_review` call.");
+  });
+
+  it("names missing artifacts when fan-out partially fails and emits a full failure note when none are available", () => {
+    setState(tmp, { phase: "plan", planMode: "review", planIteration: 1, megaEnabled: true });
+    createTaskFiles(5);
+    const planDir = join(tmp, ".megapowers", "plans", "001-test");
+    mkdirSync(planDir, { recursive: true });
+    writeFileSync(join(planDir, "coverage-review.md"), "## Coverage Summary\n- Overall: partial");
+
+    const partial = buildInjectedPrompt(tmp);
+    expect(partial).toContain("Unavailable focused review artifacts: dependency-review.md, task-quality-review.md");
+
+    // Remove only the artifact files, leave tasks directory intact so taskCount stays at 5
+    rmSync(join(planDir, "coverage-review.md"), { force: true });
+    const none = buildInjectedPrompt(tmp);
+    expect(none).toContain("Focused review fan-out failed and the review proceeded without advisory artifacts.");
+  });
+});

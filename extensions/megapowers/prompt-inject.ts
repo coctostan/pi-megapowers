@@ -1,4 +1,6 @@
 // extensions/megapowers/prompt-inject.ts
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { readState } from "./state/state-io.js";
 import { deriveTasks, deriveAcceptanceCriteria } from "./state/derived.js";
 import {
@@ -13,6 +15,7 @@ import {
 import type { Store } from "./state/store.js";
 import { getWorkflowConfig } from "./workflows/registry.js";
 import { deriveToolInstructions } from "./workflows/tool-instructions.js";
+import { shouldRunFocusedReviewFanout } from "./plan-review/focused-review.js";
 
 /**
  * Build the injected system prompt for the current phase.
@@ -51,6 +54,44 @@ function buildIdlePrompt(_cwd: string, store?: Store): string | null {
   return parts.length > 0 ? parts.join("\n\n") : null;
 }
 
+function buildFocusedReviewArtifactsSection(cwd: string, issueSlug: string, taskCount: number): string {
+  if (!shouldRunFocusedReviewFanout(taskCount)) return "";
+
+  const planDir = join(cwd, ".megapowers", "plans", issueSlug);
+  const artifactFiles = [
+    "coverage-review.md",
+    "dependency-review.md",
+    "task-quality-review.md",
+  ] as const;
+
+  const available = artifactFiles.filter((file) => existsSync(join(planDir, file)));
+  const missing = artifactFiles.filter((file) => !existsSync(join(planDir, file)));
+
+  const sections = [
+    "## Focused Review Advisory Artifacts",
+    "Focused reviewers are advisory only. Artifact availability does not change which session may call `megapowers_plan_review`.",
+    "The main plan-review session still owns the final approve/revise decision and the only allowed `megapowers_plan_review` call.",
+    "",
+  ];
+
+  if (available.length === 0) {
+    sections.push("Focused review fan-out failed and the review proceeded without advisory artifacts.");
+    return sections.join("\n");
+  }
+
+  if (missing.length > 0) {
+    sections.push(`Unavailable focused review artifacts: ${missing.join(", ")}`);
+    sections.push("");
+  }
+
+  for (const file of available) {
+    sections.push(`### ${file}`);
+    sections.push(readFileSync(join(planDir, file), "utf-8").trim());
+    sections.push("");
+  }
+
+  return sections.join("\n").trim();
+}
 export function buildInjectedPrompt(cwd: string, store?: Store): string | null {
   const state = readState(cwd);
 
@@ -111,12 +152,11 @@ export function buildInjectedPrompt(cwd: string, store?: Store): string | null {
     vars.acceptance_criteria_list = formatAcceptanceCriteriaList(criteria);
   }
 
-  // Implement phase: task context via buildImplementTaskVars
+  const derivedTasks = deriveTasks(cwd, state.activeIssue);
   if (state.phase === "implement") {
-    const tasks = deriveTasks(cwd, state.activeIssue);
-    if (tasks.length > 0) {
+    if (derivedTasks.length > 0) {
       const completedSet = new Set(state.completedTasks);
-      const tasksWithCompletion = tasks.map(t => ({ ...t, completed: completedSet.has(t.index) }));
+      const tasksWithCompletion = derivedTasks.map(t => ({ ...t, completed: completedSet.has(t.index) }));
       Object.assign(vars, buildImplementTaskVars(tasksWithCompletion, state.currentTaskIndex));
     }
   }
@@ -145,6 +185,15 @@ export function buildInjectedPrompt(cwd: string, store?: Store): string | null {
       const filename = `revise-instructions-${state.planIteration - 1}.md`;
       const content = store.readPlanFile(state.activeIssue!, filename);
       vars.revise_instructions = content ?? "";
+    }
+    if (state.planMode === "review") {
+      vars.focused_review_artifacts = buildFocusedReviewArtifactsSection(
+        cwd,
+        state.activeIssue,
+        derivedTasks.length,
+      );
+    } else {
+      vars.focused_review_artifacts = "";
     }
   }
 
