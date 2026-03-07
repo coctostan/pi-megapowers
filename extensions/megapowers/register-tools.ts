@@ -3,9 +3,6 @@ import type { RuntimeDeps } from "./commands.js";
 import { ensureDeps } from "./commands.js";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { complete } from "@mariozechner/pi-ai";
-import type { CompleteFn } from "./validation/plan-lint-model.js";
-import type { ModelRegistry } from "@mariozechner/pi-coding-agent";
 import { readState } from "./state/state-io.js";
 import { handleSignal, handlePlanDraftDone, type SignalResult } from "./tools/tool-signal.js";
 import { handlePlanTask } from "./tools/tool-plan-task.js";
@@ -18,32 +15,6 @@ import { handlePipelineTool } from "./subagent/pipeline-tool.js";
 import { buildPipelineDetails, renderPipelineCall, renderPipelineResult } from "./subagent/pipeline-renderer.js";
 import type { PipelineProgressEvent } from "./subagent/pipeline-renderer.js";
 
-async function buildLintCompleteFn(modelRegistry: ModelRegistry | undefined): Promise<CompleteFn | undefined> {
-  if (!modelRegistry) return undefined;
-  const model =
-    modelRegistry.find("anthropic", "claude-haiku-4-5") ??
-    modelRegistry.find("anthropic", "claude-3-5-haiku-latest");
-  if (!model) return undefined;
-  const apiKey = await modelRegistry.getApiKey(model);
-  if (!apiKey) return undefined;
-  return async (prompt: string) => {
-    const response = await complete(
-      model,
-      {
-        messages: [{
-          role: "user",
-          content: [{ type: "text", text: prompt }],
-          timestamp: Date.now(),
-        }],
-      },
-      { apiKey },
-    );
-    return response.content
-      .filter((c): c is { type: "text"; text: string } => c.type === "text")
-      .map((c) => c.text)
-      .join("\n");
-  };
-}
 export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void {
   // --- Tools: megapowers_signal ---
 
@@ -68,8 +39,7 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
       const { store, ui } = ensureDeps(runtimeDeps, pi, ctx.cwd);
       let result: SignalResult;
       if (params.action === "plan_draft_done") {
-        const completeFn = await buildLintCompleteFn(ctx.modelRegistry);
-        result = await handlePlanDraftDone(ctx.cwd, completeFn);
+        result = await handlePlanDraftDone(ctx.cwd);
       } else {
         result = handleSignal(ctx.cwd, params.action, params.target);
       }

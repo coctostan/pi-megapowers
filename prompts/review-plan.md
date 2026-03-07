@@ -16,7 +16,9 @@ Task files are stored in `.megapowers/plans/{{issue_slug}}/tasks/`. Read them no
 
 ## Evaluate against these criteria:
 
-The plan has already passed deterministic structural lint (T0) and a fast-model coherence check (T1). Mechanical issues — empty descriptions, missing file targets, placeholder text, spec coverage gaps, dependency ordering — have been caught and fixed. **Focus your review entirely on higher-order concerns:** code correctness, architectural soundness, and implementation feasibility.
+Treat any deterministic checks or earlier validation as advisory hints, not as authoritative approval. You still own the full review verdict. Re-check coverage, dependency ordering, TDD completeness, self-containment, and codebase realism yourself before approving or requesting revisions.
+
+Review each task in order: coverage, dependencies, TDD correctness, then self-containment/codebase realism.
 
 ### 1. Coverage
 Does every acceptance criterion have at least one task addressing it? List any gaps. Check that tasks explicitly call out which AC they cover.
@@ -49,7 +51,7 @@ Tasks marked `[no-test]` must have a justification. Flag any `[no-test]` task th
 Valid `[no-test]` reasons: config-only, documentation, pure refactor with existing coverage, CI/tooling setup, prompt/skill file changes (should include subagent verification step when possible).
 
 ### 6. Self-Containment
-Can a developer execute each task from the plan alone? Focus on: Are the APIs and function signatures correct? Do the imports exist? Is the error handling complete? (Structural completeness — file paths, non-empty descriptions — is already verified by T0 lint.)
+Can a developer execute each task from the plan alone? Focus on: Are the APIs and function signatures correct? Do the imports exist? Is the error handling complete? (Earlier structural checks may be helpful hints, but you must still verify file paths, descriptions, imports, APIs, and error handling yourself.)
 
 ## Output format
 

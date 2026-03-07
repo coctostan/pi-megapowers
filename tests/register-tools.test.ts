@@ -64,4 +64,14 @@ describe("registerTools — plan loop tools", () => {
     expect(source).toContain("onUpdate");
     expect(source).toContain("buildPipelineDetails");
   });
+
+  it("plan_draft_done wiring calls handlePlanDraftDone directly without model lint helpers", () => {
+    const source = readFileSync(join(process.cwd(), "extensions/megapowers/register-tools.ts"), "utf-8");
+
+    expect(source).not.toContain("buildLintCompleteFn");
+    expect(source).not.toContain('import { complete } from "@mariozechner/pi-ai"');
+    expect(source).not.toContain('import type { CompleteFn } from "./validation/plan-lint-model.js"');
+    expect(source).not.toContain('import type { ModelRegistry } from "@mariozechner/pi-coding-agent"');
+    expect(source).toContain("result = await handlePlanDraftDone(ctx.cwd);");
+  });
 });
