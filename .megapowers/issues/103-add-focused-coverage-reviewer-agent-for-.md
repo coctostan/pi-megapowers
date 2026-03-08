@@ -1,7 +1,7 @@
 ---
 id: 103
 type: feature
-status: open
+status: done
 created: 2026-03-07T14:57:10.138Z
 sources: [95]
 milestone: M3

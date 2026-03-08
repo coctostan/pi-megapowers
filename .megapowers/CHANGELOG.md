@@ -2,6 +2,7 @@
 ## [Unreleased]
 ### Added
 - Focused plan-review fan-out: plans with ≥5 tasks now run `coverage-reviewer`, `dependency-reviewer`, and `task-quality-reviewer` in parallel via `pi-subagents` before the main review session; artifacts are injected as advisory context; review always proceeds even on full fan-out failure (#114 / #103 / #104 / #105)
+- Subagent planning support layer: `revise-helper` advisory agent for targeted plan revision (reads only affected tasks, writes `revise-proposal.md`); `draft-assist` sequential chain (`plan-scout → planner`) for bounded draft assistance; `planner` advisory agent required by chain runner; review fan-out pattern documented under `.megapowers/docs/` (#115 / #106 / #107)
 ### Added
 - Code-owned VCS shipping pipeline (`shipping.ts`, `ship-cli.ts`): `push-and-pr` now runs finalize → squash → push → PR as a single typed orchestration; denylist blocks `.env*`/OS cruft before push; clean squash commit collapses branch history; `done.md` delegates entirely to `bun ship-cli.ts` instead of raw git/gh commands; 37 new tests including real-git integration (#093)
 - `checkBranchSync` helper detects whether local base branch is behind remote; `handleIssueCommand` auto-checkouts `main` when activated on an untracked `feat/*`/`fix/*` branch, then prompts user to pull if main is behind origin (#091)
