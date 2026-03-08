@@ -3,26 +3,26 @@
 **Primary issues:** #094, #095  
 **Related rollout issues:** #096, #097, #098, #099, #100, #101, #102, #103, #104, #105, #106, #107, #108, #109  
 **Date:** 2026-03-07  
-**Status:** Proposed
+**Status:** Immediate recovery complete (T1 removed via #110, #111); subagent-assisted planning shipped (#113, #114, #115)
 
 ## Problem Summary
 
 Two separate problems are currently entangled:
 
-1. **T1 made plan review worse.** `plan_draft_done` now performs a hidden model-based lint before entering review mode. The reviewer prompt was also narrowed to assume earlier checks already handled fundamentals. In practice this creates false confidence, fail-open behavior, and muddier ownership.
+1. **T1 made plan review worse.** ✅ *Resolved: T1 removed (#110), dead code deleted (#111), reviewer ownership restored.* `plan_draft_done` performed a hidden model-based lint before entering review mode. The reviewer prompt was narrowed to assume earlier checks already handled fundamentals. This created false confidence, fail-open behavior, and muddier ownership.
 2. **The plan phase is overloaded.** One session is expected to hold the full spec/diagnosis, repo structure, task graph, prior review feedback, and revise instructions at once. Large plans become a firehose.
 
 These need different responses:
-- **Immediate recovery:** keep T0, remove T1, restore reviewer ownership.
+- **Immediate recovery:** ✅ *Complete.* Kept T0, removed T1 (#110, #111), restored reviewer ownership (#096, #099, #100, #101).
 - **Follow-on improvement:** use subagents to decompose planning context into bounded advisory artifacts.
 
 ## Goals
 
-### Immediate
-- Keep T0 deterministic validation in `megapowers_plan_task`
-- Remove T1 model lint from `plan_draft_done`
-- Restore full reviewer ownership of plan quality
-- Improve plan/revise prompts to reduce context overload without hiding responsibility
+### Immediate — ✅ Complete
+- ✅ Keep T0 deterministic validation in `megapowers_plan_task`
+- ✅ Remove T1 model lint from `plan_draft_done` (#110)
+- ✅ Restore full reviewer ownership of plan quality (#110, #096)
+- ✅ Improve plan/revise prompts to reduce context overload (#097, #098)
 
 ### Follow-on
 - Use `pi-subagents` to split planning work into bounded, read-heavy passes
@@ -61,7 +61,7 @@ These need different responses:
 - Revision assistance proposals
 - Writing bounded planning artifacts under the plan directory or chain directory
 
-## Phase 1 — Immediate Recovery (Issue #094)
+## Phase 1 — Immediate Recovery (Issue #094) — ✅ Complete
 
 ### Target behavior
 `plan_draft_done` should return to being a simple transition:
@@ -257,14 +257,14 @@ We should consider it a failure if we see any of the following:
 
 ## Granular Rollout Issue Map
 
-## Immediate recovery / prompt fixes
-- **#096** — Restore full reviewer ownership in `prompts/review-plan.md`
-- **#097** — Reduce plan drafting firehose in `prompts/write-plan.md`
-- **#098** — Tighten `prompts/revise-plan.md` for narrow revisions + global sanity pass
-- **#099** — Remove T1 model lint from `tool-signal.ts`
-- **#100** — Remove T1 model wiring from `register-tools.ts`
-- **#101** — Delete T1 module/prompt/tests and simplify transition coverage
-- **#108** — Clean T1 references from docs/changelogs/guidance
+## Immediate recovery / prompt fixes — ✅ Complete
+- ✅ **#096** — Restore full reviewer ownership in `prompts/review-plan.md`
+- ✅ **#097** — Reduce plan drafting firehose in `prompts/write-plan.md`
+- ✅ **#098** — Tighten `prompts/revise-plan.md` for narrow revisions + global sanity pass
+- ✅ **#099** — Remove T1 model lint from `tool-signal.ts` (shipped in #110)
+- ✅ **#100** — Remove T1 model wiring from `register-tools.ts` (shipped in #110)
+- ✅ **#101** — Delete T1 module/prompt/tests and simplify transition coverage (shipped in #111)
+- ✅ **#108** — Clean T1 references from docs/changelogs/guidance (this issue)
 
 ## Subagent-assisted planning foundation
 - **#102** — Add `plan-scout` agent
@@ -299,8 +299,8 @@ We should consider it a failure if we see any of the following:
 
 Treat #094 as the immediate recovery track and #095 as the experimental improvement track.
 
-In short:
-- **Keep T0**
-- **Kill T1**
-- **Restore reviewer responsibility**
-- **Use subagents only as bounded planning advisors, never as hidden authorities**
+In short (recovery actions now complete):
+- ✅ **Kept T0** — deterministic per-task lint remains the only built-in pre-submit validation
+- ✅ **Killed T1** — model lint gate removed (#110), dead code deleted (#111)
+- ✅ **Restored reviewer responsibility** — reviewer owns the full verdict (#096, #110)
+- **Use subagents only as bounded planning advisors, never as hidden authorities** — ongoing principle
