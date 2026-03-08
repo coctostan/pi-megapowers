@@ -1,7 +1,7 @@
 ---
 id: 116
 type: bugfix
-status: open
+status: in-progress
 created: 2026-03-07T15:18:22.112Z
 sources: [108]
 ---
