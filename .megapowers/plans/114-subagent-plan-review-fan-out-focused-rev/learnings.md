@@ -1,0 +1,15 @@
+# Learnings — Issue #114
+
+- **Scoping drift is easy in large function bodies.** A newly added `if` block landed outside its intended `if (state.phase === "plan")` guard in `prompt-inject.ts` — functionally harmless because the template variable is only consumed by `review-plan.md`, but a correctness hazard for future readers. Code review caught it. When inserting blocks near closing braces, always verify nesting depth by reading the surrounding lines, not just the diff.
+
+- **`taskCount > 0 &&` guards introduce zero-edge bugs.** The original guard `if (taskCount > 0 && !shouldRunFocusedReviewFanout(taskCount))` silently let `taskCount === 0` fall through, producing a misleading "fan-out failed" message on plans with no tasks. The simpler `!shouldRunFocusedReviewFanout(taskCount)` is correct because `shouldRunFocusedReviewFanout(0)` already returns `false`. When writing short-circuit guards that delegate to a predicate, don't add redundant operands — they create false-positive bypass paths.
+
+- **Test cleanup that deletes too much can implicitly rely on a bug.** The `rmSync(planDir, { recursive: true })` in one prompt-inject test was designed to test "no artifacts" but also wiped the tasks directory, making `taskCount === 0`. The test passed because the old guard let 0 through. Fixing the guard exposed the bad setup. Tests that delete shared directories should be precise: delete only the specific files under test, not entire subtrees.
+
+- **Dependency injection at the runner level makes async fan-out trivially testable.** `FocusedReviewRunnerDeps` lets tests stub `discoverAgents` and `runSync` inline without touching `pi-subagents` or the filesystem agent loader. The pattern scales cleanly — each test controls exactly which agents "write" their artifact and can simulate crashes by throwing from `runSync`.
+
+- **`Promise.allSettled` is the right primitive for bounded fan-out.** `Promise.all` would abort remaining agents on the first failure; `allSettled` lets all three run regardless, which is exactly the soft-fail requirement. The artifact-check loop afterward gives a clean "what actually landed" picture independently of what the runners reported.
+
+- **Separating plan-building from execution made the design verifiable at two layers.** `focused-review.ts` (pure, no I/O) vs `focused-review-runner.ts` (async, with pi-subagents calls) meant the gating logic and artifact-path mapping could be unit-tested without any mocking, while the runner tests focused purely on the async execution contract.
+
+- **Explicit authority reminders in both the agent prompt and the injected context matter.** Putting "You are advisory only — do not call `megapowers_plan_review`" in the agent file and "artifact availability does not change which session may call `megapowers_plan_review`" in the injected prompt context creates two independent enforcement surfaces. A future agent that somehow ignores its own system prompt still sees the boundary restated in the review session's context.

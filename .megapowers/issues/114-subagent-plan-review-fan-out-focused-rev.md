@@ -1,7 +1,7 @@
 ---
 id: 114
 type: feature
-status: open
+status: done
 created: 2026-03-07T15:18:22.107Z
 sources: [103, 104, 105]
 ---
