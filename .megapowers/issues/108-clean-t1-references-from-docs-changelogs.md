@@ -1,7 +1,7 @@
 ---
 id: 108
 type: bugfix
-status: open
+status: done
 created: 2026-03-07T14:57:33.666Z
 sources: [94, 95]
 milestone: M3
