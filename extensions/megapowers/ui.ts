@@ -1,7 +1,7 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
 import type { MegapowersState, Phase, PlanTask, WorkflowType } from "./state/state-machine.js";
 import type { Issue, Store } from "./state/store.js";
-import { getFirstPhase } from "./state/state-machine.js";
+import { createInitialState, getFirstPhase } from "./state/state-machine.js";
 import { readState, writeState } from "./state/state-io.js";
 import { deriveTasks } from "./state/derived.js";
 import { showChecklistUI } from "./ui-checklist.js";
@@ -193,11 +193,61 @@ export function formatIssueListItem(issue: Issue, batchSlug?: string | null): st
 
 
 // --- Triage helpers (pure functions) ---
-
-export function filterTriageableIssues(issues: Issue[]): Issue[] {
-  return issues.filter(i => i.status !== "done" && i.sources.length === 0);
+export interface MilestoneIssueSection {
+  milestone: string;
+  issues: Issue[];
 }
 
+function milestoneRank(milestone?: string): number {
+  if (!milestone) return Number.MAX_SAFE_INTEGER;
+  const match = milestone.match(/^M(\d+)$/i);
+  return match ? parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
+}
+
+export function sortActiveIssues(issues: Issue[]): Issue[] {
+  return [...issues].sort((a, b) => {
+    const milestoneCmp = milestoneRank(a.milestone) - milestoneRank(b.milestone);
+    if (milestoneCmp !== 0) return milestoneCmp;
+
+    const aPriority = typeof a.priority === "number" ? a.priority : Number.MAX_SAFE_INTEGER;
+    const bPriority = typeof b.priority === "number" ? b.priority : Number.MAX_SAFE_INTEGER;
+    if (aPriority !== bPriority) return aPriority - bPriority;
+
+    return a.createdAt - b.createdAt;
+  });
+}
+
+export function buildMilestoneIssueSections(issues: Issue[]): MilestoneIssueSection[] {
+  const sections: MilestoneIssueSection[] = [];
+  for (const issue of issues) {
+    const milestone = issue.milestone || "none";
+    const existing = sections.find(section => section.milestone === milestone);
+    if (existing) {
+      existing.issues.push(issue);
+    } else {
+      sections.push({ milestone, issues: [issue] });
+    }
+  }
+  return sections;
+}
+
+export function formatActiveIssueListItem(issue: Issue, batchSlug?: string | null): string {
+  const id = `#${String(issue.id).padStart(3, "0")}`;
+  const priority = typeof issue.priority === "number" ? ` [P${issue.priority}]` : "";
+  const batchAnnotation = batchSlug ? ` (in batch ${batchSlug})` : "";
+  return `${id}${priority} ${issue.title} [${issue.status}]${batchAnnotation}`;
+}
+
+export function formatMilestoneHeader(milestone: string, issues: Issue[]): string {
+  return `${milestone}: (${issues.length} issue${issues.length === 1 ? "" : "s"})`;
+}
+
+export function formatArchivedIssueList(issues: Issue[]): string {
+  return issues.map(i => formatActiveIssueListItem(i)).join("\n");
+}
+export function filterTriageableIssues(issues: Issue[]): Issue[] {
+  return issues.filter(i => i.status !== "done" && i.status !== "archived" && i.sources.length === 0);
+}
 export function formatTriageIssueList(issues: Issue[]): string {
   return issues
     .map(i => `- #${String(i.id).padStart(3, "0")} ${i.title} [${i.type}] — ${i.description.slice(0, 120)}`)
@@ -281,30 +331,37 @@ export function createUI(): MegapowersUI {
         return newState;
       }
 
+      if (subcommand === "archived") {
+        const archivedIssues = sortActiveIssues(store.listArchivedIssues());
+        if (archivedIssues.length === 0) {
+          ctx.ui.notify("No archived issues.", "info");
+          return state;
+        }
+        ctx.ui.notify(`Archived issues:\n${formatArchivedIssueList(archivedIssues)}`, "info");
+        return state;
+      }
+
       if (subcommand === "list") {
-        const issues = store.listIssues().filter(i => i.status !== "done");
+        const issues = sortActiveIssues(store.listIssues().filter(i => i.status !== "done"));
         if (issues.length === 0) {
           ctx.ui.notify("No open issues. Use /issue new to create one.", "info");
           return state;
         }
-
-        const items = issues.map(i => formatIssueListItem(i, store.getBatchForIssue(i.id)));
+        const sections = buildMilestoneIssueSections(issues);
+        const items = sections.flatMap(section => [
+          formatMilestoneHeader(section.milestone, section.issues),
+          ...section.issues.map(i => formatActiveIssueListItem(i, store.getBatchForIssue(i.id))),
+        ]);
         items.push("+ Create new issue...");
-
         const choice = await ctx.ui.select("Pick an issue:", items);
         if (!choice) return state;
-
         if (choice.startsWith("+")) {
           return this.handleIssueCommand(ctx, state, store, "new");
         }
-
-        // Parse slug from selection
         const idMatch = choice.match(/^#(\d+)/);
         if (!idMatch) return state;
         const selected = issues.find((i) => i.id === parseInt(idMatch[1]));
         if (!selected) return state;
-
-        // Activate the issue
         const firstPhase = getFirstPhase(selected.type);
         const newState: MegapowersState = {
           ...state,
@@ -318,7 +375,6 @@ export function createUI(): MegapowersUI {
           tddTaskState: null,
           doneActions: [],
         };
-
         writeState(ctx.cwd, newState);
         store.updateIssueStatus(selected.slug, "in-progress");
         ctx.ui.notify(`Activated: ${selected.slug}`, "info");
@@ -326,7 +382,38 @@ export function createUI(): MegapowersUI {
         return newState;
       }
 
-      ctx.ui.notify(`Unknown subcommand: ${subcommand}. Use: new, list`, "error");
+      if (subcommand === "archive") {
+        const target = parts[1];
+        if (!target) {
+          ctx.ui.notify("Usage: /issue archive <slug>", "error");
+          return state;
+        }
+
+        const result = store.archiveIssue(target);
+        if (!result.ok) {
+          ctx.ui.notify(result.error, "error");
+          return state;
+        }
+
+        ctx.ui.notify(`Archived: ${target}`, "info");
+
+        if (state.activeIssue === target) {
+          const resetState: MegapowersState = {
+            ...createInitialState(),
+            megaEnabled: state.megaEnabled,
+            branchName: state.branchName,
+            baseBranch: state.baseBranch,
+          };
+          writeState(ctx.cwd, resetState);
+          this.renderDashboard(ctx, resetState, store);
+          return resetState;
+        }
+
+        this.renderDashboard(ctx, state, store);
+        return state;
+      }
+
+      ctx.ui.notify(`Unknown subcommand: ${subcommand}. Use: new, list, archive, archived`, "error");
       return state;
     },
 

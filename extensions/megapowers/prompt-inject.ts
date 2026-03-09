@@ -30,7 +30,7 @@ function buildIdlePrompt(_cwd: string, store?: Store): string | null {
   if (protocol) parts.push(protocol);
 
   if (store) {
-    const issues = store.listIssues().filter(i => i.status !== "done");
+    const issues = store.listIssues().filter(i => i.status !== "done" && i.status !== "archived");
     const issueLines = issues.map(i =>
       `- #${String(i.id).padStart(3, "0")} ${i.title} (milestone: ${i.milestone || "none"}, priority: ${i.priority ?? "none"})`,
     );
