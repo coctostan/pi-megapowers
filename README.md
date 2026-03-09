@@ -20,6 +20,8 @@ A [pi](https://github.com/mariozechner/pi-coding-agent) extension that enforces 
 
 Backward transitions allowed: `verify → implement`, `code-review → implement`.
 
+> **Note on feature workflow semantics:** the `brainstorm` phase name is kept for compatibility, but it now serves as **discovery + requirements gathering**. The saved `brainstorm.md` artifact is intended to preserve explicit requirements (`R#`/`O#`/`D#`/`C#`/`Q#`) so `spec` can distill them into acceptance criteria with traceability rather than re-inventing scope from prose.
+
 ## Installation
 
 This is a pi package. Add it to your pi project:
@@ -72,6 +74,8 @@ The `plan` phase has an internal draft/review/revise cycle:
 3. **Review** — `megapowers_plan_review({ verdict: "approve" | "revise", ... })`
    - `approve` → generates `plan.md`, advances to `implement`
    - `revise` → returns to draft mode (max 4 iterations)
+
+The feature-side `brainstorm` → `spec` handoff is requirements-first: `brainstorm.md` is treated as a structured requirements artifact, and `spec.md` is expected to include requirement traceability so reduced-scope or deferred items do not silently disappear during spec writing.
 
 ## TDD enforcement
 

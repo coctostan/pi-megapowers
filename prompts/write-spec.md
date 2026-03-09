@@ -1,50 +1,139 @@
-You are writing an executable specification. Convert the brainstorm design into a structured document with testable acceptance criteria.
+You are writing an executable specification from the prior brainstorm artifact.
+
+Although the previous phase is named `brainstorm`, its saved artifact should be treated as a **requirements artifact**.
+Your job is to convert it into a testable contract **without silently losing requirements or scope decisions**.
 
 > **Workflow:** brainstorm → **spec** → plan → implement → verify → code-review → done
 
 ## Context
 Issue: {{issue_slug}}
 
-## Brainstorm Notes
+## Brainstorm / Requirements Artifact
 {{brainstorm_content}}
 
+## Purpose
+This phase must:
+1. turn must-have requirements into testable acceptance criteria
+2. preserve scope boundaries explicitly
+3. surface unresolved questions clearly
+4. preserve traceability from prior requirements into the spec
+
+## No silent drops
+Every must-have requirement from the prior artifact must map to exactly one of:
+- **Acceptance Criterion**
+- **Out of Scope**
+- **Open Question**
+
+If a requirement does not become an acceptance criterion, show exactly where it went.
+
+Optional, deferred, and constraint items should also remain visible when they materially affect scope or acceptance criteria.
+
+## Legacy handling
+Some older brainstorm artifacts may be prose-heavy and may not use `R# / O# / D# / C# / Q#`.
+
+If the prior artifact is unstructured:
+- extract the implied requirements and scope items first
+- present that extraction to the user for confirmation
+- then write the spec
+
+Do not silently guess.
+
 ## Required Structure
+Write the spec with exactly these sections:
 
-Write a spec with exactly these sections:
+## Goal
+One short paragraph describing what is being built and why.
 
-### ## Goal
-One paragraph: what is being built and why.
+## Acceptance Criteria
+Numbered list.
 
-### ## Acceptance Criteria
-Numbered list. Each criterion must be:
-- **Specific and verifiable** — "user sees error message with validation failure" not "error handling works"
-- **Self-contained** — understandable without reading the brainstorm notes
-- **TDD-friendly** — maps naturally to a test
-- **Bite-sized** — if it has "and" in it, split it into two criteria
+Each criterion must be:
+- specific and verifiable
+- self-contained
+- TDD-friendly
+- bite-sized
 
-Good: `retryOperation retries up to 3 times before throwing`
-Bad: `retry logic works correctly`
+Rules:
+- one behavior per criterion when possible
+- split unrelated behaviors into separate criteria
+- do not rely on brainstorm prose to make a criterion understandable
+- acceptance criteria are the implementation contract
 
-Good: `empty email input returns { error: 'Email required' }`
-Bad: `form validation handles edge cases`
+Good:
+`/issue list allows the user to move focus between issues with keyboard navigation`
 
-### ## Out of Scope
-Explicit boundaries. What this feature does NOT do.
+Bad:
+`Improve issue list UX`
 
-### ## Open Questions
-Anything unresolved. **This section must be empty to advance to planning.** If you have questions, ask the user now.
+Good:
+`Archiving the active issue resets workflow state so no active issue remains selected`
+
+Bad:
+`Archive behavior works properly`
+
+## Out of Scope
+Explicit boundaries for this issue.
+
+Use this for:
+- deferred items
+- optional items not chosen for this slice
+- related ideas discussed but intentionally excluded now
+
+## Open Questions
+Anything unresolved.
+
+This section must be empty to advance to planning.
+If unresolved questions remain, ask the user now instead of saving a premature spec.
+
+If none remain, write `None.`
+
+## Requirement Traceability
+Map prior requirements into the spec.
+
+Format like:
+- `R1 -> AC 1, AC 2`
+- `R2 -> AC 3`
+- `R3 -> Out of Scope`
+- `R4 -> Open Question Q1`
+- `O1 -> Out of Scope`
+- `D1 -> Out of Scope`
+- `C1 -> AC 2`
+
+Rules:
+- every `R#` must appear exactly once
+- no `R#` may be omitted
+- include `O#`, `D#`, and `C#` when they materially affect scope or implementation
+- if something was narrowed, deferred, or excluded, make that explicit
+- traceability exists to preserve meaning, not just satisfy formatting
 
 ## Rules
-- DRY and YAGNI — only criteria essential to the goal
-- Each criterion should assume zero codebase context
-- Keep it concise — spec is a contract, not a design doc
-- Number criteria sequentially (1, 2, 3...)
-- **Present the spec to the user for review before saving** — the spec is a contract, both parties must agree
+- the spec is a contract, not a design essay
+- keep it concise
+- preserve meaning while improving precision
+- do not silently weaken requirements
+- if the prior artifact is ambiguous, ask the user before saving
+
+## Before saving
+Verify that:
+- every `R#` appears in `Requirement Traceability`
+- every acceptance criterion is testable
+- reduced-scope items remain visible instead of disappearing
+- constraints that matter are preserved
+- the plan phase will be able to map tasks to ACs without rediscovering the original discussion
+
+Present the final spec to the user for review before saving.
 
 ## Saving
-When the user approves the spec, save it to `.megapowers/plans/{{issue_slug}}/spec.md`:
-```
+When approved, save to `.megapowers/plans/{{issue_slug}}/spec.md`:
+
+```js
 write({ path: ".megapowers/plans/{{issue_slug}}/spec.md", content: "<full spec content>" })
 ```
-(Use `edit` for incremental revisions.)
-Then advance to the next phase with `megapowers_signal({ action: "phase_next" })`.
+
+(Use `edit` for revisions.)
+
+Then advance:
+
+```js
+megapowers_signal({ action: "phase_next" })
+```
