@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Issue } from "../extensions/megapowers/state/store.js";
-import { buildIssueListRows, showIssueListUI } from "../extensions/megapowers/ui-issue-list.js";
+import { buildIssueListRows, showIssueListUI, type IssueListResult } from "../extensions/megapowers/ui-issue-list.js";
 
 const ESC = "\u001b";
 const ENTER = "\r";
@@ -45,7 +45,7 @@ async function driveWidget(
           },
         };
         const done = (value: T) => {
-          result = value;
+          result = value as unknown as IssueListResult;
         };
         const widget = factory(tui, theme, null, done);
         renders.push(widget.render(80).join("\n"));

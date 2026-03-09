@@ -163,7 +163,7 @@ export type IssueListViewState =
   | { screen: "list"; cursor: number }
   | { screen: "detail"; issue: Issue; returnCursor: number };
 
-export function openIssueDetailView(issue: Issue, returnCursor: number): IssueListViewState {
+export function openIssueDetailView(issue: Issue, returnCursor: number): Extract<IssueListViewState, { screen: "detail" }> {
   return { screen: "detail", issue, returnCursor };
 }
 
