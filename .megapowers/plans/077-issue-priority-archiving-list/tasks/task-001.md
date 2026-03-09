@@ -1,7 +1,73 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, appendFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+---
+id: 1
+title: Add archived status parsing and separate active/archive issue queries
+status: approved
+depends_on: []
+no_test: false
+files_to_modify:
+  - extensions/megapowers/state/store.ts
+files_to_create:
+  - tests/store-archive-listing.test.ts
+---
 
-// --- Types ---
+### Task 1: Add archived status parsing and separate active/archive issue queries
+
+**Files:**
+- Modify: `extensions/megapowers/state/store.ts`
+- Test: `tests/store-archive-listing.test.ts`
+
+**Step 1 — Write the failing test**
+```ts
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { createStore, type Store } from "../extensions/megapowers/state/store.js";
+
+let tmp: string;
+let store: Store;
+
+beforeEach(() => {
+  tmp = mkdtempSync(join(tmpdir(), "store-archive-listing-"));
+  store = createStore(tmp);
+});
+
+afterEach(() => {
+  rmSync(tmp, { recursive: true, force: true });
+});
+
+describe("store archive-aware listing (AC1-AC3)", () => {
+  it("parses archived status and separates active issues from archived issues", () => {
+    const active = store.createIssue("Active item", "feature", "active desc", undefined, "M2", 2);
+
+    const archiveDir = join(tmp, ".megapowers", "issues", "archive");
+    mkdirSync(archiveDir, { recursive: true });
+    writeFileSync(
+      join(archiveDir, "099-archived-item.md"),
+      `---\nid: 99\ntype: feature\nstatus: archived\ncreated: 2026-03-01T00:00:00.000Z\nmilestone: M1\npriority: 1\n---\n# Archived item\narchived desc\n`,
+    );
+
+    const activeIssues = store.listIssues();
+    const archivedIssues = store.listArchivedIssues();
+
+    expect(activeIssues.map(i => i.slug)).toEqual([active.slug]);
+    expect(activeIssues.some(i => i.status === "archived")).toBe(false);
+    expect(archivedIssues).toHaveLength(1);
+    expect(archivedIssues[0].slug).toBe("099-archived-item");
+    expect(archivedIssues[0].status).toBe("archived");
+  });
+});
+```
+
+**Step 2 — Run test, verify it fails**
+Run: `bun test tests/store-archive-listing.test.ts`
+Expected: FAIL — `TypeError: store.listArchivedIssues is not a function`
+
+**Step 3 — Write minimal implementation**
+```ts
+// extensions/megapowers/state/store.ts
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, appendFileSync } from "node:fs";
+import { join } from "node:path";
 
 export type IssueStatus = "open" | "in-progress" | "done" | "archived";
 
@@ -21,18 +87,15 @@ export interface Issue {
 export interface Store {
   listIssues(): Issue[];
   listArchivedIssues(): Issue[];
-  archiveIssue(slug: string): { ok: true; archivedIssue: Issue } | { ok: false; error: string };
   createIssue(title: string, type: "feature" | "bugfix", description: string, sources?: number[], milestone?: string, priority?: number): Issue;
   getIssue(slug: string): Issue | null;
   getSourceIssues(slug: string): Issue[];
   getBatchForIssue(issueId: number): string | null;
   updateIssueStatus(slug: string, status: IssueStatus): void;
-
   ensurePlanDir(issueSlug: string): string;
   writePlanFile(issueSlug: string, filename: string, content: string): void;
   readPlanFile(issueSlug: string, filename: string): string | null;
   planFileExists(issueSlug: string, filename: string): boolean;
-
   getLearnings(): string;
   appendLearning(learning: string): void;
   appendLearnings(issueSlug: string, entries: string[]): void;
@@ -40,8 +103,6 @@ export interface Store {
   writeFeatureDoc(issueSlug: string, content: string): void;
   appendChangelog(entry: string): void;
 }
-
-// --- Helpers ---
 
 function slugify(text: string): string {
   return text
@@ -55,7 +116,7 @@ function padId(id: number): string {
   return String(id).padStart(3, "0");
 }
 
-function parseIssueFrontmatter(content: string): Partial<Issue & { archivedAt?: string }> {
+function parseIssueFrontmatter(content: string): Partial<Issue> {
   const match = content.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!match) return {};
 
@@ -68,7 +129,6 @@ function parseIssueFrontmatter(content: string): Partial<Issue & { archivedAt?: 
     if (kv) data[kv[1]] = kv[2].trim();
   }
 
-  // Parse sources: [1, 2, 3] from frontmatter
   let sources: number[] = [];
   const sourcesLine = frontmatter.split("\n").find(l => l.startsWith("sources:"));
   if (sourcesLine) {
@@ -88,21 +148,19 @@ function parseIssueFrontmatter(content: string): Partial<Issue & { archivedAt?: 
     sources,
     milestone: data.milestone ?? undefined,
     priority: data.priority ? parseInt(data.priority) : undefined,
-    archivedAt: data.archived,
   };
 }
 
-function formatIssueFile(issue: Issue, archivedAt?: string): string {
+function formatIssueFile(issue: Issue): string {
   const sourcesLine = issue.sources.length > 0 ? `sources: [${issue.sources.join(", ")}]\n` : "";
   const milestoneLine = issue.milestone?.trim() ? `milestone: ${issue.milestone.trim()}\n` : "";
   const priorityLine = typeof issue.priority === "number" ? `priority: ${issue.priority}\n` : "";
-  const archivedLine = archivedAt ? `archived: ${archivedAt}\n` : "";
   return `---
 id: ${issue.id}
 type: ${issue.type}
 status: ${issue.status}
 created: ${new Date(issue.createdAt).toISOString()}
-${sourcesLine}${milestoneLine}${priorityLine}${archivedLine}---
+${sourcesLine}${milestoneLine}${priorityLine}---
 # ${issue.title}
 ${issue.description}
 `;
@@ -131,8 +189,6 @@ function readIssuesFromDir(dir: string): Issue[] {
       };
     });
 }
-
-// --- Factory ---
 
 export function createStore(projectRoot: string): Store {
   const root = join(projectRoot, ".megapowers");
@@ -168,35 +224,9 @@ export function createStore(projectRoot: string): Store {
       return readIssuesFromDir(archiveDir);
     },
 
-    archiveIssue(slug: string) {
-      ensureRoot();
-      const activePath = join(issuesDir, `${slug}.md`);
-      const archivedPath = join(archiveDir, `${slug}.md`);
-
-      if (existsSync(archivedPath)) {
-        return { ok: false as const, error: `Issue already archived: ${slug}` };
-      }
-
-      if (!existsSync(activePath)) {
-        return { ok: false as const, error: `Issue not found: ${slug}` };
-      }
-      const current = this.getIssue(slug);
-      if (!current) {
-        return { ok: false as const, error: `Issue not found: ${slug}` };
-      }
-      const archivedIssue: Issue = { ...current, status: "archived" };
-      const archivedAt = new Date().toISOString();
-      writeFileSync(archivedPath, formatIssueFile(archivedIssue, archivedAt));
-      rmSync(activePath);
-      return { ok: true as const, archivedIssue };
-    },
-
     createIssue(title: string, type: "feature" | "bugfix", description: string, sources?: number[], milestone?: string, priority?: number): Issue {
       ensureRoot();
-      const existing = [
-        ...readdirSync(issuesDir).filter((f) => f.endsWith(".md")),
-        ...readdirSync(archiveDir).filter((f) => f.endsWith(".md")),
-      ];
+      const existing = readdirSync(issuesDir).filter((f) => f.endsWith(".md"));
       const maxId = existing.reduce((max, f) => {
         const idMatch = f.match(/^(\d+)-/);
         return idMatch ? Math.max(max, parseInt(idMatch[1])) : max;
@@ -224,7 +254,6 @@ export function createStore(projectRoot: string): Store {
     getIssue(slug: string): Issue | null {
       const filepath = join(issuesDir, `${slug}.md`);
       if (!existsSync(filepath)) return null;
-
       const content = readFileSync(filepath, "utf-8");
       const parsed = parseIssueFrontmatter(content);
       return {
@@ -244,7 +273,6 @@ export function createStore(projectRoot: string): Store {
     getSourceIssues(slug: string): Issue[] {
       const issue = this.getIssue(slug);
       if (!issue || issue.sources.length === 0) return [];
-
       const allIssues = this.listIssues();
       const sourceSet = new Set(issue.sources);
       return allIssues.filter(i => sourceSet.has(i.id));
@@ -254,9 +282,7 @@ export function createStore(projectRoot: string): Store {
       const allIssues = this.listIssues();
       for (const issue of allIssues) {
         if (issue.sources.length > 0 && issue.sources.includes(issueId)) {
-          if (issue.status === "open" || issue.status === "in-progress") {
-            return issue.slug;
-          }
+          if (issue.status === "open" || issue.status === "in-progress") return issue.slug;
         }
       }
       return null;
@@ -265,7 +291,6 @@ export function createStore(projectRoot: string): Store {
     updateIssueStatus(slug: string, status: IssueStatus): void {
       const filepath = join(issuesDir, `${slug}.md`);
       if (!existsSync(filepath)) return;
-
       const content = readFileSync(filepath, "utf-8");
       const updated = content.replace(/^status:\s*.+$/m, `status: ${status}`);
       writeFileSync(filepath, updated);
@@ -308,16 +333,14 @@ export function createStore(projectRoot: string): Store {
 
     appendLearning(learning: string): void {
       ensureRoot();
-      const entry = `- ${learning}\n`;
-      appendFileSync(learningsFile, entry);
+      appendFileSync(learningsFile, `- ${learning}\n`);
     },
 
     appendLearnings(issueSlug: string, entries: string[]): void {
       if (entries.length === 0) return;
       ensureRoot();
-      const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-      const block = `\n## ${date} — ${issueSlug}\n\n${entries.map(e => `- ${e}`).join("\n")}\n`;
-      appendFileSync(learningsFlatFile, block);
+      const date = new Date().toISOString().slice(0, 10);
+      appendFileSync(learningsFlatFile, `\n## ${date} — ${issueSlug}\n\n${entries.map(e => `- ${e}`).join("\n")}\n`);
     },
 
     readRoadmap(): string {
@@ -338,3 +361,12 @@ export function createStore(projectRoot: string): Store {
     },
   };
 }
+```
+
+**Step 4 — Run test, verify it passes**
+Run: `bun test tests/store-archive-listing.test.ts`
+Expected: PASS
+
+**Step 5 — Verify no regressions**
+Run: `bun test`
+Expected: all passing

@@ -1,0 +1,107 @@
+## Coverage Summary
+- Overall: covered
+- Planning input: spec.md
+
+## AC-by-AC Findings
+- AC 1 — covered
+  - Tasks: 1
+  - Finding: `parseIssueFrontmatter` adds `archived` to `IssueStatus` type and parses it from frontmatter.
+- AC 2 — covered
+  - Tasks: 1
+  - Finding: `listIssues()` reads from `issuesDir` only, excluding `archiveDir`.
+- AC 3 — covered
+  - Tasks: 1
+  - Finding: `listArchivedIssues()` reads exclusively from `archiveDir`.
+- AC 4 — covered
+  - Tasks: 4
+  - Finding: `sortActiveIssues` uses `milestoneRank` as primary sort key.
+- AC 5 — covered
+  - Tasks: 4
+  - Finding: `sortActiveIssues` secondary sort compares numeric priority ascending.
+- AC 6 — covered
+  - Tasks: 4
+  - Finding: `sortActiveIssues` tertiary sort compares `createdAt` ascending.
+- AC 7 — covered
+  - Tasks: 4, 5
+  - Finding: Task 4 provides `buildMilestoneIssueSections`, Task 5 uses it in list command to render milestone headers.
+- AC 8 — covered
+  - Tasks: 4, 5
+  - Finding: `formatActiveIssueListItem` includes `#${id.padStart(3, "0")}`.
+- AC 9 — covered
+  - Tasks: 4, 5
+  - Finding: `formatActiveIssueListItem` includes `issue.title`.
+- AC 10 — covered
+  - Tasks: 4, 5
+  - Finding: `formatActiveIssueListItem` includes `[${issue.status}]`.
+- AC 11 — covered
+  - Tasks: 4, 5
+  - Finding: `formatActiveIssueListItem` conditionally includes `[P${priority}]`.
+- AC 12 — covered
+  - Tasks: 5
+  - Finding: List command filters `.filter(i => i.status !== "done")` which implicitly excludes archived since `listIssues()` doesn't return archived issues.
+- AC 13 — covered
+  - Tasks: 4
+  - Finding: `filterTriageableIssues` explicitly filters `i.status !== "archived"`.
+- AC 14 — covered
+  - Tasks: 2
+  - Finding: `archiveIssue` writes to `archiveDir` and calls `rmSync(activePath)`.
+- AC 15 — covered
+  - Tasks: 2
+  - Finding: `archiveIssue` creates `archivedIssue` with `status: "archived"` before writing.
+- AC 16 — covered
+  - Tasks: 2
+  - Finding: `archiveIssue` computes `archivedAt = new Date().toISOString()` and passes to `formatIssueFile`.
+- AC 17 — covered
+  - Tasks: 2
+  - Finding: `archivedIssue` uses spread `{ ...current }` preserving `id`.
+- AC 18 — covered
+  - Tasks: 2
+  - Finding: Archive file written to `${slug}.md` in archiveDir, preserving slug.
+- AC 19 — covered
+  - Tasks: 2
+  - Finding: `archivedIssue` spread preserves `title` from `current`.
+- AC 20 — covered
+  - Tasks: 2
+  - Finding: Task 2 test explicitly verifies archiving `open` issues succeeds.
+- AC 21 — covered
+  - Tasks: 2
+  - Finding: Task 2 test explicitly verifies archiving `in-progress` issues succeeds.
+- AC 22 — covered
+  - Tasks: 2
+  - Finding: Task 2 test explicitly verifies archiving `done` issues succeeds.
+- AC 23 — covered
+  - Tasks: 3
+  - Finding: `archiveIssue` returns `{ ok: false, error: "Issue not found: ..." }` when `activePath` missing.
+- AC 24 — covered
+  - Tasks: 3
+  - Finding: `archiveIssue` checks `existsSync(archivedPath)` first and returns clear error.
+- AC 25 — covered
+  - Tasks: 6
+  - Finding: Archive command only resets state `if (state.activeIssue === target)`, otherwise returns unchanged state.
+- AC 26 — covered
+  - Tasks: 6
+  - Finding: Archive command constructs `resetState` from `createInitialState()` when target matches `state.activeIssue`.
+- AC 27 — weak
+  - Tasks: 5, 6
+  - Finding: Implicitly covered by Task 5 filtering and Task 6 state reset, but no explicit test verifies archived issue is excluded from subsequent selection flows.
+- AC 28 — covered
+  - Tasks: 5
+  - Finding: `archived` subcommand calls `listArchivedIssues()` and renders separate list.
+- AC 29 — covered
+  - Tasks: 7
+  - Finding: `buildIdlePrompt` filters `.filter(i => i.status !== "archived")`.
+- AC 30 — weak
+  - Tasks: 5
+  - Finding: Selection flows continue to work because they read from `listIssues()` which excludes archived; no explicit regression test verifies this.
+
+## Missing Coverage
+- None
+
+## Weak Coverage / Ambiguities
+- AC 27: Implicitly covered by Task 5's `listIssues()` filtering and Task 6's state reset; no explicit test proves archived issues don't re-appear in subsequent `/issue list` calls after archive command.
+- AC 30: Relies on regression suite passing; no task explicitly tests that pre-existing selection flows remain unaffected.
+
+## Notes for the Main Reviewer
+- All 30 acceptance criteria have concrete task mappings.
+- Tasks 4 and 5 overlap on AC 7-11 by design: Task 4 builds pure helpers, Task 5 integrates them into UI commands.
+- AC 27 and AC 30 are integration assertions rather than discrete features; recommend verifying these via full test suite rather than requiring new tasks.
