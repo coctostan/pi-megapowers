@@ -451,3 +451,54 @@ describe("buildSourceIssuesContext", () => {
     expect(buildSourceIssuesContext([])).toBe("");
   });
 });
+
+describe("prompt templates — #118 requirements artifacts contract", () => {
+  it("brainstorm prompt includes Exploratory and Direct requirements modes", () => {
+    const template = getPhasePromptTemplate("brainstorm");
+    expect(template).toContain("Exploratory");
+    expect(template).toContain("Direct requirements");
+  });
+
+  it("brainstorm prompt includes required requirement sections", () => {
+    const template = getPhasePromptTemplate("brainstorm");
+    expect(template).toContain("Must-Have Requirements");
+    expect(template).toContain("Optional / Nice-to-Have");
+    expect(template).toContain("Explicitly Deferred");
+    expect(template).toContain("Constraints");
+    expect(template).toContain("Open Questions");
+  });
+
+  it("brainstorm prompt preserves reduced scope instead of dropping it", () => {
+    const template = getPhasePromptTemplate("brainstorm");
+    expect(template).toMatch(/if scope is reduced|scoped-down items/i);
+    expect(template).toMatch(/preserve|rather than letting it disappear|do not silently drop/i);
+  });
+
+  it("brainstorm prompt includes R/O/D/C/Q requirement ID buckets", () => {
+    const template = getPhasePromptTemplate("brainstorm");
+    expect(template).toContain("R#");
+    expect(template).toContain("O#");
+    expect(template).toContain("D#");
+    expect(template).toContain("C#");
+    expect(template).toContain("Q#");
+  });
+
+  it("write-spec prompt includes no-silent-drops and traceability requirements", () => {
+    const template = getPhasePromptTemplate("spec");
+    expect(template).toContain("No silent drops");
+    expect(template).toContain("Requirement Traceability");
+    expect(template).toContain("every `R#` must appear exactly once");
+  });
+
+  it("write-spec prompt includes legacy handling for older unstructured brainstorm artifacts", () => {
+    const template = getPhasePromptTemplate("spec");
+    expect(template).toMatch(/older brainstorm artifacts|prior artifact is unstructured/i);
+    expect(template).toMatch(/R# \/ O# \/ D# \/ C# \/ Q#|extract the implied requirements/i);
+  });
+
+  it("write-spec prompt says reduced-scope items remain visible", () => {
+    const template = getPhasePromptTemplate("spec");
+    expect(template).toMatch(/reduced-scope|reduced scope/i);
+    expect(template).toMatch(/remain visible|instead of disappearing|do not silently lose/i);
+  });
+});

@@ -22,6 +22,7 @@
 ### Changed
 - Pipeline cycle now dispatches exactly 2 LLM agents (implementer + reviewer); verification runs `bun test` as a direct shell command instead of a third LLM dispatch (#086)
 - `createPipelineWorkspace`, `squashPipelineWorkspace`, and `cleanupPipelineWorkspace` return discriminated union types (`{ ok: true, ... } | { ok: false, error }`) — eliminates `(as any).error` casts throughout (#086)
+- Feature prompt contract is now requirements-first: `prompts/brainstorm.md` treats the phase as discovery + requirements gathering with explicit `R#`/`O#`/`D#`/`C#`/`Q#` buckets, and `prompts/write-spec.md` requires requirement traceability plus a no-silent-drops rule so reduced-scope items remain visible instead of disappearing between brainstorm and spec (#118)
 - Retry context is O(1) in size: each retry replaces the previous failure context rather than accumulating all prior step output (#086)
 - Reviewer output parsed via `gray-matter` frontmatter + Zod validation instead of regex; invalid output reliably returns `verdict: reject` with a parse error finding (#086)
 - `PipelineResult` now includes structured fields: `testsPassed`, `testOutput`, `reviewVerdict`, `reviewFindings`, `infrastructureError` — infrastructure failures (LLM crash, timeout) separated from semantic failures (test failures, review rejections) (#086)
@@ -355,3 +356,4 @@ All selected wrap-up actions executed:
 
 ### Changed
 - `prompts/implement-task.md` Execution Mode wording narrowed: `pipeline`/`subagent` restriction now scoped to implement-phase execution only, explicitly exempting advisory planning-scout usage in the plan phase (#113)
+- **Brainstorm/spec requirements traceability contract** — Rewrote `brainstorm.md` prompt as structured requirements capture (`R#`/`O#`/`D#`/`C#`/`Q#` buckets, mode triage, no-silent-drop rule, exact artifact sections). Rewrote `write-spec.md` prompt to enforce `Requirement Traceability` + `No silent drops` (every `R#` mapped exactly once) and legacy handling for older unstructured brainstorm artifacts. Added 7 prompt-contract tests locking both contracts against drift. `brainstorm` phase name unchanged. (#118)
