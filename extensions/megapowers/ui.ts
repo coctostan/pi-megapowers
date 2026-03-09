@@ -1,10 +1,14 @@
 import type { ExtensionContext } from "@mariozechner/pi-coding-agent";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { MegapowersState, Phase, PlanTask, WorkflowType } from "./state/state-machine.js";
 import type { Issue, Store } from "./state/store.js";
 import { createInitialState, getFirstPhase } from "./state/state-machine.js";
 import { readState, writeState } from "./state/state-io.js";
 import { deriveTasks } from "./state/derived.js";
 import { showChecklistUI } from "./ui-checklist.js";
+import { buildIssueListRows, showIssueListUI } from "./ui-issue-list.js";
+import { handleSignal } from "./tools/tool-signal.js";
 
 // --- Theme type (subset used by pure renderers) ---
 
@@ -347,6 +351,98 @@ export function createUI(): MegapowersUI {
           ctx.ui.notify("No open issues. Use /issue new to create one.", "info");
           return state;
         }
+
+        if (typeof (ctx.ui as any).custom === "function") {
+          const rows = buildIssueListRows(issues, state.activeIssue, (issueId) => store.getBatchForIssue(issueId));
+          const result = await showIssueListUI(ctx as any, rows, state.activeIssue);
+          if (!result) return state;
+          if (result.type === "create") {
+            return this.handleIssueCommand(ctx, state, store, "new");
+          }
+          if (result.type === "issue-action" && result.action === "open") {
+            const selected = result.issue;
+            const firstPhase = getFirstPhase(selected.type);
+            const newState: MegapowersState = {
+              ...state,
+              activeIssue: selected.slug,
+              workflow: selected.type,
+              phase: firstPhase,
+              phaseHistory: [],
+              reviewApproved: false,
+              currentTaskIndex: 0,
+              completedTasks: [],
+              tddTaskState: null,
+              doneActions: [],
+            };
+            writeState(ctx.cwd, newState);
+            store.updateIssueStatus(selected.slug, "in-progress");
+            ctx.ui.notify(`Activated: ${selected.slug}`, "info");
+            this.renderDashboard(ctx, newState, store);
+            return newState;
+          }
+          if (result.type === "issue-action" && result.action === "archive") {
+            const archiveResult = store.archiveIssue(result.issue.slug);
+            if (!archiveResult.ok) {
+              ctx.ui.notify(archiveResult.error, "error");
+              return state;
+            }
+
+            ctx.ui.notify(`Archived: ${result.issue.slug}`, "info");
+            if (state.activeIssue === result.issue.slug) {
+              const resetState: MegapowersState = {
+                ...createInitialState(),
+                megaEnabled: state.megaEnabled,
+                branchName: state.branchName,
+                baseBranch: state.baseBranch,
+              };
+              writeState(ctx.cwd, resetState);
+              this.renderDashboard(ctx, resetState, store);
+              return resetState;
+            }
+
+            this.renderDashboard(ctx, state, store);
+            return state;
+          }
+          if (result.type === "issue-action" && result.action === "close") {
+            store.updateIssueStatus(result.issue.slug, "done");
+            ctx.ui.notify(`Closed: ${result.issue.slug}`, "info");
+            this.renderDashboard(ctx, state, store);
+            return state;
+          }
+          if (result.type === "issue-action" && result.action === "close-now") {
+            store.updateIssueStatus(result.issue.slug, "done");
+            const resetState: MegapowersState = {
+              ...createInitialState(),
+              megaEnabled: state.megaEnabled,
+              branchName: state.branchName,
+              baseBranch: state.baseBranch,
+            };
+            writeState(ctx.cwd, resetState);
+            this.renderDashboard(ctx, resetState, store);
+            return resetState;
+          }
+          if (result.type === "issue-action" && result.action === "go-to-done") {
+            writeState(ctx.cwd, state);
+            if (state.phase === "code-review" && state.activeIssue) {
+              const planDir = join(ctx.cwd, ".megapowers", "plans", state.activeIssue);
+              const reviewPath = join(planDir, "code-review.md");
+              if (!existsSync(reviewPath)) {
+                mkdirSync(planDir, { recursive: true });
+                writeFileSync(reviewPath, "# Code Review\n");
+              }
+            }
+            const signal = handleSignal(ctx.cwd, "phase_next", "done");
+            if (signal.error) {
+              ctx.ui.notify(signal.error, "error");
+              return state;
+            }
+            const nextState = readState(ctx.cwd);
+            this.renderDashboard(ctx, nextState, store);
+            return nextState;
+          }
+          return state;
+        }
+
         const sections = buildMilestoneIssueSections(issues);
         const items = sections.flatMap(section => [
           formatMilestoneHeader(section.milestone, section.issues),
