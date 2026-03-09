@@ -1,6 +1,7 @@
 
 ## [Unreleased]
 ### Added
+- Interactive `/issue list` widget with keyboard navigation: replaces the static `select()` picker with a `ctx.ui.custom()` widget supporting `↑↓Tab` navigation, per-issue action menus (Open/Activate, Archive, View, Close, Close now, Go to done phase), in-widget detail view, and Escape-to-dismiss; milestone grouping, sorting, and all existing activation/archive/close behaviors preserved; `ctx.ui.select()` fallback retained for non-interactive environments (#117)
 - Issue priority, archiving, and list UI: milestone-aware sorting, grouped list display, `/issue archive <slug>` command, `/issue archived` view, and `archived` status type; active issue queries exclude `.megapowers/issues/archive/`; idle prompt and triage filtering exclude archived issues (#077)
 - Focused plan-review fan-out: plans with ≥5 tasks now run `coverage-reviewer`, `dependency-reviewer`, and `task-quality-reviewer` in parallel via `pi-subagents` before the main review session; artifacts are injected as advisory context; review always proceeds even on full fan-out failure (#114 / #103 / #104 / #105)
 - Subagent planning support layer: `revise-helper` advisory agent for targeted plan revision (reads only affected tasks, writes `revise-proposal.md`); `draft-assist` sequential chain (`plan-scout → planner`) for bounded draft assistance; `planner` advisory agent required by chain runner; review fan-out pattern documented under `.megapowers/docs/` (#115 / #106 / #107)
