@@ -1,5 +1,5 @@
 import type { Issue } from "./state/store.js";
-import { Key, matchesKey } from "@mariozechner/pi-tui";
+import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 
 export type IssueListRow =
   | {
@@ -112,26 +112,26 @@ export function moveIssueListCursor(rows: IssueListRow[], cursor: number, key: N
 export function renderIssueListScreen(
   rows: IssueListRow[],
   cursor: number,
-  _width: number,
+  width: number,
   theme: { fg(color: string, text: string): string; bold(text: string): string },
 ): string[] {
   const lines: string[] = [];
-  lines.push(theme.fg("accent", "Issue list"));
-  lines.push("");
+  const add = (line: string = "") => lines.push(line === "" ? "" : truncateToWidth(line, width));
 
+  add(theme.fg("accent", "Issue list"));
+  add("");
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     if (row.kind === "milestone") {
-      lines.push(theme.bold(row.label));
+      add(theme.bold(row.label));
       continue;
     }
-
     const prefix = i === cursor ? "> " : "  ";
-    lines.push(`${prefix}${row.label}`);
+    add(`${prefix}${row.label}`);
   }
 
-  lines.push("");
-  lines.push("↑↓ navigate • Tab next • Enter select • Esc cancel");
+  add("");
+  add("↑↓ navigate • Tab next • Enter select • Esc cancel");
   return lines;
 }
 
@@ -173,19 +173,21 @@ export function returnToListView(view: Extract<IssueListViewState, { screen: "de
 
 export function renderIssueDetailScreen(
   issue: Issue,
-  _width: number,
+  width: number,
   theme: { fg(color: string, text: string): string; bold(text: string): string },
 ): string[] {
   const lines: string[] = [];
-  lines.push(theme.bold(`#${String(issue.id).padStart(3, "0")} ${issue.title}`));
-  lines.push(`${issue.type} • ${issue.status} • milestone ${issue.milestone || "none"}`);
-  lines.push("");
+  const add = (line: string = "") => lines.push(line === "" ? "" : truncateToWidth(line, width));
+
+  add(theme.bold(`#${String(issue.id).padStart(3, "0")} ${issue.title}`));
+  add(`${issue.type} • ${issue.status} • milestone ${issue.milestone || "none"}`);
+  add("");
   for (const line of issue.description.split("\n")) {
-    lines.push(line);
+    add(line);
   }
-  lines.push("");
-  lines.push(theme.fg("accent", "Back"));
-  lines.push(theme.fg("dim", "Esc or Backspace to return to the list"));
+  add("");
+  add(theme.fg("accent", "Back"));
+  add(theme.fg("dim", "Esc or Backspace to return to the list"));
   return lines;
 }
 
@@ -202,19 +204,21 @@ export function renderIssueActionMenuScreen(
   issue: Issue,
   items: IssueActionItem[],
   actionIndex: number,
-  _width: number,
+  width: number,
   theme: { fg(color: string, text: string): string; bold(text: string): string },
 ): string[] {
   const lines: string[] = [];
-  lines.push(theme.fg("accent", "Issue actions"));
-  lines.push(theme.bold(`#${String(issue.id).padStart(3, "0")} ${issue.title}`));
-  lines.push("");
+  const add = (line: string = "") => lines.push(line === "" ? "" : truncateToWidth(line, width));
+
+  add(theme.fg("accent", "Issue actions"));
+  add(theme.bold(`#${String(issue.id).padStart(3, "0")} ${issue.title}`));
+  add("");
   for (let i = 0; i < items.length; i++) {
     const prefix = i === actionIndex ? "> " : "  ";
-    lines.push(`${prefix}${items[i].label}`);
+    add(`${prefix}${items[i].label}`);
   }
-  lines.push("");
-  lines.push("↑↓ navigate • Enter select • Esc back");
+  add("");
+  add("↑↓ navigate • Enter select • Esc back");
   return lines;
 }
 
