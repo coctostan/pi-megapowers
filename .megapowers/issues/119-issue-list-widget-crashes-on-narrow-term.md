@@ -1,7 +1,7 @@
 ---
 id: 119
 type: bugfix
-status: open
+status: in-progress
 created: 2026-03-09T20:09:54.422Z
 ---
 # Issue list widget crashes on narrow terminals when long row labels exceed width
