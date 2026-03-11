@@ -1,6 +1,9 @@
 
 ## [Unreleased]
 ### Removed
+- Deleted dead root-level plan infrastructure modules (`plan-store.ts`, `entity-parser.ts`, `plan-schemas.ts`) and their dead tests; the canonical `state/` implementation is now the single unambiguous active path for plan entity and storage behavior (#123)
+## [Unreleased]
+### Removed
 - Deprecated `review_approve` action removed from `megapowers_signal` tool schema, `/review approve` command removed, and plan-review prompt injection updated to suppress conflicting `phase_next` instructions during review mode; low-level `handleSignal(cwd, "review_approve")` deprecation error preserved for backward compatibility (#124)
 ## [Unreleased]
 ### Removed

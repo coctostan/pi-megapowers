@@ -1,7 +1,7 @@
 ---
 id: 123
 type: feature
-status: open
+status: in-progress
 created: 2026-03-11T16:58:57.645Z
 milestone: M0
 priority: 1
