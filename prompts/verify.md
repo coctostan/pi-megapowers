@@ -62,7 +62,7 @@ pass / fail
 | Build succeeds | Build command: exit 0 | Linter passing, "looks good" |
 | Bug fixed | Reproduce original steps: symptom gone + regression test passes | "Code changed, should be fixed" |
 | Regression test works | Red-green cycle verified | Test passes once |
-| Subagent completed task | VCS diff + independent test run | Subagent status says "success" |
+| Advisory/reviewer suggestion applied | VCS diff + independent test run | Suggestion text says "looks good" |
 | Requirements met | Per-criterion evidence | "All tests pass" |
 
 ## Red Flags — STOP if you catch yourself doing these
@@ -72,7 +72,7 @@ pass / fail
 - Claiming a criterion passes based on a different criterion's evidence
 - Trusting a previous test run instead of running fresh
 - Saying "tests pass" as proof that requirements are met — they are independent checks
-- If subagents were used: trusting the subagent's reported status without running tests yourself
+- If advisory/review outputs were used: trusting their reported status without running tests yourself
 
 ## Rules
 - **Tests passing ≠ criteria met** — verify both independently

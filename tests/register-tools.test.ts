@@ -3,8 +3,8 @@ import { registerTools } from "../extensions/megapowers/register-tools.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-describe("registerTools — plan loop tools", () => {
-  it("registers plan loop tools and extends megapowers_signal actions", () => {
+describe("registerTools — legacy tool removal", () => {
+  it("registers plan loop tools without pipeline or subagent", () => {
     const tools: Record<string, any> = {};
 
     const pi = {
@@ -18,29 +18,11 @@ describe("registerTools — plan loop tools", () => {
     expect(Object.keys(tools)).toContain("megapowers_signal");
     expect(Object.keys(tools)).toContain("megapowers_plan_task");
     expect(Object.keys(tools)).toContain("megapowers_plan_review");
-    expect(Object.keys(tools)).not.toContain("megapowers_save_artifact");
-
-    const signalParams = JSON.stringify(tools.megapowers_signal.parameters);
-    expect(signalParams).toContain("plan_draft_done");
+    expect(Object.keys(tools)).not.toContain("pipeline");
+    expect(Object.keys(tools)).not.toContain("subagent");
   });
 
-  it("register-tools uses git exec for subagent and pipeline tools", () => {
-    const source = readFileSync(join(process.cwd(), "extensions/megapowers/register-tools.ts"), "utf-8");
-    expect(source).toContain('pi.exec("git"');
-    expect(source).not.toContain('pi.exec("jj"');
-    expect(source).toContain("isolated workspace");
-    expect(source).not.toContain("isolated jj workspace");
-  });
-
-  it("execGit in register-tools throws on non-zero exit (no legacy code field in return)", () => {
-    const source = readFileSync(join(process.cwd(), "extensions/megapowers/register-tools.ts"), "utf-8");
-    // The ExecGit executor must throw on error, not return { code }
-    expect(source).toContain("throw new Error");
-    // No return statement that includes 'code:' (which would trigger legacy compat branches)
-    expect(source).not.toMatch(/return \{ code: r\.code/);
-  });
-
-  it("pipeline tool registration includes renderCall and renderResult", () => {
+  it("megapowers_signal still exposes plan_draft_done", () => {
     const tools: Record<string, any> = {};
 
     const pi = {
@@ -51,27 +33,25 @@ describe("registerTools — plan loop tools", () => {
 
     registerTools(pi, {} as any);
 
-    const pipeline = tools.pipeline;
-    expect(pipeline).toBeDefined();
-    expect(typeof pipeline.renderCall).toBe("function");
-    expect(typeof pipeline.renderResult).toBe("function");
+    const signalParams = JSON.stringify(tools.megapowers_signal.parameters);
+    expect(signalParams).toContain("plan_draft_done");
   });
 
-  it("pipeline tool handler passes onProgress to handlePipelineTool options", () => {
+  it("register-tools source no longer imports or wires legacy pipeline/subagent handlers", () => {
     const source = readFileSync(join(process.cwd(), "extensions/megapowers/register-tools.ts"), "utf-8");
-    // The pipeline tool execute function should reference onProgress and onUpdate
-    expect(source).toContain("onProgress");
-    expect(source).toContain("onUpdate");
-    expect(source).toContain("buildPipelineDetails");
+
+    expect(source).not.toContain("handleOneshotTool");
+    expect(source).not.toContain("handlePipelineTool");
+    expect(source).not.toContain("PiSubagentsDispatcher");
+    expect(source).not.toContain('name: "pipeline"');
+    expect(source).not.toContain('name: "subagent"');
+    expect(source).not.toContain("renderPipelineCall");
+    expect(source).not.toContain("renderPipelineResult");
   });
 
-  it("plan_draft_done wiring calls handlePlanDraftDone directly without model lint helpers", () => {
+  it("plan_draft_done wiring still calls handlePlanDraftDone directly", () => {
     const source = readFileSync(join(process.cwd(), "extensions/megapowers/register-tools.ts"), "utf-8");
 
-    expect(source).not.toContain("buildLintCompleteFn");
-    expect(source).not.toContain('import { complete } from "@mariozechner/pi-ai"');
-    expect(source).not.toContain('import type { CompleteFn } from "./validation/plan-lint-model.js"');
-    expect(source).not.toContain('import type { ModelRegistry } from "@mariozechner/pi-coding-agent"');
     expect(source).toContain("result = await handlePlanDraftDone(ctx.cwd);");
   });
 });

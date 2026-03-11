@@ -45,17 +45,12 @@ describe("index.ts architectural invariants", () => {
     expect(existsSync(`tests/${legacyTest}`)).toBe(false);
   });
 
-  describe("satellite TDD flow invariants", () => {
-    it("does not include satellite bash sniffing for RED detection", () => {
+  describe("extension bootstrap after legacy pipeline removal", () => {
+    it("index.ts does not import or branch on satellite mode", () => {
       const source = readFileSync(join(__dirname, "../extensions/megapowers/index.ts"), "utf-8");
-      expect(source).not.toContain("After bash, track test runner results for TDD RED detection (in-memory)");
-    });
-
-    it("setupSatellite is a no-op (audit-only TDD in subagent mode)", () => {
-      // Satellite setup logic lives in satellite.ts (extracted from index.ts)
-      const source = readFileSync(join(__dirname, "../extensions/megapowers/satellite.ts"), "utf-8");
-      expect(source).not.toContain('name: "megapowers_signal"');
-      expect(source).toContain("setupSatellite");
+      expect(source).not.toContain("isSatelliteMode");
+      expect(source).not.toContain("setupSatellite");
+      expect(source).not.toContain("if (satellite)");
     });
   });
 

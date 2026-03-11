@@ -9,11 +9,6 @@ import { handlePlanTask } from "./tools/tool-plan-task.js";
 import { handlePlanReview } from "./tools/tool-plan-review.js";
 import { createBatchHandler } from "./tools/tools.js";
 import { createIssueHandler } from "./tools/tool-create-issue.js";
-import { handleOneshotTool } from "./subagent/oneshot-tool.js";
-import { PiSubagentsDispatcher } from "./subagent/pi-subagents-dispatcher.js";
-import { handlePipelineTool } from "./subagent/pipeline-tool.js";
-import { buildPipelineDetails, renderPipelineCall, renderPipelineResult } from "./subagent/pipeline-renderer.js";
-import type { PipelineProgressEvent } from "./subagent/pipeline-renderer.js";
 
 export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void {
   // --- Tools: megapowers_signal ---
@@ -159,102 +154,5 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
       };
     },
   });
-
-  // --- Tools: subagent ---
-  pi.registerTool({
-    name: "subagent",
-    label: "Subagent",
-    description: "Run a one-shot subagent task in an isolated workspace and squash changes back on success.",
-    parameters: Type.Object({
-      task: Type.String({ description: "Task description for the subagent" }),
-      agent: Type.Optional(Type.String({ description: "Agent name (default: worker)" })),
-      timeoutMs: Type.Optional(Type.Number({ description: "Timeout in milliseconds" })),
-    }),
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const execGit = async (args: string[]) => {
-        const r = await pi.exec("git", args);
-        if (r.code !== 0) throw new Error(`git ${args[0]} failed (exit ${r.code}): ${r.stderr}`);
-        return { stdout: r.stdout, stderr: r.stderr };
-      };
-
-      const { discoverAgents } = await import("pi-subagents/agents.js");
-      const { runSync } = await import("pi-subagents/execution.js");
-      const { agents } = discoverAgents(ctx.cwd, "both");
-      const dispatcher = new PiSubagentsDispatcher({ runSync, runtimeCwd: ctx.cwd, agents });
-
-      const r = await handleOneshotTool(ctx.cwd, params, dispatcher, execGit);
-      if (r.error) return { content: [{ type: "text", text: `Error: ${r.error}` }], details: undefined };
-
-      return { content: [{ type: "text", text: JSON.stringify(r, null, 2) }], details: undefined };
-    },
-  });
-
-  // --- Tools: pipeline ---
-
-  pi.registerTool({
-    name: "pipeline",
-    label: "Pipeline",
-    description: "Run the implement → verify → review pipeline for a plan task in an isolated workspace. When resuming a paused pipeline, guidance is required.",
-    parameters: Type.Object({
-      taskIndex: Type.Number({ description: "Task index to run" }),
-      resume: Type.Optional(Type.Boolean({ description: "Resume a paused pipeline" })),
-      guidance: Type.Optional(Type.String({ description: "Required when resume is true — actionable direction for retry" })),
-    }),
-    renderCall(args, theme) {
-      return renderPipelineCall(args, theme);
-    },
-    renderResult(result, options, theme) {
-      return renderPipelineResult(result as any, options, theme);
-    },
-    async execute(_toolCallId, params, _signal, onUpdate, ctx) {
-      const execGit = async (args: string[]) => {
-        const r = await pi.exec("git", args);
-        if (r.code !== 0) throw new Error(`git ${args[0]} failed (exit ${r.code}): ${r.stderr}`);
-        return { stdout: r.stdout, stderr: r.stderr };
-      };
-      const { discoverAgents } = await import("pi-subagents/agents.js");
-      const { runSync } = await import("pi-subagents/execution.js");
-      const { agents } = discoverAgents(ctx.cwd, "both");
-      const dispatcher = new PiSubagentsDispatcher({ runSync, runtimeCwd: ctx.cwd, agents });
-      const progressEvents: PipelineProgressEvent[] = [];
-      const taskTitle = `Task ${params.taskIndex}`;
-      const fallbackPipelineId = `pipe-t${params.taskIndex}`;
-
-      const onProgress = onUpdate
-        ? (event: PipelineProgressEvent) => {
-            progressEvents.push(event);
-            const details = buildPipelineDetails(progressEvents, {
-              taskIndex: params.taskIndex,
-              taskTitle,
-              pipelineId: fallbackPipelineId,
-            });
-            void onUpdate({
-              content: [{ type: "text", text: `Pipeline ${details.status}...` }],
-              details: details as any,
-            });
-          }
-        : undefined;
-      const r = await handlePipelineTool(
-        ctx.cwd,
-        { taskIndex: params.taskIndex, resume: params.resume, guidance: params.guidance },
-        dispatcher,
-        execGit,
-        undefined,
-        onProgress,
-      );
-
-      if (r.error) return { content: [{ type: "text", text: `Error: ${r.error}` }], details: undefined };
-
-      const finalDetails = buildPipelineDetails(progressEvents, {
-        taskIndex: params.taskIndex,
-        taskTitle,
-        pipelineId: r.pipelineId ?? fallbackPipelineId,
-      });
-
-      if (r.result?.status === "completed") finalDetails.status = "completed";
-      else if (r.result?.status === "paused" || r.paused) finalDetails.status = "paused";
-
-      return { content: [{ type: "text", text: JSON.stringify(r, null, 2) }], details: finalDetails as any };
-    },
-  });
 }
+

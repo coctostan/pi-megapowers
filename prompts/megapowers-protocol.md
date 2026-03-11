@@ -30,7 +30,7 @@ Save phase output by writing files directly under `.megapowers/plans/<issue-slug
 - Always save work before advancing phases
 
 ### Version Control
-Git is the underlying VCS. Read-only operations (`git status`, `git log`, `git diff`) are fine. Do not run ad-hoc `git commit`, `git push`, `git branch`, `git checkout`, or `git merge` outside of designated workflow moments. The system automatically creates a feature branch on issue activation and WIP-commits when switching issues. **Exception:** in the done phase, `push-and-pr` and post-merge cleanup (`git checkout main`, `git pull`, `git branch -d`) are expected and should be executed directly. Pipeline/subagent worktrees are also managed automatically.
+Git is the underlying VCS. Read-only operations (`git status`, `git log`, `git diff`) are fine. Do not run ad-hoc `git commit`, `git push`, `git branch`, `git checkout`, or `git merge` outside of designated workflow moments. The system automatically creates a feature branch on issue activation and WIP-commits when switching issues. **Exception:** in the done phase, `push-and-pr` and post-merge cleanup (`git checkout main`, `git pull`, `git branch -d`) are expected and should be executed directly.
 
 ### Error Handling
 When a megapowers tool returns an error:

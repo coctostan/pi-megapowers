@@ -1,5 +1,4 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { isSatelliteMode, setupSatellite } from "./satellite.js";
 import { registerTools } from "./register-tools.js";
 import {
   ensureDeps,
@@ -14,17 +13,6 @@ import { handleMpCommand, mpArgumentCompletions } from "./mp/mp-command.js";
 // --- Extension ---
 
 export default function megapowers(pi: ExtensionAPI): void {
-  // --- Satellite mode: TDD-only for subagent sessions ---
-  const satellite = isSatelliteMode({
-    isTTY: process.stdout.isTTY,
-    env: process.env as Record<string, string | undefined>,
-  });
-
-  if (satellite) {
-    setupSatellite(pi);
-    return;
-  }
-
   // Single shared deps object — one per extension lifetime
   const runtimeDeps: RuntimeDeps = {
     execGit: async (args: string[]) => {
