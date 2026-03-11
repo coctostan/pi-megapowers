@@ -707,6 +707,18 @@ describe("handleSignal", () => {
       const source = readFileSync(join(process.cwd(), "prompts/megapowers-protocol.md"), "utf8");
       expect(source).not.toContain("Pipeline/subagent worktrees are also managed automatically.");
     });
+
+    it("does not advertise review_approve while the low-level deprecation error remains", () => {
+      const toolsSource = readFileSync(join(process.cwd(), "extensions/megapowers/register-tools.ts"), "utf8");
+
+      expect(toolsSource).not.toContain('Type.Literal("review_approve")');
+      expect(toolsSource).not.toContain("Note: review_approve is deprecated");
+
+      const result = handleSignal(tmp, "review_approve");
+      expect(result.error).toBeDefined();
+      expect(result.error).toContain("deprecated");
+      expect(result.error).toContain("megapowers_plan_review");
+    });
   });
 
   describe("close_issue signal", () => {

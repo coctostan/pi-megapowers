@@ -1,8 +1,9 @@
 ---
 id: 89
 type: feature
-status: open
+status: archived
 created: 2026-03-04T03:40:23.634Z
+archived: 2026-03-11T17:02:47Z
 priority: 3
 milestone: M5
 ---

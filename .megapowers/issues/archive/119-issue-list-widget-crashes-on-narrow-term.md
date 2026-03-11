@@ -1,8 +1,9 @@
 ---
 id: 119
 type: bugfix
-status: in-progress
+status: archived
 created: 2026-03-09T20:09:54.422Z
+archived: 2026-03-11T15:50:55Z
 ---
 # Issue list widget crashes on narrow terminals when long row labels exceed width
 `/issue list` can crash the TUI when a rendered row exceeds the terminal width. The crash log shows a hard render failure from pi-tui:

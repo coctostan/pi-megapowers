@@ -262,18 +262,3 @@ export async function handleTaskCommand(args: string, ctx: any, deps: Deps): Pro
   if (ctx.hasUI) ctx.ui.notify("Usage: /task done", "info");
 }
 
-export async function handleReviewCommand(args: string, ctx: any, deps: Deps): Promise<void> {
-  const sub = args.trim();
-
-  if (sub === "approve") {
-    const result = handleSignal(ctx.cwd, "review_approve");
-    if (result.error) {
-      if (ctx.hasUI) ctx.ui.notify(result.error, "error");
-    } else {
-      if (ctx.hasUI) ctx.ui.notify(result.message ?? "Review approved.", "info");
-    }
-    return;
-  }
-
-  if (ctx.hasUI) ctx.ui.notify("Usage: /review approve", "info");
-}

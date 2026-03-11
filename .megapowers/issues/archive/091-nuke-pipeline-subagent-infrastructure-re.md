@@ -1,10 +1,11 @@
 ---
 id: 91
 type: feature
-status: in-progress
+status: archived
 created: 2026-03-06T02:23:11.064Z
 sources: [85, 86]
 priority: 1
+archived: 2026-03-11T15:50:55Z
 ---
 # Nuke pipeline/subagent infrastructure, rely on pi-lcm for context management
 ## Problem
