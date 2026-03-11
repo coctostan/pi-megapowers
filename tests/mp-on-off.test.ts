@@ -8,7 +8,7 @@ import { writeState, readState } from "../extensions/megapowers/state/state-io.j
 import { createInitialState } from "../extensions/megapowers/state/state-machine.js";
 
 function makeMockPi() {
-  let active = ["megapowers_signal", "subagent", "pipeline", "other"];
+  let active = ["megapowers_signal", "other"];
   return {
     getActiveTools: () => active,
     setActiveTools: (names: string[]) => {
@@ -29,7 +29,7 @@ describe("/mp on|off", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  it("/mp off disables mega enforcement and hides custom tools (AC17)", async () => {
+  it("/mp off disables mega enforcement and hides megapowers_signal (AC17)", async () => {
     writeState(tmp, { ...createInitialState(), megaEnabled: true });
 
     const pi = makeMockPi();
@@ -46,7 +46,7 @@ describe("/mp on|off", () => {
     expect(pi.getActiveTools()).not.toContain("pipeline");
   });
 
-  it("/mp on enables mega enforcement and restores custom tools (AC17)", async () => {
+  it("/mp on enables mega enforcement and restores megapowers_signal (AC17)", async () => {
     writeState(tmp, { ...createInitialState(), megaEnabled: false });
 
     const pi = makeMockPi();
@@ -62,7 +62,7 @@ describe("/mp on|off", () => {
     const state = readState(tmp);
     expect(state.megaEnabled).toBe(true);
     expect(pi.getActiveTools()).toContain("megapowers_signal");
-    expect(pi.getActiveTools()).toContain("subagent");
-    expect(pi.getActiveTools()).toContain("pipeline");
+    expect(pi.getActiveTools()).not.toContain("pipeline");
+    expect(pi.getActiveTools()).not.toContain("subagent");
   });
 });

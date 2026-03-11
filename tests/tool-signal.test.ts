@@ -702,6 +702,11 @@ describe("handleSignal", () => {
       const source = readFileSync(join(process.cwd(), "prompts/megapowers-protocol.md"), "utf8");
       expect(source).toContain("close_issue");
     });
+
+    it("megapowers-protocol.md no longer advertises legacy pipeline/subagent worktrees", () => {
+      const source = readFileSync(join(process.cwd(), "prompts/megapowers-protocol.md"), "utf8");
+      expect(source).not.toContain("Pipeline/subagent worktrees are also managed automatically.");
+    });
   });
 
   describe("close_issue signal", () => {

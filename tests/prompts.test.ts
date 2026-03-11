@@ -304,21 +304,17 @@ describe("prompt templates — bugfix plan variable injection", () => {
   });
 });
 
-describe("implement prompt — subagent delegation instructions", () => {
-  it("implement-task template explicitly prohibits subagent/pipeline tools", () => {
+describe("implement prompt — direct primary-session execution", () => {
+  it("implement-task template explicitly prohibits legacy pipeline/subagent tools", () => {
     const template = getPhasePromptTemplate("implement");
-    // Since pipeline/subagent infrastructure was removed (#091), the prompt should
-    // explicitly say NOT to use these tools rather than how to invoke them
-    expect(template).toMatch(/do not use.*pipeline|do not use.*subagent|pipeline.*broken|subagent.*broken/i);
+    expect(template).toMatch(/do not use.*pipeline|do not use.*subagent/i);
   });
-
   it("implement-task template specifies inline execution mode", () => {
     const template = getPhasePromptTemplate("implement");
-    // The prompt should direct the LLM to work directly in the session
     expect(template).toMatch(/work directly|inline|this session/i);
   });
 
-  it("buildImplementTaskVars includes information about independent tasks for delegation", () => {
+  it("buildImplementTaskVars does not advertise delegation to subagents", () => {
     const tasks: PlanTask[] = [
       { index: 1, description: "Set up shared types", completed: true, noTest: false },
       { index: 2, description: "Build auth module", completed: false, noTest: false, dependsOn: [1] },
@@ -326,22 +322,21 @@ describe("implement prompt — subagent delegation instructions", () => {
     ];
     const vars = buildImplementTaskVars(tasks, 1);
     expect(vars).toHaveProperty("remaining_tasks");
-    // Task 3 is independent (no dependsOn, or all deps completed)
     expect(vars.remaining_tasks).toContain("Task 3");
+    expect(vars.remaining_tasks).not.toContain("delegated to subagent");
+    expect(vars.remaining_tasks).toContain("ready — can be implemented now");
   });
 
-  it("remaining_tasks marks tasks with unmet dependencies", () => {
+  it("remaining_tasks still marks tasks with unmet dependencies", () => {
     const tasks: PlanTask[] = [
       { index: 1, description: "Types", completed: false, noTest: false },
       { index: 2, description: "Auth", completed: false, noTest: false, dependsOn: [1] },
       { index: 3, description: "Logging", completed: false, noTest: false },
     ];
     const vars = buildImplementTaskVars(tasks, 0);
-    // Task 2 depends on incomplete task 1 — should be marked blocked
-    expect(vars.remaining_tasks).toContain("Task 3");
-    expect(vars.remaining_tasks).toMatch(/Task 2.*blocked|blocked.*Task 2/i);
+    expect(vars.remaining_tasks).toContain("Task 2");
+    expect(vars.remaining_tasks).toContain("blocked — waiting on task(s) 1");
   });
-
   it("remaining_tasks is sentinel when no tasks remain after current", () => {
     const tasks: PlanTask[] = [
       { index: 1, description: "Only task", completed: false, noTest: false },
@@ -349,7 +344,6 @@ describe("implement prompt — subagent delegation instructions", () => {
     const vars = buildImplementTaskVars(tasks, 0);
     expect(vars.remaining_tasks).toBe("None — this is the only remaining task.");
   });
-
   it("remaining_tasks shows tasks as ready when their dependencies are complete", () => {
     const tasks: PlanTask[] = [
       { index: 1, description: "Types", completed: true, noTest: false },
@@ -357,16 +351,13 @@ describe("implement prompt — subagent delegation instructions", () => {
       { index: 3, description: "Logging", completed: false, noTest: false, dependsOn: [1] },
     ];
     const vars = buildImplementTaskVars(tasks, 1);
-    // Task 3 depends on task 1 which is complete — should be ready
     expect(vars.remaining_tasks).toContain("Task 3");
     expect(vars.remaining_tasks).not.toMatch(/Task 3.*blocked/i);
   });
-
   it("implement-task template instructs tests_failed signal after RED test failure", () => {
     const template = getPhasePromptTemplate("implement");
     expect(template).toContain('megapowers_signal({ action: "tests_failed" })');
   });
-
   it("implement-task template instructs tests_passed signal after GREEN test pass", () => {
     const template = getPhasePromptTemplate("implement");
     expect(template).toContain('megapowers_signal({ action: "tests_passed" })');

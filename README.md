@@ -8,7 +8,7 @@ A [pi](https://github.com/mariozechner/pi-coding-agent) extension that enforces 
 - **Write-policy enforcement** — Intercepts `write`/`edit` tool calls; blocks production changes until tests are written and proven failing
 - **TDD signals** — Explicit `tests_failed` / `tests_passed` signals replace fragile bash command sniffing
 - **Plan-review loop** — Iterative draft → review → revise cycle with structured task files; approval required before implementation
-- **Subagent pipeline** — Per-task implement→verify→review in isolated git worktrees; pauses and resumes with parent-LLM guidance
+- **Focused review fan-out** — Plan review can fan out to specialized reviewers via `pi-subagents` for advisory coverage
 - **VCS integration** — Auto branch-per-issue, WIP commits on switch, done-phase push/PR actions
 - **Issue tracking** — Markdown issues with frontmatter, batch issues, priority, milestones
 
@@ -62,8 +62,6 @@ All commands are available via `/mp` or the legacy `/mega` prefix:
 | `megapowers_plan_review` | Submit plan review verdict (`approve` / `revise`) with per-task feedback |
 | `create_issue` | Programmatically create a new issue |
 | `create_batch` | Create a batch issue from multiple source issue IDs |
-| `pipeline` | Run implement→verify→review in an isolated git worktree for a plan task |
-| `subagent` | Dispatch a one-shot ad-hoc subagent task |
 
 ## Plan phase loop
 
@@ -84,7 +82,7 @@ In the `implement` phase, production file writes are blocked until:
 1. A test file is written
 2. `megapowers_signal({ action: "tests_failed" })` is called to confirm the test is RED
 
-After that, implementation proceeds normally. In satellite (subagent) sessions, TDD is enforced via prompt + post-hoc `auditTddCompliance` audit report fed to the reviewer.
+After that, implementation proceeds directly in the primary session under the same TDD guard and signal flow.
 
 ## State
 
@@ -115,26 +113,23 @@ extensions/megapowers/
   hooks.ts              # session_start / agent_end lifecycle
   register-tools.ts     # Custom tool registration
   commands.ts           # /mega + /issue + /phase slash commands
-  satellite.ts          # Subagent session detection + TDD enforcement
   prompt-inject.ts      # Phase-specific context injection
   write-policy.ts       # canWrite() — phase/TDD write matrix
   tool-overrides.ts     # write/edit interception
   state/                # state-io, state-machine, store, derived, plan-store
   workflows/            # feature.ts, bugfix.ts, gate-evaluator.ts, tool-instructions.ts
   tools/                # tool-signal, tool-plan-task, tool-plan-review, tool-create-issue
-  subagent/             # pipeline-runner, pipeline-tool, oneshot-tool, tdd-auditor, workspace
   vcs/                  # branch-manager, git-ops, pr-creator
   mp/                   # /mp command hub + handler registry
   artifacts/            # version-artifact.ts
   policy/               # write-policy helpers
 prompts/                # Phase-specific LLM prompt templates
-agents/                 # Subagent definitions (worker, reviewer, scout)
+agents/                 # Agent definitions used by pi + focused review workflows
 tests/                  # Pure unit tests (no pi dependency)
 .megapowers/
   state.json            # Runtime coordination state
   issues/               # Issue markdown files with frontmatter
   plans/<slug>/         # Plan tasks, spec, review artifacts
-  subagents/<id>/       # Pipeline workspace (git worktrees)
 ```
 
 ## Development
@@ -144,16 +139,14 @@ bun test          # Run all tests
 bun test --watch  # Watch mode
 ```
 
-Tests are pure — no pi dependency, no git invocations, no actual subagents. 759 tests across 72 files.
+Tests are pure — no pi dependency, no git invocations, no real agent execution. 795 tests across 76 files.
 
 ## Architecture notes
 
 - **Disk-first state** — every handler reads state fresh from disk via `readState(cwd)`; mutations persist atomically via temp-file-then-rename
-- **Satellite mode** — detected via `PI_SUBAGENT_DEPTH` or `PI_SUBAGENT=1` env; skips write-blocking hooks, enforces TDD via audit
-- **Git worktree isolation** — each pipeline creates `.megapowers/subagents/{id}/workspace` via `git worktree add --detach`; squash back on success via `git diff --cached HEAD | git apply`
+- **Direct implement execution** — implement-phase tasks run in the primary session with write-policy + TDD signal enforcement
+- **Focused review fan-out** — advisory plan-review fan-out uses `pi-subagents` for parallel specialist feedback
 - **Backward-compatible plan.md** — on plan approval, a legacy `plan.md` is generated alongside structured task files for downstream consumers
 
 ## Known issues
 
-- **Pipeline context growth** — `renderContextPrompt` appends full step output verbatim across retries; could exceed context limits for long-running pipelines with many retries
-- **Workspace op return types** — `squashPipelineWorkspace` / `cleanupPipelineWorkspace` return untyped `{}`, requiring `(x as any).error` casts in callers

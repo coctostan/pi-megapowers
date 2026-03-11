@@ -80,7 +80,7 @@ function buildRemainingTasksSummary(
       if (unmetDeps.length > 0) {
         return `○ Task ${t.index}: ${t.description} [blocked — waiting on task(s) ${unmetDeps.join(", ")}]`;
       }
-      return `○ Task ${t.index}: ${t.description} [ready — can be delegated to subagent]`;
+      return `○ Task ${t.index}: ${t.description} [ready — can be implemented now]`;
     })
     .join("\n");
 }

@@ -36,8 +36,6 @@ Derived data is always computed on demand:
 - **`megapowers_plan_task`** — create/update structured plan tasks during draft/revise
 - **`megapowers_plan_review`** — submit plan review verdict (`approve`/`revise`) with feedback
 - **`create_batch`** — create a batch issue from source issue IDs
-- **`pipeline`** — run implement→verify→review in an isolated git worktree; supports pause/resume with guidance; emits `onProgress` events for live TUI rendering via `renderCall`/`renderResult`
-- **`subagent`** — one-shot ad-hoc subagent task in isolated workspace; squash on success
 
 ## enforcement
 
@@ -45,7 +43,6 @@ Derived data is always computed on demand:
 - **TDD guard:** in primary sessions (`implement`/`code-review`), production writes are blocked until test is written and a failing run is acknowledged via `tests_failed`.
 - **Artifact policy:** artifacts are saved directly with `write`/`edit` under `.megapowers/plans/<issue>/` (no save-artifact tool).
 - **Phase gates:** transitions require required artifacts + gate conditions (including plan-loop approval completion).
-- **Satellite mode:** subagent sessions (`PI_SUBAGENT=1` or `PI_SUBAGENT_DEPTH>0`) skip write-blocking hooks; TDD is enforced by prompt + post-hoc audit.
 
 ## key concepts
 
@@ -53,8 +50,8 @@ Derived data is always computed on demand:
 - **Batch issue:** issue with `sources` linking source issue IDs; completing batch auto-closes sources.
 - **Mega off/on:** `/mega off` disables enforcement, `/mega on` re-enables; defaults to enabled on new session.
 - **Bugfix aliasing:** `reproduce_content` → `brainstorm_content`, `diagnosis_content` → `spec_content` for shared prompt templates.
-- **Pipeline**: `pipeline` tool runs implement→verify→review in an isolated git worktree per task. On pause, parent LLM can resume with `{ resume: true, guidance }`. On completion, workspace changes are squashed and the task is marked done. Emits `PipelineProgressEvent` for live step-by-step TUI rendering.
-- **Satellite mode**: subagent sessions (`PI_SUBAGENT=1` or `PI_SUBAGENT_DEPTH>0`) don't install write-blocking hooks; TDD is enforced via prompts + `auditTddCompliance` + reviewer.
+- **Implement execution mode**: implementation work runs directly in the primary session with strict TDD sequencing and signal acknowledgements.
+- **Focused review fan-out**: plan review may use preserved `pi-subagents` fan-out for advisory reviewers (coverage/dependency/task quality).
 
 ## tests
 
@@ -62,6 +59,4 @@ Derived data is always computed on demand:
 
 ## known issues
 
-- **Pipeline context growth**: `renderContextPrompt` appends full step output verbatim across retries — could exceed context limits for long-running pipelines with many retries.
-- **Workspace op return types**: `squashPipelineWorkspace` / `cleanupPipelineWorkspace` return untyped `{} | { error: string }`, requiring `(x as any).error` casts in callers.
 - **push-and-pr on main**: Done-phase `push-and-pr` action fails permanently if already on `main` (no feature branch). See #087.

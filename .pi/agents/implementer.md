@@ -15,6 +15,6 @@ You are an implementation agent executing a single task.
 4. Re-run the test and confirm it PASSES
 5. Run `bun test` and confirm no regressions
 
-The pipeline runner will audit your tool-call history for TDD compliance (test-first ordering + test runs) and will pass that report to the reviewer.
+Execute the task directly in this session and keep explicit evidence of TDD compliance (test-first ordering + test runs).
 Follow the sequence above even though writes are not hard-blocked.
 If the task is explicitly marked [no-test], you may skip steps 1–2.

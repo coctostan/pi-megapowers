@@ -1,5 +1,10 @@
 
 ## [Unreleased]
+### Removed
+- Legacy `pipeline` and `subagent` tools unregistered from the megapowers extension tool surface; implement-phase tasks now execute directly in the primary session under the existing TDD write-policy and signal flow (`task_done` / `currentTaskIndex` / `completedTasks`) (#091)
+- Legacy implement→verify→review isolated-worktree orchestration stack deleted (17 runtime modules: `pipeline-tool`, `pipeline-runner`, `pipeline-workspace`, `pipeline-results`, `pipeline-context`, `pipeline-context-bounded`, `pipeline-log`, `pipeline-meta`, `pipeline-renderer`, `pipeline-steps`, `pipeline-schemas`, `oneshot-tool`, `task-deps`, `message-utils`, `tdd-auditor`, `dispatcher`, `pi-subagents-dispatcher`) (#091)
+- Satellite-mode bootstrap removed from extension entry point (`index.ts`); `satellite.ts` deleted; extension always runs the primary-session hook/tool/command wiring (#091)
+- 21 legacy pipeline and satellite test files deleted; `tests/legacy-subagent-stack-removed.test.ts` added to guard against reintroduction (#091)
 ### Added
 - Interactive `/issue list` widget with keyboard navigation: replaces the static `select()` picker with a `ctx.ui.custom()` widget supporting `↑↓Tab` navigation, per-issue action menus (Open/Activate, Archive, View, Close, Close now, Go to done phase), in-widget detail view, and Escape-to-dismiss; milestone grouping, sorting, and all existing activation/archive/close behaviors preserved; `ctx.ui.select()` fallback retained for non-interactive environments (#117)
 - Issue priority, archiving, and list UI: milestone-aware sorting, grouped list display, `/issue archive <slug>` command, `/issue archived` view, and `archived` status type; active issue queries exclude `.megapowers/issues/archive/`; idle prompt and triage filtering exclude archived issues (#077)

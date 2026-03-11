@@ -32,9 +32,9 @@ export async function handleMegaCommand(args: string, ctx: any, deps: Deps): Pro
   if (sub === "off") {
     const state = readState(ctx.cwd);
     writeState(ctx.cwd, { ...state, megaEnabled: false });
-    // Hide custom tools from LLM (AC38)
+    // Hide megapowers signal tool from LLM
     const activeTools = deps.pi.getActiveTools().filter(
-      (t: string) => t !== "megapowers_signal" && t !== "subagent" && t !== "pipeline"
+      (t: string) => t !== "megapowers_signal"
     );
     deps.pi.setActiveTools(activeTools);
     if (ctx.hasUI) ctx.ui.notify("Megapowers OFF — all enforcement disabled.", "info");
@@ -44,9 +44,9 @@ export async function handleMegaCommand(args: string, ctx: any, deps: Deps): Pro
   if (sub === "on") {
     const state = readState(ctx.cwd);
     writeState(ctx.cwd, { ...state, megaEnabled: true });
-    // Restore custom tools (AC38)
+    // Restore megapowers signal tool
     const activeTools = deps.pi.getActiveTools();
-    const toolsToAdd = ["megapowers_signal", "subagent", "pipeline"];
+    const toolsToAdd = ["megapowers_signal"];
     const missing = toolsToAdd.filter((t: string) => !activeTools.includes(t));
     if (missing.length > 0) {
       deps.pi.setActiveTools([...activeTools, ...missing]);
