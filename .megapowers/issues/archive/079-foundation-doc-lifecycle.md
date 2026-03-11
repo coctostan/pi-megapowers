@@ -1,8 +1,9 @@
 ---
 id: 79
 type: feature
-status: open
+status: archived
 created: 2026-02-25T18:50:00.000Z
+archived: 2026-03-11T17:02:47Z
 milestone: M6
 priority: 2
 ---

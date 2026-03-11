@@ -91,6 +91,15 @@ describe("buildInjectedPrompt — plan mode routing", () => {
     expect(result).not.toContain("You are writing a step-by-step implementation plan");
   });
 
+  it("review mode routes approval through megapowers_plan_review instead of phase_next", () => {
+    setState(tmp, { phase: "plan", planMode: "review", planIteration: 1, megaEnabled: true });
+    const result = buildInjectedPrompt(tmp);
+    expect(result).not.toBeNull();
+    expect(result).toContain("megapowers_plan_review");
+    expect(result).not.toContain('Then call `megapowers_signal` with action `"phase_next"` to advance.');
+    expect(result).not.toContain('writing it to `.megapowers/plans/001-test/plan.md`');
+  });
+
   it("review-plan prompt keeps reviewer ownership even after deterministic checks", () => {
     setState(tmp, { phase: "plan", planMode: "review", planIteration: 1, megaEnabled: true });
 

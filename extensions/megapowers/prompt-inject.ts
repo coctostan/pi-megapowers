@@ -227,7 +227,10 @@ export function buildInjectedPrompt(cwd: string, store?: Store): string | null {
   }
 
   // Phase-specific tool instructions derived from config (AC42)
-  if (state.workflow && state.phase) {
+  const suppressDerivedToolInstructions =
+    state.phase === "plan" && state.planMode === "review";
+
+  if (!suppressDerivedToolInstructions && state.workflow && state.phase) {
     const config = getWorkflowConfig(state.workflow);
     const phaseConfig = config.phases.find(p => p.name === state.phase);
     if (phaseConfig) {

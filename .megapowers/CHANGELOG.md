@@ -1,6 +1,9 @@
 
 ## [Unreleased]
 ### Removed
+- Deprecated `review_approve` action removed from `megapowers_signal` tool schema, `/review approve` command removed, and plan-review prompt injection updated to suppress conflicting `phase_next` instructions during review mode; low-level `handleSignal(cwd, "review_approve")` deprecation error preserved for backward compatibility (#124)
+## [Unreleased]
+### Removed
 - Legacy `pipeline` and `subagent` tools unregistered from the megapowers extension tool surface; implement-phase tasks now execute directly in the primary session under the existing TDD write-policy and signal flow (`task_done` / `currentTaskIndex` / `completedTasks`) (#091)
 - Legacy implement→verify→review isolated-worktree orchestration stack deleted (17 runtime modules: `pipeline-tool`, `pipeline-runner`, `pipeline-workspace`, `pipeline-results`, `pipeline-context`, `pipeline-context-bounded`, `pipeline-log`, `pipeline-meta`, `pipeline-renderer`, `pipeline-steps`, `pipeline-schemas`, `oneshot-tool`, `task-deps`, `message-utils`, `tdd-auditor`, `dispatcher`, `pi-subagents-dispatcher`) (#091)
 - Satellite-mode bootstrap removed from extension entry point (`index.ts`); `satellite.ts` deleted; extension always runs the primary-session hook/tool/command wiring (#091)

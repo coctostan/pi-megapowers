@@ -1,45 +1,207 @@
 # Roadmap
 
-## Completed
+## Product Thesis
 
-- **M0: Restructure** — Directory reorganization (#070), slash command extraction (#043)
-- **Core platform** — State machine (#071), TUI, feature + bugfix workflows
-- **TDD enforcement** — Blocks production writes until tests written and failing
-- **Phase transition UX** — Killed popup (#072), backward transitions (#069)
-- **Execution model simplification** — Legacy delegated execution stack removed; direct primary-session implementation is now the supported path (#091)
-- **Plan-review loop** — Iterative draft/review/revise with entity parser (#066, #085); bypass bug fixed (#088, #089 via #090)
-- **Done phase** — Artifact capture refactor (#065), save_artifact removed (#041, #063)
-- **Agent context & awareness** — Prompt quality, TDD edge cases (#050)
-- **Prompt/skill audit** — Workflow type for non-code work (#062)
-- **M4: VCS integration** — Comprehensive git branching & PR workflow (#083), jj removal and git-based cleanup/simplification (#091)
-- **M1 partial** — /mp command hub & issue management UX (#073); done-phase bugs resolved (#081, #082, #083, #084)
-- **M2: Delegated execution hardening (legacy)** — Historical milestone; superseded by direct primary-session implement flow (#086 batch: #085, #074)
-- **M3 partial** — Reviewer-authored revise-instructions handoff (#082)
+pi-megapowers is a structured development workflow layer for Pi.
 
-## Current: M1 — UX Foundation (2 remaining)
+Its core job is to make issue-driven work feel:
+- guided
+- inspectable
+- artifact-backed
+- stateful
+- disciplined
 
-| Issue | Pri | Status | Description |
-|-------|-----|--------|-------------|
-| #051  | P2  | open   | UX feedback, visibility & transparency (absorbs #042) |
-| #073  | P2  | ✅ done | /mp command hub & issue management UX (absorbs #058) |
-| #087  | P2  | open   | push-and-pr done action fails when not on feature branch |
+The product is strongest when a user can move through a workflow with clarity about:
+- what phase they are in
+- what the system is doing
+- what artifacts matter
+- what the next step is
+- how completion is determined
 
-## Next: M3 — Workflow Iteration Quality (2 remaining)
+---
 
-| Issue | Pri | Status | Description |
-|-------|-----|--------|-------------|
-| #082  | P1  | ✅ done | Reviewer-authored revise-instructions handoff |
-| #059  | P2  | open   | Context management and plan-review versioning |
-| #088  | P2  | open   | Use individual task files instead of plan.md |
+## Completed Foundations
 
-## Later: M5–M6
+Shipped foundations include:
+- workflow state machine
+- feature + bugfix workflows
+- TDD enforcement
+- direct primary-session implementation flow
+- plan/review loop
+- artifact capture refactor
+- git-based VCS integration
+- issue management and command hub
+- subagent/pipeline infrastructure
 
-| Issue | Milestone | Description |
-|-------|-----------|-------------|
-| #068  | M5  | `[prompt-test]` task type — TDD for prompts and skills |
-| #077  | M5  | Issue priority, archiving, and list UI |
-| #089  | M5  | Add Zod frontmatter schemas to phase artifact files |
-| #078  | M6  | Init workflow system — doc audit, greenfield templates, workflow engine (absorbs #081, #082) |
-| #079  | M6  | Foundation doc lifecycle — inject, update, audit |
-| #080  | M6  | Clean context windows |
-| #052  | M6  | Project lifecycle management — onboarding, roadmap, branching |
+These are now the platform we build on.
+
+---
+
+## Current Focus
+
+## Phase 0 — Structural hardening
+
+**Goal:** reduce architectural friction in the workflow core so near-term UX and planning work can land cleanly.
+
+This is not a general cleanup phase. It is targeted structural work that directly enables roadmap progress.
+
+### Focus areas
+- unify duplicate/shadowed plan infrastructure
+- remove deprecated review-approval drift
+- reduce fragmentation in the plan/review loop
+
+### Specific concerns observed
+- duplicate plan entity infrastructure exists in multiple places (`plan-store`, `entity-parser`, `plan-schemas`)
+- deprecated `review_approve` behavior is still wired into commands, tool registration, and tool-instruction generation
+- plan/review behavior is spread across hooks, prompt injection, tools, state helpers, and workflow instructions
+
+### Non-goals
+- broad UI cleanup
+- generic refactors without roadmap payoff
+- init/foundation-doc architecture work
+- speculative abstraction or folder churn
+
+### Definition of success
+- one canonical plan entity/storage path
+- no deprecated review approval path taught or exposed by the product
+- clearer ownership of plan-loop orchestration
+
+---
+
+## Phase 1 — Workflow clarity and trust
+
+**Goal:** make the workflow understandable and usable in-session without hidden behavior or confusing dead-ends.
+
+### Active issues
+- #122 — Phase entry UX — explicit kickoff instead of dummy first messages
+- #120 — Megapowers context visibility — show and inspect injected context
+- #121 — Megapowers operation feedback — progress, result summaries, and next-step clarity
+
+### Definition of success
+A user can:
+- enter a phase without needing a fake first message
+- understand what context was injected and why
+- understand what a tool/action just did
+- understand what they should do next
+
+---
+
+## After Phase 1: Fresh planning, not legacy backlog inheritance
+
+Outside the current UX tranche, older backlog items are no longer treated as roadmap commitments.
+
+They may still contain useful observations, but many were created ad hoc and are no longer current enough to define the roadmap as written.
+
+Their underlying ideas should be treated as **source material for re-synthesis**, not as automatically valid scope, sequencing, or problem framing.
+
+---
+
+## Product Themes Under Evaluation
+
+## Theme A — Core loop coherence
+
+**Core question:**
+How does Megapowers stay coherent over longer, messier, multi-step work instead of decaying into prompt sludge and historical noise?
+
+**Includes:**
+- context boundaries across phases and tasks
+- artifact vs state vs conversation as system memory
+- review/revise iteration continuity
+- workflow gate reliability
+- artifact trustworthiness
+
+**Current strongest problem signal:**
+Large-work plan review does not converge reliably within the current loop budget. On bigger work, plan review can feel like whack-a-mole rather than a convergent process.
+
+---
+
+## Theme B — Verified non-code work
+
+**Core question:**
+How should Megapowers support prompts, skills, docs, and other non-standard work inside its TDD philosophy?
+
+**Includes:**
+- prompt changes
+- skill edits
+- documentation-oriented tasks
+- scenario-based verification
+- constrained write rules for non-code work
+- reviewable evidence of improvement
+
+---
+
+## Theme C — Project operating system
+
+**Core question:**
+How far should Megapowers expand beyond issue execution into project initialization, project memory, and project governance?
+
+**Includes:**
+- init workflows
+- brownfield onboarding
+- greenfield setup/process scaffolding
+- foundation docs
+- doc update proposals
+- drift analysis
+- roadmap/project governance support
+
+---
+
+## Theme D — System integrity and auditability
+
+**Core question:**
+How much structure should the system impose on artifacts and workflow data?
+
+**Includes:**
+- stronger artifact schemas
+- machine-readable metadata
+- safer gates
+- backward compatibility for older artifacts
+
+---
+
+## Sequence Guidance
+
+The roadmap should currently be approached in this order:
+
+1. **Phase 0** — structural hardening
+2. **Phase 1** — workflow clarity and trust
+3. **Theme A** — core loop coherence
+4. **Theme B** — verified non-code work
+5. **Theme C** — project operating system
+
+This ordering follows the principle:
+
+> stabilize the core workflow before broadening the kinds of work or the scope of the product
+
+---
+
+## Roadmap Principles
+
+We will prefer:
+1. improving the core workflow before expanding scope
+2. artifact-backed clarity over hidden prompt accumulation
+3. simple, inspectable mechanisms over heavy automation
+4. small, crisp issues over broad umbrella features
+5. fresh problem statements over inherited stale tickets
+
+---
+
+## Issue Creation Policy
+
+New issues should only be created when they are:
+- based on current product understanding
+- scoped to a concrete user-visible or workflow-visible improvement
+- narrow enough to implement and review cleanly
+- not thin wrappers around stale issue wording
+
+Older issues may be closed, archived, or treated as historical notes when they no longer represent current product thinking.
+
+---
+
+## Near-Term Planning Approach
+
+1. Finish Phase 0 definition and create a small number of targeted issues
+2. Finish the current UX tranche
+3. Reassess the workflow from fresh experience
+4. Choose the next theme based on current product pain, not inherited backlog gravity
+5. Create only a few fresh issues from that theme

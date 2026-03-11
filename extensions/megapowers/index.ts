@@ -4,7 +4,7 @@ import {
   ensureDeps,
   handleMegaCommand, handleIssueCommand, handleTriageCommand,
   handlePhaseCommand, handleDoneCommand, handleLearnCommand,
-  handleTddCommand, handleTaskCommand, handleReviewCommand,
+  handleTddCommand, handleTaskCommand,
   type RuntimeDeps,
 } from "./commands.js";
 import { onContext, onSessionStart, onBeforeAgentStart, onToolCall, onToolResult, onAgentEnd } from "./hooks.js";
@@ -104,13 +104,4 @@ export default function megapowers(pi: ExtensionAPI): void {
     handler: async (args, ctx) => handleTaskCommand(args, ctx, ensureDeps(runtimeDeps, pi, ctx.cwd)),
   });
 
-  pi.registerCommand("review", {
-    description: "Review management (usage: /review approve)",
-    getArgumentCompletions: (prefix) => {
-      const subs = ["approve"];
-      const filtered = subs.filter((s) => s.startsWith(prefix));
-      return filtered.length > 0 ? filtered.map((s) => ({ value: s, label: s })) : null;
-    },
-    handler: async (args, ctx) => handleReviewCommand(args, ctx, ensureDeps(runtimeDeps, pi, ctx.cwd)),
-  });
 }

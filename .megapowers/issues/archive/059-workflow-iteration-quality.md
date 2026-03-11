@@ -1,8 +1,9 @@
 ---
 id: 59
 type: feature
-status: open
+status: archived
 created: 2026-02-24T19:50:00.000Z
+archived: 2026-03-11T17:02:47Z
 sources: [54, 56]
 milestone: M3
 priority: 2
