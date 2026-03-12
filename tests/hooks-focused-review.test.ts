@@ -82,6 +82,37 @@ describe("preparePlanReviewContext", () => {
     });
   });
 
+  it("does not invoke focused review fan-out from an advisory subagent session", async () => {
+    const originalDepth = process.env.PI_SUBAGENT_DEPTH;
+    process.env.PI_SUBAGENT_DEPTH = "1";
+
+    try {
+      setState(tmp, { phase: "plan", planMode: "review" });
+      createTaskFiles(tmp, 6);
+
+      let called = 0;
+      await preparePlanReviewContext(tmp, async () => {
+        called += 1;
+        return {
+          ran: true,
+          runtime: "pi-subagents",
+          mode: "parallel",
+          availableArtifacts: [],
+          unavailableArtifacts: [],
+          message: "should not run",
+        };
+      });
+
+      expect(called).toBe(0);
+    } finally {
+      if (originalDepth === undefined) {
+        delete process.env.PI_SUBAGENT_DEPTH;
+      } else {
+        process.env.PI_SUBAGENT_DEPTH = originalDepth;
+      }
+    }
+  });
+
   it("soft-fails when focused review fan-out throws so review can still proceed", async () => {
     setState(tmp, { phase: "plan", planMode: "review" });
     createTaskFiles(tmp, 6);

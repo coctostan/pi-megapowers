@@ -91,6 +91,26 @@ describe("buildInjectedPrompt — plan mode routing", () => {
     expect(result).not.toContain("You are writing a step-by-step implementation plan");
   });
 
+  it("does not inject the primary review prompt into advisory subagent sessions", () => {
+    const originalDepth = process.env.PI_SUBAGENT_DEPTH;
+    process.env.PI_SUBAGENT_DEPTH = "1";
+
+    try {
+      setState(tmp, { phase: "plan", planMode: "review", planIteration: 1, megaEnabled: true });
+      const result = buildInjectedPrompt(tmp);
+      expect(result).not.toBeNull();
+      expect(result).not.toContain("You are reviewing an implementation plan before it goes to implementation.");
+      expect(result).toContain("This is an advisory subagent session for plan review.");
+      expect(result).not.toContain("megapowers_plan_review({");
+    } finally {
+      if (originalDepth === undefined) {
+        delete process.env.PI_SUBAGENT_DEPTH;
+      } else {
+        process.env.PI_SUBAGENT_DEPTH = originalDepth;
+      }
+    }
+  });
+
   it("review mode routes approval through megapowers_plan_review instead of phase_next", () => {
     setState(tmp, { phase: "plan", planMode: "review", planIteration: 1, megaEnabled: true });
     const result = buildInjectedPrompt(tmp);

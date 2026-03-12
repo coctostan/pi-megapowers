@@ -16,6 +16,7 @@ import type { Store } from "./state/store.js";
 import { getWorkflowConfig } from "./workflows/registry.js";
 import { deriveToolInstructions } from "./workflows/tool-instructions.js";
 import { shouldRunFocusedReviewFanout } from "./plan-review/focused-review.js";
+import { isSubagentSession } from "./subagent-session.js";
 
 /**
  * Build the injected system prompt for the current phase.
@@ -92,6 +93,15 @@ function buildFocusedReviewArtifactsSection(cwd: string, issueSlug: string, task
 
   return sections.join("\n").trim();
 }
+
+function buildAdvisoryPlanReviewSubagentSection(): string {
+  return [
+    "## Advisory Review Session",
+    "This is an advisory subagent session for plan review.",
+    "Do not act as the primary reviewer, do not call `megapowers_plan_review`, and do not trigger focused review fan-out again.",
+    "Follow the assigned subagent prompt and task only; any written artifact is advisory input for the main review session.",
+  ].join("\n");
+}
 export function buildInjectedPrompt(cwd: string, store?: Store): string | null {
   const state = readState(cwd);
 
@@ -99,6 +109,9 @@ export function buildInjectedPrompt(cwd: string, store?: Store): string | null {
   if (!state.activeIssue || !state.phase) {
     return buildIdlePrompt(cwd, store);
   }
+
+  const isAdvisoryPlanReviewSubagent =
+    state.phase === "plan" && state.planMode === "review" && isSubagentSession();
 
   const parts: string[] = [];
 
@@ -186,7 +199,7 @@ export function buildInjectedPrompt(cwd: string, store?: Store): string | null {
       const content = store.readPlanFile(state.activeIssue!, filename);
       vars.revise_instructions = content ?? "";
     }
-    if (state.planMode === "review") {
+    if (state.planMode === "review" && !isAdvisoryPlanReviewSubagent) {
       vars.focused_review_artifacts = buildFocusedReviewArtifactsSection(
         cwd,
         state.activeIssue,
@@ -198,7 +211,9 @@ export function buildInjectedPrompt(cwd: string, store?: Store): string | null {
   }
 
   // Phase prompt template (plan-mode aware; skip done phase unless doneActions is set)
-  if (state.phase === "plan" && state.planMode) {
+  if (isAdvisoryPlanReviewSubagent) {
+    parts.push(buildAdvisoryPlanReviewSubagentSection());
+  } else if (state.phase === "plan" && state.planMode) {
     const PLAN_MODE_TEMPLATES: Record<"draft" | "review" | "revise", string> = {
       draft: "write-plan.md",
       review: "review-plan.md",

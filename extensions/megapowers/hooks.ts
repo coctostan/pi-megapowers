@@ -6,6 +6,7 @@ import { showDoneChecklist } from "./ui.js";
 import { evaluateWriteOverride, recordTestFileWritten } from "./tools/tool-overrides.js";
 import { runFocusedReviewFanout, type FocusedReviewFanoutResult } from "./plan-review/focused-review-runner.js";
 import { shouldRunFocusedReviewFanout } from "./plan-review/focused-review.js";
+import { isSubagentSession } from "./subagent-session.js";
 
 // --- Hook handlers ---
 
@@ -42,6 +43,8 @@ export async function preparePlanReviewContext(
   if (state.phase !== "plan" || state.planMode !== "review" || !state.activeIssue || !state.workflow) {
     return;
   }
+
+  if (isSubagentSession()) return;
 
   const taskCount = deriveTasks(cwd, state.activeIssue).length;
   if (!shouldRunFocusedReviewFanout(taskCount)) return;
