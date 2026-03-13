@@ -373,7 +373,7 @@ describe("handleSignal", () => {
     // --- Happy path: backward transitions ---
     it("returns error for review → plan (review phase removed from workflow)", () => {
       writeArtifact(tmp, "001-test", "plan.md", "# Plan\n");
-      setState(tmp, { phase: "review", reviewApproved: true });
+      setState(tmp, { phase: "review" });
       const result = handleSignal(tmp, "phase_back");
       expect(result.error).toBeDefined();
       expect(result.error).toContain("No backward transition");
@@ -383,7 +383,7 @@ describe("handleSignal", () => {
     it("does not version review.md/plan.md when review → plan is invalid", () => {
       writeArtifact(tmp, "001-test", "plan.md", "plan v0");
       writeArtifact(tmp, "001-test", "review.md", "review v0");
-      setState(tmp, { phase: "review", reviewApproved: true });
+      setState(tmp, { phase: "review" });
       const result = handleSignal(tmp, "phase_back");
       expect(result.error).toBeDefined();
       expect(readState(tmp).phase).toBe("review");

@@ -94,7 +94,7 @@ describe("plan → implement", () => {
 describe("review phase compatibility", () => {
   it("falls back to allow-by-default when no transition is defined", () => {
     const store = createStore(tmp);
-    const result = checkGate(makeState({ phase: "review", reviewApproved: true }), "implement", store);
+    const result = checkGate(makeState({ phase: "review" }), "implement", store);
     expect(result.pass).toBe(true);
   });
 });
