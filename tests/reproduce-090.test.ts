@@ -61,7 +61,6 @@ describe("Issue #088: phase_next bypasses plan review gate", () => {
       phase: "plan",
       planMode: "draft",
       planIteration: 1,
-      reviewApproved: false,
     });
     writeArtifact("001-test", "plan.md", "### Task 1: Do something\n");
     writeTask();
@@ -76,7 +75,6 @@ describe("Issue #088: phase_next bypasses plan review gate", () => {
       phase: "plan",
       planMode: "revise",
       planIteration: 2,
-      reviewApproved: false,
     });
     writeArtifact("001-test", "plan.md", "### Task 1: Do something\n");
     writeTask();
@@ -95,7 +93,6 @@ describe("Issue #088: phase_next bypasses plan review gate", () => {
       phase: "plan",
       planMode: "draft",
       planIteration: 1,
-      reviewApproved: false,
     };
     store.ensurePlanDir("001-test");
     store.writePlanFile("001-test", "plan.md", "### Task 1: Do something\n");
@@ -110,7 +107,6 @@ describe("Issue #088: phase_next bypasses plan review gate", () => {
       phase: "plan",
       planMode: null,
       planIteration: 1,
-      reviewApproved: false,
     });
     writeArtifact("001-test", "plan.md", "### Task 1: Do something\n");
     writeTask();

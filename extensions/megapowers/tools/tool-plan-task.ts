@@ -3,6 +3,7 @@ import { readPlanTask, writePlanTask, listPlanTasks } from "../state/plan-store.
 import { PlanTaskSchema, type PlanTask } from "../state/plan-schemas.js";
 import type { EntityDoc } from "../state/entity-parser.js";
 import { lintTask } from "../validation/plan-task-linter.js";
+import { validatePlanTaskMutation } from "../plan-orchestrator.js";
 
 export interface PlanTaskParams {
   id: number;
@@ -22,16 +23,9 @@ export interface PlanTaskResult {
 export function handlePlanTask(cwd: string, params: PlanTaskParams): PlanTaskResult {
   const state = readState(cwd);
 
-  if (state.phase !== "plan") {
-    return { error: "megapowers_plan_task can only be called during the plan phase." };
-  }
-
-  if (state.planMode === "review") {
-    return { error: "megapowers_plan_task is blocked during review mode. Use megapowers_plan_review to submit your verdict." };
-  }
-
-  if (state.planMode !== "draft" && state.planMode !== "revise") {
-    return { error: `megapowers_plan_task requires planMode 'draft' or 'revise', got '${state.planMode}'.` };
+  const modeCheck = validatePlanTaskMutation(state);
+  if (!modeCheck.ok) {
+    return { error: modeCheck.error };
   }
 
   const slug = state.activeIssue!;

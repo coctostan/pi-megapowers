@@ -16,6 +16,7 @@ import type { Store } from "./state/store.js";
 import { getWorkflowConfig } from "./workflows/registry.js";
 import { deriveToolInstructions } from "./workflows/tool-instructions.js";
 import { shouldRunFocusedReviewFanout } from "./plan-review/focused-review.js";
+import { resolvePlanTemplate } from "./plan-orchestrator.js";
 import { isSubagentSession } from "./subagent-session.js";
 
 /**
@@ -214,12 +215,7 @@ export function buildInjectedPrompt(cwd: string, store?: Store): string | null {
   if (isAdvisoryPlanReviewSubagent) {
     parts.push(buildAdvisoryPlanReviewSubagentSection());
   } else if (state.phase === "plan" && state.planMode) {
-    const PLAN_MODE_TEMPLATES: Record<"draft" | "review" | "revise", string> = {
-      draft: "write-plan.md",
-      review: "review-plan.md",
-      revise: "revise-plan.md",
-    };
-    const templateName = PLAN_MODE_TEMPLATES[state.planMode];
+    const templateName = resolvePlanTemplate(state.planMode);
     const template = loadPromptFile(templateName);
     if (template) {
       const phasePrompt = interpolatePrompt(template, vars);

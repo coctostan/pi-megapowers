@@ -20,12 +20,6 @@ export function evaluateGate(
       }
       return { pass: true };
     }
-    case "requireReviewApproved": {
-      if (!state.reviewApproved) {
-        return { pass: false, message: "Plan review not approved yet. The LLM needs to approve the plan." };
-      }
-      return { pass: true };
-    }
     case "requirePlanApproved": {
       if (state.planMode !== null) {
         return { pass: false, message: `Plan review not complete (planMode: ${state.planMode}). Call plan_draft_done to submit for review.` };

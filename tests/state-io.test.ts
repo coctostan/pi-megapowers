@@ -77,6 +77,18 @@ describe("state-io", () => {
       expect((state as any).acceptanceCriteria).toBeUndefined();
     });
 
+    it("KNOWN_KEYS no longer preserves reviewApproved on read", () => {
+      const dir = join(tmp, ".megapowers");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "state.json"),
+        JSON.stringify({ ...createInitialState(), activeIssue: "001-test", reviewApproved: true }),
+      );
+
+      const state = readState(tmp);
+      expect((state as any).reviewApproved).toBeUndefined();
+    });
+
     it("AC3: drops legacy VCS keys when reading state.json (silently ignored on read)", () => {
       const dir = join(tmp, ".megapowers");
       mkdirSync(dir, { recursive: true });
@@ -120,7 +132,6 @@ describe("state-io", () => {
         phaseHistory: [{ from: "plan" as const, to: "implement" as const, timestamp: 12345 }],
         currentTaskIndex: 2,
         completedTasks: [1, 2],
-        reviewApproved: true,
         tddTaskState: { taskIndex: 3, state: "test-written" as const, skipped: false },
         doneActions: [],
         megaEnabled: true,
@@ -138,6 +149,18 @@ describe("state-io", () => {
       expect(legacyChangeKey in raw).toBe(false);
       expect(legacyTaskKey in raw).toBe(false);
     });
+  });
+
+  it("writeState output and ui.ts source no longer mention reviewApproved", () => {
+    writeState(tmp, { ...createInitialState(), activeIssue: "001-test" } as any);
+    const raw = readFileSync(join(tmp, ".megapowers", "state.json"), "utf-8");
+    expect(raw).not.toContain("reviewApproved");
+
+    const uiSource = readFileSync(
+      join(process.cwd(), "extensions/megapowers/ui.ts"),
+      "utf-8",
+    );
+    expect(uiSource).not.toContain("reviewApproved:");
   });
 
   describe("KNOWN_KEYS roundtrip", () => {

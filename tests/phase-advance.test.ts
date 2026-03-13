@@ -117,12 +117,15 @@ describe("advancePhase", () => {
     expect(readState(tmp).currentTaskIndex).toBe(2);
   });
 
-  it("resets reviewApproved when advancing spec→plan", () => {
-    setState({ phase: "spec", reviewApproved: true });
+  it("spec→plan still initializes draft mode without reviewApproved bookkeeping", () => {
+    setState({ phase: "spec" });
     writeArtifact("001-test", "spec.md", "# Spec\n\n## Acceptance Criteria\n1. Works\n\n## Open Questions\nNone\n");
     const result = advancePhase(tmp);
     expect(result.ok).toBe(true);
-    expect(readState(tmp).reviewApproved).toBe(false);
+    const next = readState(tmp);
+    expect(next.planMode).toBe("draft");
+    expect(next.planIteration).toBe(1);
+    expect((next as any).reviewApproved).toBeUndefined();
   });
 
   it("advances to specific target when provided", () => {

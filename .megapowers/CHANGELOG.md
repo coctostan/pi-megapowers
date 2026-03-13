@@ -1,5 +1,8 @@
 
 ## [Unreleased]
+### Added
+- `plan-orchestrator.ts` module centralising all plan-loop mode transitions (draft→review, review→revise, review→approve), iteration tracking, template resolution, and focused-review decision logic; `reviewApproved` state field and `requireReviewApproved` gate removed (#125)
+## [Unreleased]
 ### Removed
 - Deleted dead root-level plan infrastructure modules (`plan-store.ts`, `entity-parser.ts`, `plan-schemas.ts`) and their dead tests; the canonical `state/` implementation is now the single unambiguous active path for plan entity and storage behavior (#123)
 ## [Unreleased]

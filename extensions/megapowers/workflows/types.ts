@@ -15,9 +15,6 @@ export interface NoOpenQuestionsGate {
   file: string; // file to check for open questions
 }
 
-export interface RequireReviewApprovedGate {
-  type: "requireReviewApproved";
-}
 
 export interface RequirePlanApprovedGate {
   type: "requirePlanApproved";
@@ -43,7 +40,6 @@ export interface CustomGate {
 export type GateConfig =
   | RequireArtifactGate
   | NoOpenQuestionsGate
-  | RequireReviewApprovedGate
   | RequirePlanApprovedGate
   | AllTasksCompleteGate
   | RequireTaskFilesGate

@@ -45,7 +45,6 @@ export interface MegapowersState {
   workflow: WorkflowType | null;
   phase: Phase | null;
   phaseHistory: PhaseTransition[];
-  reviewApproved: boolean;
   planMode: PlanMode;
   planIteration: number;
   currentTaskIndex: number;
@@ -56,11 +55,12 @@ export interface MegapowersState {
   megaEnabled: boolean;
   branchName: string | null;
   baseBranch: string | null;
-}
+  }
 
 // --- Config-driven data ---
 
 import { getWorkflowConfig, getAllWorkflowConfigs } from "../workflows/registry.js";
+import { initializePlanLoopState } from "../plan-orchestrator.js";
 
 /**
  * Open-ended phases suppress automatic phase-transition prompts after every message.
@@ -79,7 +79,6 @@ export function createInitialState(): MegapowersState {
     workflow: null,
     phase: null,
     phaseHistory: [],
-    reviewApproved: false,
     planMode: null,
     planIteration: 0,
     currentTaskIndex: 0,
@@ -128,11 +127,8 @@ export function transition(state: MegapowersState, to: Phase, tasks?: PlanTask[]
     ],
   };
 
-  // Reset review approval and initialize plan loop state when entering plan.
   if (to === "plan") {
-    next.reviewApproved = false;
-    next.planMode = "draft";
-    next.planIteration = 1;
+    Object.assign(next, initializePlanLoopState(next));
   }
 
   // Clear plan mode once leaving plan.

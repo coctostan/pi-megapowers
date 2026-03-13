@@ -21,15 +21,6 @@ export function deriveToolInstructions(
     );
     return parts.join("\n");
   }
-  // Review phase: approval workflow
-  if (phase.needsReviewApproval) {
-    parts.push(
-      `If the plan is acceptable, call \`megapowers_signal\` with action \`"review_approve"\` to approve it.`,
-      `Then call \`megapowers_signal\` with action \`"phase_next"\` to advance to implement.`,
-      `If changes are needed, explain what to fix. The user will revise and re-submit.`,
-    );
-    return parts.join("\n");
-  }
   // TDD phase without artifact: task-driven workflow (implement)
   if (phase.tdd && !phase.artifact) {
     parts.push(
