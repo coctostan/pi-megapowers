@@ -8,6 +8,7 @@ import { transition, createInitialState, type Phase } from "../state/state-machi
 import { getWorkflowConfig } from "../workflows/registry.js";
 import { createStore } from "../state/store.js";
 import { versionArtifact } from "../artifacts/version-artifact.js";
+import { transitionDraftToReview } from "../plan-orchestrator.js";
 
 export interface SignalResult {
   message?: string;
@@ -19,7 +20,6 @@ export function handleSignal(
   cwd: string,
   action:
     | "task_done"
-    | "review_approve"
     | "phase_next"
     | "phase_back"
     | "tests_failed"
@@ -38,8 +38,6 @@ export function handleSignal(
   switch (action) {
     case "task_done":
       return handleTaskDone(cwd);
-    case "review_approve":
-      return handleReviewApprove(cwd);
     case "phase_next":
       return handlePhaseNext(cwd, target);
     case "phase_back":
@@ -218,25 +216,20 @@ export async function handlePlanDraftDone(cwd: string): Promise<SignalResult> {
   if (tasks.length === 0) {
     return { error: "No task files found. Use megapowers_plan_task to create tasks before signaling draft done." };
   }
-  writeState(cwd, { ...state, planMode: "review" });
+
+  const orchestrated = transitionDraftToReview(state, tasks.length);
+  if (!orchestrated.ok) {
+    return { error: orchestrated.error };
+  }
+
+  writeState(cwd, orchestrated.value.nextState);
   return {
-    message:
-      `📝 Draft complete: ${tasks.length} task${tasks.length === 1 ? "" : "s"} saved\n` +
-      "  → Transitioning to review mode.",
+    message: orchestrated.value.message,
     triggerNewSession: true,
   };
 }
 
 
-// ---------------------------------------------------------------------------
-// review_approve
-// ---------------------------------------------------------------------------
-
-function handleReviewApprove(_cwd: string): SignalResult {
-  return {
-    error: "❌ review_approve is deprecated. Plan review is now handled by the megapowers_plan_review tool within the plan phase. The reviewer calls megapowers_plan_review({ verdict: \"approve\", ... }) to approve.",
-  };
-}
 
 
 // ---------------------------------------------------------------------------

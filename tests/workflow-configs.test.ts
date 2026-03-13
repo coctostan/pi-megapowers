@@ -293,6 +293,16 @@ describe("deriveToolInstructions", () => {
     expect(phase).toBeUndefined();
   });
 
+  it("tool-instructions source no longer contains needsReviewApproval or review_approve guidance", () => {
+    const source = require("node:fs").readFileSync(
+      require("node:path").join(process.cwd(), "extensions/megapowers/workflows/tool-instructions.ts"),
+      "utf-8",
+    );
+
+    expect(source).not.toContain("needsReviewApproval");
+    expect(source).not.toContain("review_approve");
+  });
+
   it("returns write + path + phase_next for brainstorm (has artifact, open-ended)", () => {
     const phase = featureWorkflow.phases.find(p => p.name === "brainstorm")!;
     const instructions = deriveToolInstructions(phase, "001-test");

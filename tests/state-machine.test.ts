@@ -22,10 +22,24 @@ describe("createInitialState", () => {
     expect(state.workflow).toBeNull();
     expect(state.phase).toBeNull();
     expect(state.phaseHistory).toEqual([]);
-    expect(state.reviewApproved).toBe(false);
     expect(state.completedTasks).toEqual([]);
     expect(state.megaEnabled).toBe(true);
   });
+});
+
+it("createInitialState no longer includes reviewApproved", () => {
+  const state = createInitialState();
+  expect("reviewApproved" in state).toBe(false);
+});
+
+it("state-machine delegates plan entry initialization to plan-orchestrator", () => {
+  const source = require("node:fs").readFileSync(
+    require("node:path").join(process.cwd(), "extensions/megapowers/state/state-machine.ts"),
+    "utf-8",
+  );
+
+  expect(source).toContain('from "../plan-orchestrator.js"');
+  expect(source).toContain("initializePlanLoopState");
 });
 
 describe("legacy field removal", () => {
@@ -170,16 +184,6 @@ describe("transition", () => {
     expect(() => transition(state, "spec")).toThrow();
   });
 
-  it("resets reviewApproved when entering plan phase", () => {
-    const state = createInitialState();
-    state.workflow = "feature";
-    state.phase = "spec";
-    state.activeIssue = "001-test";
-    state.reviewApproved = true;
-
-    const next = transition(state, "plan");
-    expect(next.reviewApproved).toBe(false);
-  });
 });
 
 describe("transition — planMode hooks", () => {

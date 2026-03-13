@@ -56,20 +56,22 @@ describe("evaluateGate — noOpenQuestions", () => {
   });
 });
 
-describe("evaluateGate — requireReviewApproved", () => {
-  it("fails when reviewApproved is false", () => {
-    const store = createStore(tmp);
-    const gate: GateConfig = { type: "requireReviewApproved" };
-    const result = evaluateGate(gate, makeState({ phase: "review", reviewApproved: false }), store, tmp);
-    expect(result.pass).toBe(false);
-    expect(result.message).toContain("not approved");
-  });
+describe("dead requireReviewApproved gate removal", () => {
+  it("workflow types and gate evaluator source no longer mention requireReviewApproved", () => {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const typesSource = fs.readFileSync(
+      path.join(process.cwd(), "extensions/megapowers/workflows/types.ts"),
+      "utf-8",
+    );
+    const evaluatorSource = fs.readFileSync(
+      path.join(process.cwd(), "extensions/megapowers/workflows/gate-evaluator.ts"),
+      "utf-8",
+    );
 
-  it("passes when reviewApproved is true", () => {
-    const store = createStore(tmp);
-    const gate: GateConfig = { type: "requireReviewApproved" };
-    const result = evaluateGate(gate, makeState({ phase: "review", reviewApproved: true }), store, tmp);
-    expect(result.pass).toBe(true);
+    expect(typesSource).not.toContain("requireReviewApproved");
+    expect(evaluatorSource).not.toContain("requireReviewApproved");
+    expect(evaluatorSource).not.toContain("state.reviewApproved");
   });
 });
 

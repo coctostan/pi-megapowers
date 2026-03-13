@@ -57,6 +57,37 @@ describe("preparePlanReviewContext", () => {
     expect(called).toBe(0);
   });
 
+  it("does not invoke focused review fan-out when planMode is draft even with five or more tasks", async () => {
+    setState(tmp, { phase: "plan", planMode: "draft" });
+    createTaskFiles(tmp, 6);
+
+    let called = 0;
+    await preparePlanReviewContext(tmp, async () => {
+      called += 1;
+      return {
+        ran: true,
+        runtime: "pi-subagents",
+        mode: "parallel",
+        availableArtifacts: [],
+        unavailableArtifacts: [],
+        message: "should not run",
+      };
+    });
+
+    expect(called).toBe(0);
+  });
+
+  it("hooks.ts uses shouldRunFocusedReview from plan-orchestrator", () => {
+    const source = require("node:fs").readFileSync(
+      require("node:path").join(process.cwd(), "extensions/megapowers/hooks.ts"),
+      "utf-8",
+    );
+
+    expect(source).toContain('from "./plan-orchestrator.js"');
+    expect(source).toContain("shouldRunFocusedReview(state.planMode, taskCount)");
+    expect(source).not.toContain("shouldRunFocusedReviewFanout(taskCount)");
+  });
+
   it("invokes focused review fan-out for plan review sessions with five or more tasks", async () => {
     setState(tmp, { phase: "plan", planMode: "review" });
     createTaskFiles(tmp, 5);

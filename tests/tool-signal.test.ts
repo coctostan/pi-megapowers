@@ -249,13 +249,14 @@ describe("handleSignal", () => {
   // review_approve
   // ======================================================================
 
-  describe("review_approve deprecation", () => {
-    it("returns deprecation error message", () => {
+  describe("review_approve removal", () => {
+    it("treats review_approve as an unknown signal action and removes the old switch case", () => {
+      const source = readFileSync(join(process.cwd(), "extensions/megapowers/tools/tool-signal.ts"), "utf-8");
+      expect(source).not.toContain('| "review_approve"');
+      expect(source).not.toContain('case "review_approve"');
       setState(tmp, { phase: "plan", planMode: "review", planIteration: 1 });
       const result = handleSignal(tmp, "review_approve");
-      expect(result.error).toBeDefined();
-      expect(result.error).toContain("deprecated");
-      expect(result.error).toContain("megapowers_plan_review");
+      expect(result.error).toBe("Unknown signal action: review_approve");
     });
   });
 
@@ -390,12 +391,16 @@ describe("handleSignal", () => {
       expect(() => readFileSync(join(dir, "plan.v1.md"), "utf-8")).toThrow();
       expect(() => readFileSync(join(dir, "review.v1.md"), "utf-8")).toThrow();
     });
-    it("does not clear reviewApproved when review → plan transition is invalid", () => {
+    it("leaves phase state untouched when review → plan transition is invalid", () => {
       writeArtifact(tmp, "001-test", "plan.md", "# Plan\n");
-      setState(tmp, { phase: "review", reviewApproved: true });
+      setState(tmp, { phase: "review" });
+      const before = readState(tmp);
+
       const result = handleSignal(tmp, "phase_back");
       expect(result.error).toBeDefined();
-      expect(readState(tmp).reviewApproved).toBe(true);
+      expect(result.error).toContain("No backward transition");
+      expect(readState(tmp).phase).toBe("review");
+      expect(readState(tmp).phaseHistory).toEqual(before.phaseHistory);
     });
     it("transitions verify → implement (AC3)", () => {
       setState(tmp, { phase: "verify" });
@@ -708,17 +713,18 @@ describe("handleSignal", () => {
       expect(source).not.toContain("Pipeline/subagent worktrees are also managed automatically.");
     });
 
-    it("does not advertise review_approve while the low-level deprecation error remains", () => {
+    it("does not advertise review_approve and routes plan_draft_done through plan-orchestrator", async () => {
       const toolsSource = readFileSync(join(process.cwd(), "extensions/megapowers/register-tools.ts"), "utf8");
-
+      const signalSource = readFileSync(join(process.cwd(), "extensions/megapowers/tools/tool-signal.ts"), "utf8");
       expect(toolsSource).not.toContain('Type.Literal("review_approve")');
-      expect(toolsSource).not.toContain("Note: review_approve is deprecated");
+      expect(signalSource).toContain("transitionDraftToReview");
+      expect(signalSource).not.toContain('writeState(cwd, { ...state, planMode: "review" })');
 
+      setState(tmp, { phase: "plan", planMode: "review", planIteration: 1 });
       const result = handleSignal(tmp, "review_approve");
-      expect(result.error).toBeDefined();
-      expect(result.error).toContain("deprecated");
-      expect(result.error).toContain("megapowers_plan_review");
-    });
+      expect(result.error).toBe("Unknown signal action: review_approve");
+  });
+
   });
 
   describe("close_issue signal", () => {

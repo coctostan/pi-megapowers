@@ -5,7 +5,7 @@ import { buildInjectedPrompt } from "./prompt-inject.js";
 import { showDoneChecklist } from "./ui.js";
 import { evaluateWriteOverride, recordTestFileWritten } from "./tools/tool-overrides.js";
 import { runFocusedReviewFanout, type FocusedReviewFanoutResult } from "./plan-review/focused-review-runner.js";
-import { shouldRunFocusedReviewFanout } from "./plan-review/focused-review.js";
+import { shouldRunFocusedReview } from "./plan-orchestrator.js";
 import { isSubagentSession } from "./subagent-session.js";
 
 // --- Hook handlers ---
@@ -47,7 +47,7 @@ export async function preparePlanReviewContext(
   if (isSubagentSession()) return;
 
   const taskCount = deriveTasks(cwd, state.activeIssue).length;
-  if (!shouldRunFocusedReviewFanout(taskCount)) return;
+  if (!shouldRunFocusedReview(state.planMode, taskCount)) return;
 
   try {
     return await runFocusedReviewFanoutFn({

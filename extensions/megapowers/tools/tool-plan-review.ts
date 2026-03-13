@@ -2,7 +2,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { readState, writeState } from "../state/state-io.js";
 import { readPlanTask, writePlanTask, listPlanTasks, writePlanReview } from "../state/plan-store.js";
-import { generateLegacyPlanMd } from "../state/legacy-plan-bridge.js";
+import { approvePlan, transitionReviewToRevise } from "../plan-orchestrator.js";
 import { MAX_PLAN_ITERATIONS, transition, type Phase } from "../state/state-machine.js";
 import { deriveTasks } from "../state/derived.js";
 import type { PlanTask, PlanReview } from "../state/plan-schemas.js";
@@ -75,26 +75,19 @@ function handleReviseVerdict(
   approvedIds: number[],
   needsRevisionIds: number[],
 ): PlanReviewResult {
-  if (state.planIteration >= MAX_PLAN_ITERATIONS) {
-    return {
-      error:
-        `⚠️ Plan review reached ${MAX_PLAN_ITERATIONS} iterations without approval. Human intervention needed.\n` +
-        "  Use /mega off to disable enforcement and manually advance, or revise the spec.",
-    };
+  const orchestrated = transitionReviewToRevise(
+    state,
+    approvedIds,
+    needsRevisionIds,
+    MAX_PLAN_ITERATIONS,
+  );
+  if (!orchestrated.ok) {
+    return { error: orchestrated.error };
   }
 
-  writeState(cwd, {
-    ...state,
-    planMode: "revise",
-    planIteration: state.planIteration + 1,
-  });
-
+  writeState(cwd, orchestrated.value.nextState);
   return {
-    message:
-      `📋 Plan review: REVISE (iteration ${state.planIteration + 1} of ${MAX_PLAN_ITERATIONS})\n` +
-      `  ✅ Tasks ${approvedIds.join(", ") || "none"} approved\n` +
-      `  ⚠️ Tasks ${needsRevisionIds.join(", ") || "none"} need revision\n` +
-      "  → Transitioning to revise mode. A new review session will start.",
+    message: orchestrated.value.message,
     triggerNewSession: true,
   };
 }
@@ -105,27 +98,26 @@ function handleApproveVerdict(
   slug: string,
 ): PlanReviewResult {
   const tasks = listPlanTasks(cwd, slug);
-
-  // Set all task statuses to approved.
-  updateTaskStatuses(cwd, slug, tasks.map((task) => task.data.id), "approved");
-
-  // Generate backward-compatible plan.md.
-  const planMd = generateLegacyPlanMd(tasks);
-  const planDir = join(cwd, ".megapowers", "plans", slug);
-  writeFileSync(join(planDir, "plan.md"), planMd);
-
-  // Advance to implement phase.
-  const updatedState = readState(cwd);
   const derivedTasks = deriveTasks(cwd, slug);
-  const newState = transition(updatedState, "implement" as Phase, derivedTasks);
-  writeState(cwd, newState);
+  const orchestrated = approvePlan(state, tasks, derivedTasks, (currentState, nextTasks) =>
+    transition(currentState, "implement" as Phase, nextTasks),
+  );
 
+  if (!orchestrated.ok) {
+    return { error: orchestrated.error };
+  }
+
+  updateTaskStatuses(
+    cwd,
+    slug,
+    orchestrated.value.statusUpdates.map((update) => update.taskId),
+    "approved",
+  );
+  const planDir = join(cwd, ".megapowers", "plans", slug);
+  writeFileSync(join(planDir, "plan.md"), orchestrated.value.legacyPlanMd);
+  writeState(cwd, orchestrated.value.nextState);
   return {
-    message:
-      `📋 Plan approved (iteration ${state.planIteration})\n` +
-      `  ✅ All ${tasks.length} tasks approved\n` +
-      "  → Generated plan.md for downstream consumers\n" +
-      "  → Advancing to implement phase",
+    message: orchestrated.value.message,
     triggerNewSession: true,
   };
 }
