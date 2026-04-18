@@ -516,3 +516,53 @@ describe("buildInjectedPrompt — focused review artifacts", () => {
     expect(none).toContain("Focused review fan-out failed and the review proceeded without advisory artifacts.");
   });
 });
+
+
+describe("buildInjectedPrompt — inline phase tool guidance", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "prompt-inject-phase-tools-"));
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("injects representative inline hints for feature phases", () => {
+    setState(tmp, { phase: "brainstorm", megaEnabled: true });
+    expect(buildInjectedPrompt(tmp)).toContain("Use `read` with `map: true` on unfamiliar files to get a structural map instead of dumping full contents.");
+
+    setState(tmp, { phase: "spec", megaEnabled: true });
+    expect(buildInjectedPrompt(tmp)).toContain("When an acceptance criterion references an existing function, class, or module, use `symbol_graph` to confirm the symbol exists and the signature/naming in the AC matches reality.");
+
+    setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1, megaEnabled: true });
+    expect(buildInjectedPrompt(tmp)).toContain("When grounding spans many lookups (multiple `symbol_graph` calls, greps, and reads across ≥5 files), prefer batching them through `code_execution` in a single script rather than issuing many sequential tool calls.");
+
+    setState(tmp, { phase: "plan", planMode: "review", planIteration: 1, megaEnabled: true });
+    expect(buildInjectedPrompt(tmp)).toContain("Use `grep` across `spec.md` and the task files in `.megapowers/plans/<issue-slug>/tasks/` to confirm every acceptance-criterion identifier is referenced by at least one task.");
+
+    setState(tmp, { phase: "plan", planMode: "revise", planIteration: 2, megaEnabled: true });
+    expect(buildInjectedPrompt(tmp)).toContain("Use `symbol_graph` on every symbol the revised Step 3 will import or call, to confirm the signature matches the task's claim.");
+
+    setState(tmp, { phase: "implement", megaEnabled: true, currentTaskIndex: 0 });
+    expect(buildInjectedPrompt(tmp)).toContain("Before editing, use `read` with `symbol: \"<name>\"` (or `symbol_graph` with `include: [\"source\"]`) to pull the exact current file state. Use the hashline anchors from that read directly with `edit`.");
+
+    setState(tmp, { phase: "verify", megaEnabled: true });
+    expect(buildInjectedPrompt(tmp)).toContain("Before concluding the suite covers the change, use `impact` on the primary symbol you changed to list downstream dependents. Confirm every surfaced dependent's test ran.");
+
+    setState(tmp, { phase: "code-review", megaEnabled: true });
+    expect(buildInjectedPrompt(tmp)).toContain("Run `/codex-review --base <ref>` early (against `main` or the feature's base branch) and treat the findings as input.");
+  });
+
+  it("injects representative inline hints for bugfix and done prompts", () => {
+    setState(tmp, { workflow: "bugfix", phase: "reproduce", megaEnabled: true });
+    expect(buildInjectedPrompt(tmp)).toContain("When the error mentions a specific symbol or file, use `symbol_graph` with `include: [\"source\"]` on the symbol in the stack trace, and `read` with hashline anchors for nearby context. Copy real signatures into the reproduction report.");
+
+    setState(tmp, { workflow: "bugfix", phase: "diagnose", megaEnabled: true });
+    expect(buildInjectedPrompt(tmp)).toContain("Use `trace` from a known entry point to see the real call order the runtime follows, not the static call graph.");
+
+    setState(tmp, { phase: "done", megaEnabled: true, doneActions: ["generate-docs"] });
+    expect(buildInjectedPrompt(tmp)).toContain("When the document describes a new or modified API surface, use `symbol_graph` (or `read` with `symbol: \"<name>\"`) to pull the real signature into the doc. Do not paraphrase signatures from memory.");
+  });
+});

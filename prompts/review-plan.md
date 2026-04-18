@@ -24,9 +24,11 @@ Review each task in order: coverage, dependencies, TDD correctness, then self-co
 
 ### 1. Coverage
 Does every acceptance criterion have at least one task addressing it? List any gaps. Check that tasks explicitly call out which AC they cover.
+Use `grep` across `spec.md` and the task files in `.megapowers/plans/<issue-slug>/tasks/` to confirm every acceptance-criterion identifier is referenced by at least one task. Missing coverage is the most common approve-error; verify it mechanically.
 
 ### 2. Ordering & Dependencies
 Are dependencies respected? Will task N have everything it needs from tasks 1..N-1? Are `[depends: N]` annotations present and correct? Flag cycles or missing prereqs.
+For each task that imports a symbol or type from a prior task, use `symbol_graph` or `grep` against the relevant task files to confirm the symbol is actually defined in a task with a lower index.
 
 ### 3. TDD Completeness
 Each task must have all 5 steps with **correct, working code**:
@@ -36,6 +38,7 @@ Each task must have all 5 steps with **correct, working code**:
 - **Step 4** — Same run command, expected PASS
 - **Step 5** — Full test suite command, expected all passing
 Flag any task where the code won't actually work — wrong function signatures, incorrect import paths, missing error handling.
+For Step 3's implementation code, use `symbol_graph` on every symbol the task claims it imports or calls — if the symbol doesn't resolve, Step 3 is referencing fiction. Use `read` with `symbol: "<name>"` to compare the task's quoted signature against the real one.
 
 ### 4. Granularity
 Each task should be one test + one implementation. Flag tasks that:
@@ -54,6 +57,7 @@ Valid `[no-test]` reasons: config-only, documentation, pure refactor with existi
 
 ### 6. Self-Containment
 Can a developer execute each task from the plan alone? Focus on: Are the APIs and function signatures correct? Do the imports exist? Is the error handling complete? (Earlier structural checks may be helpful hints, but you must still verify file paths, descriptions, imports, APIs, and error handling yourself.)
+Use `symbol_graph` and `ast_search` to verify every API, signature, and import referenced in a task exists as written. Fabricated APIs are the highest-impact defect this criterion catches.
 
 ## Output format
 

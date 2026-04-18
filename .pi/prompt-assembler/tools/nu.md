@@ -1,0 +1,1 @@
+Explore files, structured data (JSON/CSV/TOML/YAML), and system state using Nushell pipelines. Returns structured output ideal for inspection and analysis. Use for exploration and investigation — for running project commands, build tools, scripts, or git operations, use `bash` instead.

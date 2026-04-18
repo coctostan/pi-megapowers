@@ -23,6 +23,8 @@ Check `AGENTS.md` for the project's language, test framework, and test runner. I
 4. Keep tracing until you find the source — the place where correct becomes incorrect
 
 **Do not stop at the first thing that looks wrong.** The symptom is not the cause. The function that throws is rarely the function that's broken.
+Use `trace` from a known entry point to see the real call order the runtime follows, not the static call graph.
+Use `symbol_graph` (default compact card) on the function where the bad value first appears, to list its callers — those are your next candidates to inspect.
 
 ### Phase 2 — Pattern analysis
 
@@ -30,6 +32,7 @@ Check `AGENTS.md` for the project's language, test framework, and test runner. I
 2. **Compare** — what's different between the working code and the broken code? List every difference, however small
 3. **Check assumptions** — what does the broken code assume about inputs, state, environment, timing? Which assumption is violated?
 4. **Understand dependencies** — what other components, config, or state does this code depend on?
+   Use `symbol_graph` with `include: ["contract"]` on the broken function to see its documented/tested guarantees and `impact` to see its dependents.
 
 ### Phase 3 — Hypothesis and testing
 
@@ -48,6 +51,7 @@ Repeat until you have a confirmed root cause with evidence.
 - What else depends on the broken code?
 - What could break if this is changed?
 - Are there related bugs that share the same root cause?
+- Use `impact` on the function containing the root cause. The returned dependents are the risk surface the 'Fixed When' acceptance criteria must cover.
 
 ## Output Format
 

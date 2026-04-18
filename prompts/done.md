@@ -29,6 +29,7 @@ For each action listed above, execute it directly using your tools:
 
 ### generate-docs
 Generate a feature document summarizing what was built and why. Use the spec, plan, and verify artifacts. Inspect actual changed files via `bash("git diff --stat")` when needed.
+When the document describes a new or modified API surface, use `symbol_graph` (or `read` with `symbol: "<name>"`) to pull the real signature into the doc. Do not paraphrase signatures from memory.
 Write the document directly:
 ```
 write({ path: ".megapowers/docs/{{issue_slug}}.md", content: "<feature document>" })
@@ -36,6 +37,7 @@ write({ path: ".megapowers/docs/{{issue_slug}}.md", content: "<feature document>
 
 ### generate-bugfix-summary
 Generate a bugfix summary document including root cause, fix approach, files changed, and how to verify the fix.
+When describing the fix's root cause or affected code, use `symbol_graph` to confirm the symbol names and locations before including them in the summary.
 Write it directly:
 ```
 write({ path: ".megapowers/docs/{{issue_slug}}.md", content: "<bugfix summary>" })

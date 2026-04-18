@@ -1,0 +1,1 @@
+List directory contents. Shows directories first (with `/` suffix), then files, sorted alphabetically. Always includes dotfiles. Returns structured metadata for programmatic use.

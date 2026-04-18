@@ -1,0 +1,1 @@
+Find files recursively matching a glob pattern. Respects `.gitignore` (including nested), always includes hidden files. Returns sorted relative paths with structured metadata.

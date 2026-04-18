@@ -1,0 +1,5 @@
+- Exact-sync rendering tests are the right guardrail for prompt mapping docs: `docs/phase-tools.md` now fails on drift in either direction instead of allowing prompt/doc skew to accumulate.
+- Prompt-only assertions are not enough for prompt-injection work. The representative `buildInjectedPrompt(...)` coverage in `tests/prompt-inject.test.ts` is what proves the hints survive assembly and interpolation.
+- Inline guidance stays readable when it is attached to the action that needs it. Centralized tool appendices would have satisfied the text requirements more weakly and grown the injected context more than necessary.
+- Shipping in done phase needs a clean working tree audit beyond the spec itself. Generated artifacts like `.codegraph/graph.db` can otherwise be swept into the shipment because the VCS helper intentionally stages non-denylisted untracked files.
+- Reviewer prompts can reference slash commands that are not available in every environment. When that happens, the fallback path should be explicit so code review quality does not depend on hidden tool availability.

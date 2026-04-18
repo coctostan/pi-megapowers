@@ -1,0 +1,1 @@
+AST-aware structural code search. Use this when grep is too brittle and you need to match code shape rather than raw text. Prefer over grep for finding function calls, imports, JSX elements, or syntax patterns. Returns anchored matches suitable for edit.

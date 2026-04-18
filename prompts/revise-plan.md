@@ -40,6 +40,9 @@ Each task has actual code, real file paths, real function signatures. No "simila
 1. Read the reviewer's instructions above — these are your primary guide
 2. Read task files in `.megapowers/plans/{{issue_slug}}/tasks/`
 3. Fix **only** the tasks marked `needs_revision`. Don't touch `approved` tasks unless the reviewer explicitly said to.
+- Use `symbol_graph` on every symbol the revised Step 3 will import or call, to confirm the signature matches the task's claim.
+- Use `read` with `symbol: "<name>"` to pull the exact current signature into the task's test/implementation text.
+- Use `ast_search` to confirm structural patterns used in Step 3 actually exist in the codebase.
 4. For each revised task, check it against the rejection reason — don't just tweak wording, fix the actual problem.
 
 For frontmatter/task metadata updates, use:
@@ -61,6 +64,8 @@ Revisions get rejected again when they fix the surface complaint but not the roo
 | Reviewer said "missing coverage" → you added a task with just a description | Write the full 5-step TDD task with real code |
 | Reviewer said "incomplete Step 3" → you added a comment placeholder | Write the actual implementation code |
 | Reviewer said "Step 1 is pseudocode" → you expanded the description | Replace the description with copy-pasteable test code |
+- When the reviewer said 'missing coverage for AC N', use `grep` for the AC identifier across `spec.md` and the task files to confirm which task you added now covers it — don't just append a task and assume.
+- When a revision changes a function signature in Step 3, run `impact` with `changeType: "signature_change"` on that symbol and update the task's **Files** list to include every dependent the impact call surfaces.
 
 ## Pre-Submit Checklist
 
@@ -73,6 +78,7 @@ Before calling `megapowers_signal({ action: "plan_draft_done" })`, walk through 
 - [ ] **Step 4/5:** Run commands are correct
 - [ ] **Self-contained:** No "similar to Task N" — every task stands alone
 - [ ] **File paths:** All paths verified against actual codebase structure
+- [ ] **Coverage re-check:** if the revision addressed a missing-AC complaint, use `grep` across spec and task files to confirm the AC is now referenced.
 
 If any check fails, fix it before submitting.
 

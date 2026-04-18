@@ -14,11 +14,13 @@ Check `AGENTS.md` for the project's language, test framework, and test runner. I
 - Don't skip past errors or warnings — they often contain the answer
 - Read stack traces completely: line numbers, file paths, error codes
 - Note the exact error text (copy it, don't paraphrase)
+- When the error mentions a specific symbol or file, use `symbol_graph` with `include: ["source"]` on the symbol in the stack trace, and `read` with hashline anchors for nearby context. Copy real signatures into the reproduction report.
 
 ### Step 2 — Check recent changes
 - What changed that could cause this? Check VCS history.
 - New dependencies, config changes, environmental differences
 - If the issue description mentions a trigger, trace it
+- Use `bash` to run `git log --oneline -20 -- <path>` on the files from the stack trace, and `git diff <suspect-commit>` if one looks likely.
 
 ### Step 3 — Reproduce consistently
 - Can you trigger the bug reliably?
@@ -40,11 +42,13 @@ Run once to gather evidence showing WHERE it breaks.
 ```
 
 This reveals which layer fails. Don't guess which component — instrument and observe.
+Use `trace` from the entry point to confirm which boundaries the real execution path actually crosses (don't assume from architecture diagrams). Instrument those specific boundaries.
 
 ### Step 5 — Write a failing test (if feasible)
 - Write the simplest possible test that demonstrates the bug
 - The test should FAIL now and PASS when the bug is fixed
 - If a test isn't feasible yet (environmental, integration, timing), note why — it will be written during implement
+- Before writing the failing test, use `read` with `symbol: "<name>"` to pull the exact signature of the function you're calling into the test.
 
 ## Output Format
 

@@ -44,12 +44,14 @@ Only config, docs, CI, type-only refactors, or prompt/skill file changes use `[n
 Each task has actual code — not "similar to Task N", not placeholder comments, not `// ...rest`. A new session must be able to execute the task without reading other tasks. Real file paths, real function signatures, real error messages.
 
 ## Read the Codebase First
-
-Before writing any tasks, use `read` to inspect every file you plan to modify. Verify:
-- Function signatures and exports
-- Import paths and module structure
-- Test file conventions (location, naming, test runner)
-- Actual APIs — do not invent functions, types, or patterns that don't exist
+When grounding spans many lookups (multiple `symbol_graph` calls, greps, and reads across ≥5 files), prefer batching them through `code_execution` in a single script rather than issuing many sequential tool calls.
+Before writing any tasks, inspect every file you plan to modify. Verify:
+- Use `symbol_graph` to list the functions/classes/types each task will touch and confirm their real names, signatures, and call sites. Don't invent symbols.
+- Use `symbol_graph` with `include: ["contract"]` on any symbol whose behavior you're changing, so the plan accounts for existing throws, guards, and invariants.
+- Use `ast_search` when multiple tasks will modify the same structural pattern (e.g. every usage of a framework API) — get the full list of sites once, distribute them across tasks.
+- Use `impact` with `changeType: "signature_change"` on any symbol whose public signature will change. The returned blast radius names dependent tests the plan must update.
+- Use `trace` from a known entry point when ordering tasks on a real execution path — the trace order is a good first pass at task order.
+- Use `read` with `symbol: "<name>"` to pull the exact current signature into Step 1 / Step 3 of each task (prevents fabricated-signature bugs).
 
 ## Instructions
 
@@ -70,13 +72,16 @@ Write every task exactly like this:
 - Test: `exact/path/to/test`
 
 **Step 1 — Write the failing test**
+When the test imports or mocks an existing symbol, use `read` with `symbol: "<name>"` or `symbol_graph` with `include: ["source"]` to lift the exact current signature into the test.
 [Full, copy-pasteable test code]
 
 **Step 2 — Run test, verify it fails**
+Before committing the expected-error text to the plan, use `bash` to run a minimal probe — e.g. a one-line call to the target symbol — and paste the real error text the runner emits. Never guess the error phrasing; runners differ (Bun vs Jest vs Vitest print different messages for the same failure).
 Run: `exact command to run this specific test`
 Expected: FAIL — [specific error message the runner will print]
 
 **Step 3 — Write minimal implementation**
+If Step 3 changes a symbol's public signature, run `impact` with `changeType: "signature_change"` on that symbol first and list the dependent callers/tests in the task's **Files** section.
 [Full, copy-pasteable implementation code]
 
 **Step 4 — Run test, verify it passes**
@@ -146,6 +151,7 @@ megapowers_plan_task({
 Before calling `megapowers_signal({ action: "plan_draft_done" })`, walk through EVERY task and verify:
 
 - [ ] **Coverage:** Every acceptance criterion has at least one task
+  *How to verify:* use `grep` to scan `spec.md` for acceptance-criterion numbering, then cross-check against the task list — every AC must be referenced by at least one task.
 - [ ] **Step 1:** Test file path is real; test code is complete and runnable — no placeholders, no `// TODO`
 - [ ] **Step 2:** Run command is correct for the project's test runner; expected failure message is the specific error text
 - [ ] **Step 3:** Implementation code is complete and uses actual codebase APIs (you verified by reading the files)

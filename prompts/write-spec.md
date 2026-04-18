@@ -17,7 +17,8 @@ This phase must:
 2. preserve scope boundaries explicitly
 3. surface unresolved questions clearly
 4. preserve traceability from prior requirements into the spec
-
+When an acceptance criterion references an existing function, class, or module, use `symbol_graph` to confirm the symbol exists and the signature/naming in the AC matches reality.
+If the AC depends on current behavioral guarantees (error cases, guards, throws), use `symbol_graph` with `include: ["contract"]` to cite real behavior, not assumed behavior.
 ## No silent drops
 Every must-have requirement from the prior artifact must map to exactly one of:
 - **Acceptance Criterion**
@@ -35,6 +36,7 @@ If the prior artifact is unstructured:
 - extract the implied requirements and scope items first
 - present that extraction to the user for confirmation
 - then write the spec
+- When the prior artifact is prose-heavy and references code, use `symbol_graph` to verify every named symbol exists before extracting it as an implied requirement.
 
 Do not silently guess.
 

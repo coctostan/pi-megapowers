@@ -1,0 +1,1 @@
+Write content to a file. Creates the file if it does not exist, overwrites it if it does. Automatically creates parent directories. Returns hashlined content with `LINE:HASH` anchors for immediate use with `edit`.
