@@ -1,0 +1,1756 @@
+{
+  "version": 1,
+  "tools": {
+    "read": {
+      "name": "read",
+      "description": "Read a file. For text files, each line is prefixed with `LINE:HASH|` (e.g., `12:abc12|content`). Use these references as anchors for the `edit` tool.\nImages (`jpg`, `png`, `gif`, `webp`) are delegated to the built-in image reader and returned as image attachments.\n\nDefault limit: 2000 lines or 50.0KB.\n\nWhen a file is truncated (exceeds 2000 lines or 50.0KB), a **structural map** is appended after the hashlined content showing file symbols (classes, functions, interfaces, etc.) with line ranges.\n\nUse the appended map for targeted reads with `offset` and `limit` — e.g., `read(path, { offset: LINE, limit: N })`.\nWhen provided, `offset` and `limit` must be positive integers; `0` and negative values are invalid.\n\nMaps support 17 languages (including TypeScript, Python, Rust, Go, C/C++, Java, and more) and are cached in memory by file modification time for fast repeated access.\n\n## Map Parameter\n\nUse the `map` parameter to request a structural map alongside the file content:\n\n- `read(path, { map: true })` — appends the structural map after hashlined content, even for small files\n- `read(path, { map: true, offset: 50, limit: 20 })` — scoped hashlines with full-file map\n\n**Mutual exclusivity:** `map` cannot be combined with `symbol`. Use one or the other.\n\nWhen `map` is not specified, structural maps are only appended automatically when a file exceeds the truncation threshold.\n\n## Symbol Parameter\n\nUse the `symbol` parameter to read a specific symbol by name — no line numbers needed:\n\n- `read(path, { symbol: \"functionName\" })` — reads just that function\n- `read(path, { symbol: \"ClassName.methodName\" })` — reads a method inside a class (dot notation)\n\n**Examples by symbol type:**\n\n| Type | Example | What it reads |\n|------|---------|---------------|\n| Function | `{ symbol: \"processEvent\" }` | The full function body |\n| Class | `{ symbol: \"EventEmitter\" }` | The entire class declaration |\n| Method | `{ symbol: \"EventEmitter.emit\" }` | A single method within a class |\n| Interface | `{ symbol: \"RequestOptions\" }` | The full interface declaration |\n| Type alias | `{ symbol: \"EventHandler\" }` | The type alias definition |\n| Const/variable | `{ symbol: \"DEFAULT_TIMEOUT\" }` | The const/let/var declaration |\n| Enum | `{ symbol: \"LogLevel\" }` | The full enum declaration |\n\n**Mutual exclusivity:** `symbol` cannot be combined with `offset` or `limit`. Use one addressing mode or the other.\n\n**Behavior by result:**\n\n- **Found (exact / case-insensitive / prefix):** Returns hashlined content for the symbol's line range only, prepended with `[Symbol: name (kind), lines X-Y of Z]`. Silent — no banner.\n- **Ambiguous (multiple matches):** Returns a disambiguation list with each candidate's name, kind, and line range. Use dot notation (e.g., `ClassName.methodName`) to narrow the match.\n- **Fuzzy (low-confidence match):** Returns the best match's content prefixed with a `[Symbol '<query>' not exact-matched ...]` banner that names the matched symbol, the match tier (`camelCase word boundary` or `substring`), up to 4 other candidates, and a `read({ symbol: \"...\" })` / `name@line` confirmation hint. Content is still returned so no extra round-trip is required when the guess is right, but the banner is a required signal that the match was approximate — re-verify before editing based on it.\n- **Not found:** Falls back to a normal read with a warning listing up to 20 available symbol names.\n- **Unmappable file:** Falls back to a normal read with a warning noting the file type doesn't support symbol lookup.\n\nHash anchors from symbol reads are valid for use with the `edit` tool.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "description": "Path to the file to read (relative or absolute)",
+            "type": "string"
+          },
+          "offset": {
+            "anyOf": [
+              {
+                "description": "Line number to start reading from (1-indexed)",
+                "type": "number"
+              },
+              {
+                "description": "Line number to start reading from (1-indexed)",
+                "type": "string"
+              }
+            ]
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "description": "Maximum number of lines to read",
+                "type": "number"
+              },
+              {
+                "description": "Maximum number of lines to read",
+                "type": "string"
+              }
+            ]
+          },
+          "symbol": {
+            "description": "Symbol to read (e.g., functionName or ClassName.methodName)",
+            "type": "string"
+          },
+          "map": {
+            "description": "Append structural map to output (cannot combine with symbol)",
+            "type": "boolean"
+          },
+          "bundle": {
+            "description": "Include the requested symbol plus direct same-file local support. Only \"local\" is defined.",
+            "const": "local",
+            "type": "string"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-hashline-readmap/index.ts",
+        "source": "local",
+        "scope": "user",
+        "origin": "top-level"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": true,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/read.md",
+      "providerDescriptionOverride": "Anchored file reading with ranges, symbol lookup, and structural maps.",
+      "stale": false
+    },
+    "bash": {
+      "name": "bash",
+      "description": "Execute a bash command in the current working directory. Returns stdout and stderr. Output is truncated to last 2000 lines or 50KB (whichever is hit first). If truncated, full output is saved to a temp file. Optionally provide a timeout in seconds.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "command"
+        ],
+        "properties": {
+          "command": {
+            "description": "Bash command to execute",
+            "type": "string"
+          },
+          "timeout": {
+            "description": "Timeout in seconds (optional, no default timeout)",
+            "type": "number"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "<builtin:bash>",
+        "source": "builtin",
+        "scope": "temporary",
+        "origin": "top-level"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": true,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/bash.md",
+      "providerDescriptionOverride": "Shell commands for tests/builds/git; not for file reading/editing/search.",
+      "stale": false
+    },
+    "edit": {
+      "name": "edit",
+      "description": "Surgically edit files with hash-verified line references (anchors). Copy `LINE:HASH` strings exactly from `read`, `grep`, `ast_search`, or `write` output and use them to make precise changes.\n\n## What edit does\n`edit` applies one or more changes to an existing text file using hash-verified anchors. Anchored operations are verified against the current file contents before they are written.\n\n## The four edit variants — when to use which\n\n| Variant | Use for | Anchors needed |\n|---|---|---|\n| `set_line` | Replace or delete exactly one line | 1 |\n| `replace_lines` | Replace or delete a contiguous range of lines | 2 |\n| `insert_after` | Insert new lines after an existing line | 1 |\n| `replace` | Fallback global string replacement | 0 |\n\n### Prefer anchored variants\n`set_line`, `replace_lines`, and `insert_after` use `LINE:HASH` anchors and verify that the file still matches the content you saw earlier.\n\n### `replace` is the escape hatch\n`replace` does not use anchors and does not verify exact line positions. Use it only when an anchored edit is not practical, such as a repeated string replacement across many unrelated lines.\n\n## Input format\n\n```json\n{\n  \"path\": \"src/foo.ts\",\n  \"edits\": [\n    { \"set_line\": { \"anchor\": \"42:ab1\", \"new_text\": \"const x = 2;\" } },\n    { \"replace_lines\": { \"start_anchor\": \"50:c3d\", \"end_anchor\": \"55:e4f\", \"new_text\": \"const y = 3;\\nreturn y;\" } },\n    { \"insert_after\": { \"anchor\": \"60:f5a\", \"new_text\": \"// TODO: revisit\\n\" } },\n    { \"replace\": { \"old_text\": \"value\", \"new_text\": \"result\", \"all\": true } }\n  ]\n}\n```\n\n- `path` is the file to edit\n- `edits` is an array of edit operations\n- Each edit entry must contain exactly one of `set_line`, `replace_lines`, `insert_after`, or `replace`\n- `new_text` is plain content — do not include hash prefixes or diff markers\n\n## Variant examples\n\n### `set_line`\nUse `set_line` when you are changing one existing line.\n\n```text\nedit({\n  path: \"src/foo.ts\",\n  edits: [\n    { set_line: { anchor: \"12:abc\", new_text: \"const enabled = true;\" } }\n  ]\n})\n```\n\n### `replace_lines`\nUse `replace_lines` when you are replacing a contiguous block.\n\n```text\nedit({\n  path: \"src/foo.ts\",\n  edits: [\n    {\n      replace_lines: {\n        start_anchor: \"20:def\",\n        end_anchor: \"24:123\",\n        new_text: \"if (!enabled) {\\n  return;\\n}\"\n      }\n    }\n  ]\n})\n```\n\n### `insert_after`\nUse `insert_after` when you are adding new lines after a known anchor.\n\n```text\nedit({\n  path: \"src/foo.ts\",\n  edits: [\n    { insert_after: { anchor: \"30:456\", new_text: \"console.log(enabled);\\n\" } }\n  ]\n})\n```\n\n### `replace`\nUse `replace` only as the escape hatch when anchored variants are not practical.\n\n```text\nedit({\n  path: \"src/foo.ts\",\n  edits: [\n    { replace: { old_text: \"legacyName\", new_text: \"newName\", all: true } }\n  ]\n})\n```\n\n## Recovery from hash mismatch errors\nWhen the file changes after you captured anchors, `edit` reports a hash mismatch and shows current file lines with `>>>` markers.\n\nExample:\n\n```text\n3 lines have changed since last read. Auto-relocation checks only within ±20 lines.\n\n    40:a12|function foo() {\n>>> 41:b34|  const renamed = 3;\n    42:c56|  return renamed;\n```\n\nRecovery steps:\n1. Copy the updated `LINE:HASH` from the `>>>` line and retry the edit.\n2. If the relevant content moved farther away, run `read` again.\n3. If the error suggests nearby anchors, use the suggested anchor.\n4. If a `replace_lines` edit partially relocates, re-read and recompute both anchors.\n\n## Auto-relocation\nIf an anchor hash still matches uniquely within the relocation window, `edit` can auto-relocate the change and continue. Treat that as a warning to double-check the landing point.\n\n## Common failure modes\n\n### No changes made\nIf `edit` says the file did not change, your replacement may already match the current file contents.\n\n### Whitespace-only change\nIf the result is classified as whitespace-only, verify that you changed the intended content and not just formatting.\n\n### Missing anchor source\nIf `edit` says the file needs fresh anchors, obtain them with `read`, `grep`, `ast_search`, or `write` first.\n\n### Invalid edit shape\nEach edit entry must contain exactly one variant. Do not mix `set_line`, `replace_lines`, `insert_after`, and `replace` in the same entry.\n\n## Anchor sources\nAny tool that emits `LINE:HASH|content` anchors can feed `edit`:\n- `read`\n- `grep`\n- `ast_search`\n- `write`\n\n## Worked examples\n\n### Search, then edit with `grep`\n```text\ngrep({ pattern: \"addRoute\", path: \"src\", literal: true })\nedit({ path: \"src/server.ts\", edits: [{ set_line: { anchor: \"45:e4f\", new_text: \"router.addRoute('/api', nextHandler);\" } }] })\n```\n\n### Structure search, then edit with `ast_search`\n```text\nast_search({ pattern: \"const $NAME = $_\", lang: \"typescript\", path: \"src\" })\nedit({ path: \"src/foo.ts\", edits: [{ set_line: { anchor: \"18:9ac\", new_text: \"const value = compute();\" } }] })\n```\n\n### Create, then refine with `write`\n```text\nwrite({ path: \"src/new-file.ts\", content: \"export const value = 1;\\n\" })\nedit({ path: \"src/new-file.ts\", edits: [{ set_line: { anchor: \"1:2f9\", new_text: \"export const value = 2;\" } }] })\n```\n\n## Notes\n- Always copy anchors exactly as shown.\n- Prefer anchored variants over `replace`.\n- Re-run `read`, `grep`, `ast_search`, or `write` whenever you need fresh anchors.\n- Anchored edits are validated and applied atomically from bottom to top.\n- If a non-whitespace-intent edit produces only whitespace-only changes, the tool emits a prominent warning so you can re-read and verify before assuming behavior changed.\n- After a successful replace-only batch, the tool emits an informational hint nudging you back toward anchored variants for safer future edits.",
+      "parameters": {
+        "additionalProperties": true,
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "description": "File path (relative or absolute)",
+            "type": "string"
+          },
+          "edits": {
+            "description": "Array of edit operations",
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "required": [
+                    "set_line"
+                  ],
+                  "properties": {
+                    "set_line": {
+                      "type": "object",
+                      "required": [
+                        "anchor",
+                        "new_text"
+                      ],
+                      "properties": {
+                        "anchor": {
+                          "type": "string"
+                        },
+                        "new_text": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "required": [
+                    "replace_lines"
+                  ],
+                  "properties": {
+                    "replace_lines": {
+                      "type": "object",
+                      "required": [
+                        "start_anchor",
+                        "end_anchor",
+                        "new_text"
+                      ],
+                      "properties": {
+                        "start_anchor": {
+                          "type": "string"
+                        },
+                        "end_anchor": {
+                          "type": "string"
+                        },
+                        "new_text": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "required": [
+                    "insert_after"
+                  ],
+                  "properties": {
+                    "insert_after": {
+                      "type": "object",
+                      "required": [
+                        "anchor",
+                        "new_text"
+                      ],
+                      "properties": {
+                        "anchor": {
+                          "type": "string"
+                        },
+                        "new_text": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "required": [
+                    "replace"
+                  ],
+                  "properties": {
+                    "replace": {
+                      "type": "object",
+                      "required": [
+                        "old_text",
+                        "new_text"
+                      ],
+                      "properties": {
+                        "old_text": {
+                          "type": "string"
+                        },
+                        "new_text": {
+                          "type": "string"
+                        },
+                        "all": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-hashline-readmap/index.ts",
+        "source": "local",
+        "scope": "user",
+        "origin": "top-level"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": true,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/edit.md",
+      "providerDescriptionOverride": "Anchored file edits using LINE:HASH references; read first.",
+      "stale": false
+    },
+    "write": {
+      "name": "write",
+      "description": "Write content to a file. Creates the file if it does not exist, overwrites it if it does. Automatically creates parent directories. Returns hashlined content with `LINE:HASH` anchors for immediate use with `edit`.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "path",
+          "content"
+        ],
+        "properties": {
+          "path": {
+            "description": "Path to the file to write (relative or absolute)",
+            "type": "string"
+          },
+          "content": {
+            "description": "Content to write to the file",
+            "type": "string"
+          },
+          "map": {
+            "description": "Append structural map to output",
+            "type": "boolean"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-hashline-readmap/index.ts",
+        "source": "local",
+        "scope": "user",
+        "origin": "top-level"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/write.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "grep": {
+      "name": "grep",
+      "description": "Search file contents for a pattern. Returns matching lines with `LINE:HASH` anchors for hashline edit workflows.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "pattern"
+        ],
+        "properties": {
+          "pattern": {
+            "description": "Search pattern (regex or literal string)",
+            "type": "string"
+          },
+          "path": {
+            "description": "Directory or file to search (default: current directory)",
+            "type": "string"
+          },
+          "glob": {
+            "description": "Filter files by glob pattern, e.g. '*.ts' or '**/*.spec.ts'",
+            "type": "string"
+          },
+          "ignoreCase": {
+            "description": "Case-insensitive search (default: false)",
+            "type": "boolean"
+          },
+          "literal": {
+            "description": "Treat pattern as literal string instead of regex (default: false)",
+            "type": "boolean"
+          },
+          "context": {
+            "anyOf": [
+              {
+                "description": "Number of lines to show before and after each match (default: 0)",
+                "type": "number"
+              },
+              {
+                "description": "Number of lines to show before and after each match (default: 0)",
+                "type": "string"
+              }
+            ]
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "description": "Maximum number of matches to return (default: 100)",
+                "type": "number"
+              },
+              {
+                "description": "Maximum number of matches to return (default: 100)",
+                "type": "string"
+              }
+            ]
+          },
+          "summary": {
+            "description": "Return per-file match counts only (no hashline anchors)",
+            "type": "boolean"
+          },
+          "scope": {
+            "description": "Scope matches to enclosing symbol blocks. Only \"symbol\" is defined, and it is ignored when summary: true.",
+            "const": "symbol",
+            "type": "string"
+          },
+          "scopeContext": {
+            "anyOf": [
+              {
+                "description": "Context lines within symbol scope (requires scope: \"symbol\"). 0 = match lines only.",
+                "type": "number"
+              },
+              {
+                "description": "Context lines within symbol scope (requires scope: \"symbol\"). 0 = match lines only.",
+                "type": "string"
+              }
+            ]
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-hashline-readmap/index.ts",
+        "source": "local",
+        "scope": "user",
+        "origin": "top-level"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": true,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/grep.md",
+      "providerDescriptionOverride": "Anchored file-content search results usable with edit.",
+      "stale": false
+    },
+    "find": {
+      "name": "find",
+      "description": "Find files recursively matching a glob pattern. Respects `.gitignore` (including nested), always includes hidden files. Returns sorted relative paths with structured metadata.",
+      "parameters": {
+        "required": [
+          "pattern"
+        ],
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "description": "Glob pattern (e.g. '*.ts', '*.test.ts')",
+            "type": "string"
+          },
+          "path": {
+            "description": "Directory to search (default: cwd)",
+            "type": "string"
+          },
+          "limit": {
+            "description": "Max entries to return (default: 1000)",
+            "type": "number"
+          },
+          "type": {
+            "description": "Filter by entry type (default: \"file\")",
+            "anyOf": [
+              {
+                "const": "file",
+                "type": "string"
+              },
+              {
+                "const": "dir",
+                "type": "string"
+              },
+              {
+                "const": "any",
+                "type": "string"
+              }
+            ]
+          },
+          "maxDepth": {
+            "description": "Maximum directory depth",
+            "type": "number"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-hashline-readmap/index.ts",
+        "source": "local",
+        "scope": "user",
+        "origin": "top-level"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/find.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "ls": {
+      "name": "ls",
+      "description": "List directory contents. Shows directories first (with `/` suffix), then files, sorted alphabetically. Always includes dotfiles. Returns structured metadata for programmatic use.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "description": "Directory to list (default: cwd)",
+            "type": "string"
+          },
+          "limit": {
+            "description": "Max entries to return (default: 500)",
+            "type": "number"
+          },
+          "glob": {
+            "description": "Filter entries by glob pattern (e.g. '*.ts')",
+            "type": "string"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-hashline-readmap/index.ts",
+        "source": "local",
+        "scope": "user",
+        "origin": "top-level"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/ls.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "ast_search": {
+      "name": "ast_search",
+      "description": "AST-aware structural code search. Use this when grep is too brittle and you need to match code shape rather than raw text. Prefer over grep for finding function calls, imports, JSX elements, or syntax patterns. Returns anchored matches suitable for edit.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "pattern"
+        ],
+        "properties": {
+          "pattern": {
+            "description": "AST pattern to search for",
+            "type": "string"
+          },
+          "lang": {
+            "description": "Language hint for ast-grep (e.g. 'typescript')",
+            "type": "string"
+          },
+          "path": {
+            "description": "Directory or file to search (default: cwd)",
+            "type": "string"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-hashline-readmap/index.ts",
+        "source": "local",
+        "scope": "user",
+        "origin": "top-level"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/ast_search.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "nu": {
+      "name": "nu",
+      "description": "Explore files, structured data (JSON/CSV/TOML/YAML), and system state using Nushell pipelines. Returns structured output ideal for inspection and analysis. Use for exploration and investigation — for running project commands, build tools, scripts, or git operations, use `bash` instead.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "command"
+        ],
+        "properties": {
+          "command": {
+            "description": "Nushell script to run. May be multi-line.",
+            "type": "string"
+          },
+          "timeout": {
+            "description": "Maximum run time in seconds. Defaults to 30.",
+            "type": "number"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-hashline-readmap/index.ts",
+        "source": "local",
+        "scope": "user",
+        "origin": "top-level"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/nu.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "gh_status": {
+      "name": "gh_status",
+      "description": "Query GitHub status for monitored repositories. Returns PR status, CI results, assigned issues. Use to check if your push/PR succeeded, investigate CI failures, or see what needs attention.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "repo": {
+            "description": "Repository (owner/repo). Omit for current repo.",
+            "type": "string"
+          },
+          "pr": {
+            "description": "PR number for detailed info",
+            "type": "number"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/thinkingSpace/prototypes/gh-aware/extension/index.ts",
+        "source": "local",
+        "scope": "user",
+        "origin": "top-level"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/gh_status.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "web_search": {
+      "name": "web_search",
+      "description": "Search the web for pages matching a query. Returns summaries by default (~1 line per result). Use `detail: \"highlights\"` for longer excerpts. Use `fetch_content` to read a page in full. Supports batch searching with multiple queries.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "description": "Single search query",
+            "type": "string"
+          },
+          "queries": {
+            "description": "Multiple queries (batch)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "numResults": {
+            "description": "Results per query (default: 5, max: 20)",
+            "type": "number"
+          },
+          "type": {
+            "description": "Search type: \"auto\" (default, highest quality), \"instant\" (sub-150ms), \"deep\" (comprehensive research)",
+            "anyOf": [
+              {
+                "const": "auto",
+                "type": "string"
+              },
+              {
+                "const": "instant",
+                "type": "string"
+              },
+              {
+                "const": "deep",
+                "type": "string"
+              }
+            ]
+          },
+          "category": {
+            "description": "Filter by content category",
+            "anyOf": [
+              {
+                "const": "company",
+                "type": "string"
+              },
+              {
+                "const": "research paper",
+                "type": "string"
+              },
+              {
+                "const": "news",
+                "type": "string"
+              },
+              {
+                "const": "tweet",
+                "type": "string"
+              },
+              {
+                "const": "people",
+                "type": "string"
+              },
+              {
+                "const": "personal site",
+                "type": "string"
+              },
+              {
+                "const": "financial report",
+                "type": "string"
+              },
+              {
+                "const": "pdf",
+                "type": "string"
+              }
+            ]
+          },
+          "includeDomains": {
+            "description": "Only include these domains (e.g. [\"github.com\"])",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "excludeDomains": {
+            "description": "Exclude these domains (e.g. [\"pinterest.com\"])",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "detail": {
+            "description": "Detail level: \"summary\" (default) or \"highlights\"",
+            "anyOf": [
+              {
+                "const": "summary",
+                "type": "string"
+              },
+              {
+                "const": "highlights",
+                "type": "string"
+              }
+            ]
+          },
+          "freshness": {
+            "description": "Content freshness: \"realtime\" (0h), \"day\" (24h), \"week\" (168h), \"any\" (default, no filter)",
+            "anyOf": [
+              {
+                "const": "realtime",
+                "type": "string"
+              },
+              {
+                "const": "day",
+                "type": "string"
+              },
+              {
+                "const": "week",
+                "type": "string"
+              },
+              {
+                "const": "any",
+                "type": "string"
+              }
+            ]
+          },
+          "similarUrl": {
+            "description": "Find pages similar to this URL (alternative to query)",
+            "type": "string"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-web-tools/index.ts",
+        "source": "/Users/maxwellnewman/pi/workspace/pi-web-tools",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/Users/maxwellnewman/pi/workspace/pi-web-tools"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": true,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/web_search.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "fetch_content": {
+      "name": "fetch_content",
+      "description": "Fetch URL(s) and extract readable content as markdown. Supports GitHub repository contents (clone + tree). Content is stored and can be retrieved with get_search_content if truncated.\n\nFor focused answers, use the `prompt` parameter with a specific question — the content will be filtered through a cheap model and only the relevant answer returned (~200-1000 chars instead of full page content).\n\nRaw fetches (without `prompt`) return a preview + file path. Use `read` to explore the full content selectively.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "description": "Single URL to fetch",
+            "type": "string"
+          },
+          "urls": {
+            "description": "Multiple URLs (parallel)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "forceClone": {
+            "description": "Force cloning large GitHub repos",
+            "type": "boolean"
+          },
+          "prompt": {
+            "description": "Question to answer from the fetched content. When provided, content is filtered through a cheap model and only the focused answer is returned (~200-1000 chars instead of full page).",
+            "type": "string"
+          },
+          "noCache": {
+            "description": "Skip cache and fetch fresh content. The fresh result still updates the cache.",
+            "type": "boolean"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-web-tools/index.ts",
+        "source": "/Users/maxwellnewman/pi/workspace/pi-web-tools",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/Users/maxwellnewman/pi/workspace/pi-web-tools"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": true,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/fetch_content.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "code_search": {
+      "name": "code_search",
+      "description": "Search GitHub repos, documentation, and Stack Overflow for working code examples. Use for framework usage, API syntax, library patterns, and setup recipes. Returns formatted code snippets, not web pages.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "properties": {
+          "query": {
+            "description": "Describe what code you need",
+            "type": "string"
+          },
+          "tokensNum": {
+            "description": "Response size in tokens (default: auto, range: 50-100000)",
+            "type": "number"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-web-tools/index.ts",
+        "source": "/Users/maxwellnewman/pi/workspace/pi-web-tools",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/Users/maxwellnewman/pi/workspace/pi-web-tools"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": true,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/code_search.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "get_search_content": {
+      "name": "get_search_content",
+      "description": "Retrieve full content from a previous web_search, code_search, or fetch_content result.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "responseId"
+        ],
+        "properties": {
+          "responseId": {
+            "description": "Response ID from web_search or fetch_content",
+            "type": "string"
+          },
+          "query": {
+            "description": "Get content for this query",
+            "type": "string"
+          },
+          "queryIndex": {
+            "description": "Get content for query at index",
+            "type": "number"
+          },
+          "url": {
+            "description": "Get content for this URL",
+            "type": "string"
+          },
+          "urlIndex": {
+            "description": "Get content for URL at index",
+            "type": "number"
+          },
+          "maxChars": {
+            "description": "Maximum characters to return (default: 30000, max: 100000)",
+            "type": "number"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-web-tools/index.ts",
+        "source": "/Users/maxwellnewman/pi/workspace/pi-web-tools",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/Users/maxwellnewman/pi/workspace/pi-web-tools"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": true,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/get_search_content.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "switch_model": {
+      "name": "switch_model",
+      "description": "List, search, or switch models. Supports aliases defined in aliases.json (e.g. 'cheap', 'coding'). Use when the user mentions a model by name, asks to change/switch/try/test with a specific model, or when you need a model with different capabilities (reasoning, vision, cost, context window).",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "description": "Action to perform: 'list' (show all models), 'search' (filter by query), or 'switch' (change model)",
+            "anyOf": [
+              {
+                "const": "list",
+                "type": "string"
+              },
+              {
+                "const": "search",
+                "type": "string"
+              },
+              {
+                "const": "switch",
+                "type": "string"
+              }
+            ]
+          },
+          "search": {
+            "description": "For search/switch actions: search term to match model by provider, id, or name (e.g. 'sonnet', 'opus', 'gpt-5.2', 'anthropic/claude')",
+            "type": "string"
+          },
+          "provider": {
+            "description": "Filter to a specific provider (e.g. 'anthropic', 'openai', 'google', 'openrouter')",
+            "type": "string"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/opt/homebrew/lib/node_modules/pi-model-switch/index.ts",
+        "source": "npm:pi-model-switch",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/opt/homebrew/lib/node_modules/pi-model-switch"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/switch_model.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "megapowers_signal": {
+      "name": "megapowers_signal",
+      "description": "Signal a megapowers state transition. Actions: task_done (mark current implement task complete), plan_draft_done (signal draft is complete — transitions planMode from draft/revise to review and starts a new session), phase_next (advance to the next workflow phase), phase_back (go back one phase — e.g. verify→implement, code-review→implement; errors if no backward transition exists), tests_failed (mark RED after a failing test run), tests_passed (acknowledge GREEN after a passing test run), close_issue (mark issue as done, reset state — done phase only).",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "const": "task_done",
+                "type": "string"
+              },
+              {
+                "const": "phase_next",
+                "type": "string"
+              },
+              {
+                "const": "phase_back",
+                "type": "string"
+              },
+              {
+                "const": "tests_failed",
+                "type": "string"
+              },
+              {
+                "const": "tests_passed",
+                "type": "string"
+              },
+              {
+                "const": "plan_draft_done",
+                "type": "string"
+              },
+              {
+                "const": "close_issue",
+                "type": "string"
+              }
+            ]
+          },
+          "target": {
+            "description": "Target phase for phase_next (enables backward transitions)",
+            "type": "string"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/index.ts",
+        "source": "../../pi/workspace/pi-megapowers",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/Users/maxwellnewman/pi/workspace/pi-megapowers"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/megapowers_signal.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "megapowers_plan_task": {
+      "name": "megapowers_plan_task",
+      "description": "Save or update a plan task. During draft mode, creates new tasks. During revise mode, updates existing tasks (partial — only provided fields are merged).",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "description": "Task ID (1-based, sequential)",
+            "type": "number"
+          },
+          "title": {
+            "description": "Short task title",
+            "type": "string"
+          },
+          "description": {
+            "description": "Full task body — TDD steps, code blocks, implementation details (markdown)",
+            "type": "string"
+          },
+          "depends_on": {
+            "description": "IDs of tasks this depends on",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "no_test": {
+            "description": "true if this task doesn't need TDD",
+            "type": "boolean"
+          },
+          "files_to_modify": {
+            "description": "Existing files this task changes",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "files_to_create": {
+            "description": "New files this task creates",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/index.ts",
+        "source": "../../pi/workspace/pi-megapowers",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/Users/maxwellnewman/pi/workspace/pi-megapowers"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/megapowers_plan_task.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "megapowers_plan_review": {
+      "name": "megapowers_plan_review",
+      "description": "Submit plan review verdict. Approves the plan or requests revisions with per-task feedback.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "verdict",
+          "feedback"
+        ],
+        "properties": {
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "revise"
+            ]
+          },
+          "feedback": {
+            "description": "Review feedback — per-task assessment, issues found, suggestions (markdown)",
+            "type": "string"
+          },
+          "approved_tasks": {
+            "description": "Task IDs that pass review",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "needs_revision_tasks": {
+            "description": "Task IDs that need revision",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/index.ts",
+        "source": "../../pi/workspace/pi-megapowers",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/Users/maxwellnewman/pi/workspace/pi-megapowers"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/megapowers_plan_review.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "create_issue": {
+      "name": "create_issue",
+      "description": "Create a new issue file via validated parameters.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "description": "Required",
+            "type": "string"
+          },
+          "type": {
+            "description": "Required: feature|bugfix",
+            "type": "string"
+          },
+          "description": {
+            "description": "Required",
+            "type": "string"
+          },
+          "milestone": {
+            "type": "string"
+          },
+          "priority": {
+            "type": "number"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/index.ts",
+        "source": "../../pi/workspace/pi-megapowers",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/Users/maxwellnewman/pi/workspace/pi-megapowers"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/create_issue.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "create_batch": {
+      "name": "create_batch",
+      "description": "Create a batch issue grouping source issues.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "title",
+          "type",
+          "sourceIds",
+          "description"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "bugfix",
+              "feature"
+            ]
+          },
+          "sourceIds": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-megapowers/extensions/megapowers/index.ts",
+        "source": "../../pi/workspace/pi-megapowers",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/Users/maxwellnewman/pi/workspace/pi-megapowers"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/create_batch.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "lsp": {
+      "name": "lsp",
+      "description": "Query language server for definitions, references, types, symbols, diagnostics, rename, and code actions.\n\nActions: definition, references, hover, signature, rename (require file + line/column or query), symbols (file, optional query), diagnostics (file), workspace-diagnostics (files array), codeAction (file + position).\nUse bash to find files: find src -name \"*.ts\" -type f",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "definition",
+              "references",
+              "hover",
+              "symbols",
+              "diagnostics",
+              "workspace-diagnostics",
+              "signature",
+              "rename",
+              "codeAction"
+            ]
+          },
+          "file": {
+            "description": "File path (required for most actions)",
+            "type": "string"
+          },
+          "files": {
+            "description": "File paths for workspace-diagnostics",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "line": {
+            "description": "Line (1-indexed). Required for position-based actions unless query provided.",
+            "type": "number"
+          },
+          "column": {
+            "description": "Column (1-indexed). Required for position-based actions unless query provided.",
+            "type": "number"
+          },
+          "endLine": {
+            "description": "End line for range-based actions (codeAction)",
+            "type": "number"
+          },
+          "endColumn": {
+            "description": "End column for range-based actions (codeAction)",
+            "type": "number"
+          },
+          "query": {
+            "description": "Symbol name filter (for symbols) or to resolve position (for definition/references/hover/signature)",
+            "type": "string"
+          },
+          "newName": {
+            "description": "New name for rename action",
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "all",
+              "error",
+              "warning",
+              "info",
+              "hint"
+            ],
+            "description": "Filter diagnostics: \"all\"|\"error\"|\"warning\"|\"info\"|\"hint\""
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/opt/homebrew/lib/node_modules/pi-hooks/lsp/lsp-tool.ts",
+        "source": "npm:pi-hooks",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/opt/homebrew/lib/node_modules/pi-hooks"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": true,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/lsp.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "agent": {
+      "name": "Agent",
+      "description": "Launch a new agent to handle complex, multi-step tasks autonomously.\n\nThe Agent tool launches specialized agents that autonomously handle complex tasks. Each agent type has specific capabilities and tools available to it.\n\nAvailable agent types:\nDefault agents:\n\nCustom agents:\n- general-purpose: General-purpose agent for complex, multi-step tasks\n- Explore: Fast codebase exploration agent (read-only)\n- Plan: Software architect for implementation planning (read-only)\n- code-reviewer: Production readiness review: quality, security, testing (read-only)\n- pals-implementer: Task-bounded implementation worker for parent-controlled PALS APPLY\n- coverage-reviewer: Focused plan-review advisor for acceptance-criteria coverage\n- dependency-reviewer: Focused plan-review advisor for ordering and dependency hazards\n- draft-assist.chain: Run plan-scout then planner for bounded draft assistance\n- implementer: Implementation agent (TDD)\n- plan-scout: Planning scout for bounded repo context\n- planner: Advisory planning synthesizer that produces draft task suggestions from scout output\n- reviewer: Pipeline code reviewer\n- revise-helper: Targeted plan-revision advisor for affected tasks only\n- task-quality-reviewer: Focused plan-review advisor for per-task TDD quality and self-containment\n- verifier: Runs tests and reports results\n\nCustom agents can be defined in .pi/agents/<name>.md (project) or ~/.pi/agent/agents/<name>.md (global) — they are picked up automatically. Project-level agents override global ones. Creating a .md file with the same name as a default agent overrides it.\n\nGuidelines:\n- For parallel work, use run_in_background: true on each agent. Foreground calls run sequentially — only one executes at a time.\n- Use Explore for codebase searches and code understanding.\n- Use Plan for architecture and implementation planning.\n- Use general-purpose for complex tasks that need file editing.\n- Provide clear, detailed prompts so the agent can work autonomously.\n- Agent results are returned as text — summarize them for the user.\n- Use run_in_background for work you don't need immediately. You will be notified when it completes.\n- Use resume with an agent ID to continue a previous agent's work.\n- Use steer_subagent to send mid-run messages to a running background agent.\n- Use model to specify a different model (as \"provider/modelId\", or fuzzy e.g. \"haiku\", \"sonnet\").\n- Use thinking to control extended thinking level.\n- Use inherit_context if the agent needs the parent conversation history.\n- Use isolation: \"worktree\" to run the agent in an isolated git worktree (safe parallel file modifications).",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "prompt",
+          "description",
+          "subagent_type"
+        ],
+        "properties": {
+          "prompt": {
+            "description": "The task for the agent to perform.",
+            "type": "string"
+          },
+          "description": {
+            "description": "A short (3-5 word) description of the task (shown in UI).",
+            "type": "string"
+          },
+          "subagent_type": {
+            "description": "The type of specialized agent to use. Available types: general-purpose, Explore, Plan, code-reviewer, pals-implementer, coverage-reviewer, dependency-reviewer, draft-assist.chain, implementer, plan-scout, planner, reviewer, revise-helper, task-quality-reviewer, verifier. Custom agents from .pi/agents/*.md (project) or ~/.pi/agent/agents/*.md (global) are also available.",
+            "type": "string"
+          },
+          "model": {
+            "description": "Optional model override. Accepts \"provider/modelId\" or fuzzy name (e.g. \"haiku\", \"sonnet\"). Omit to use the agent type's default.",
+            "type": "string"
+          },
+          "thinking": {
+            "description": "Thinking level: off, minimal, low, medium, high, xhigh. Overrides agent default.",
+            "type": "string"
+          },
+          "max_turns": {
+            "description": "Maximum number of agentic turns before stopping. Omit for unlimited (default).",
+            "minimum": 1,
+            "type": "number"
+          },
+          "run_in_background": {
+            "description": "Set to true to run in background. Returns agent ID immediately. You will be notified on completion.",
+            "type": "boolean"
+          },
+          "resume": {
+            "description": "Optional agent ID to resume from. Continues from previous context.",
+            "type": "string"
+          },
+          "isolated": {
+            "description": "If true, agent gets no extension/MCP tools — only built-in tools.",
+            "type": "boolean"
+          },
+          "inherit_context": {
+            "description": "If true, fork parent conversation into the agent. Default: false (fresh context).",
+            "type": "boolean"
+          },
+          "isolation": {
+            "description": "Set to \"worktree\" to run the agent in a temporary git worktree (isolated copy of the repo). Changes are saved to a branch on completion.",
+            "const": "worktree",
+            "type": "string"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/opt/homebrew/lib/node_modules/@tintinweb/pi-subagents/src/index.ts",
+        "source": "npm:@tintinweb/pi-subagents",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/opt/homebrew/lib/node_modules/@tintinweb/pi-subagents"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/agent.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "get_subagent_result": {
+      "name": "get_subagent_result",
+      "description": "Check status and retrieve results from a background agent. Use the agent ID returned by Agent with run_in_background.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "agent_id"
+        ],
+        "properties": {
+          "agent_id": {
+            "description": "The agent ID to check.",
+            "type": "string"
+          },
+          "wait": {
+            "description": "If true, wait for the agent to complete before returning. Default: false.",
+            "type": "boolean"
+          },
+          "verbose": {
+            "description": "If true, include the agent's full conversation (messages + tool calls). Default: false.",
+            "type": "boolean"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/opt/homebrew/lib/node_modules/@tintinweb/pi-subagents/src/index.ts",
+        "source": "npm:@tintinweb/pi-subagents",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/opt/homebrew/lib/node_modules/@tintinweb/pi-subagents"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/get_subagent_result.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "steer_subagent": {
+      "name": "steer_subagent",
+      "description": "Send a steering message to a running agent. The message will interrupt the agent after its current tool execution and be injected into its conversation, allowing you to redirect its work mid-run. Only works on running agents.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "agent_id",
+          "message"
+        ],
+        "properties": {
+          "agent_id": {
+            "description": "The agent ID to steer (must be currently running).",
+            "type": "string"
+          },
+          "message": {
+            "description": "The steering message to send. This will appear as a user message in the agent's conversation.",
+            "type": "string"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/opt/homebrew/lib/node_modules/@tintinweb/pi-subagents/src/index.ts",
+        "source": "npm:@tintinweb/pi-subagents",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/opt/homebrew/lib/node_modules/@tintinweb/pi-subagents"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/steer_subagent.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "symbol_graph": {
+      "name": "symbol_graph",
+      "description": "Return a symbol's callers, callees, tests, and key signals.\nWhen to use: You need structural context for a named symbol.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "description": "Symbol name to look up",
+            "type": "string"
+          },
+          "file": {
+            "description": "File path to disambiguate",
+            "type": "string"
+          },
+          "include": {
+            "description": "Optional extra sections to append to the response",
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "const": "neighborhood",
+                  "type": "string"
+                },
+                {
+                  "const": "contract",
+                  "type": "string"
+                },
+                {
+                  "const": "source",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-codegraph/src/index.ts",
+        "source": "/Users/maxwellnewman/pi/workspace/pi-codegraph",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/Users/maxwellnewman/pi/workspace/pi-codegraph"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/symbol_graph.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "resolve_edge": {
+      "name": "resolve_edge",
+      "description": "Create an evidence-backed edge in the symbol graph.\nWhen to use: The graph is missing a relationship you can justify from code or docs.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "source",
+          "target",
+          "kind",
+          "evidence"
+        ],
+        "properties": {
+          "source": {
+            "description": "Source symbol name",
+            "type": "string"
+          },
+          "target": {
+            "description": "Target symbol name",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Edge kind (calls, imports, implements, extends, ...)",
+            "type": "string"
+          },
+          "evidence": {
+            "description": "Free-text evidence explaining why this edge exists",
+            "type": "string"
+          },
+          "sourceFile": {
+            "description": "Source file path to disambiguate",
+            "type": "string"
+          },
+          "targetFile": {
+            "description": "Target file path to disambiguate",
+            "type": "string"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-codegraph/src/index.ts",
+        "source": "/Users/maxwellnewman/pi/workspace/pi-codegraph",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/Users/maxwellnewman/pi/workspace/pi-codegraph"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/resolve_edge.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "delete_edge": {
+      "name": "delete_edge",
+      "description": "Delete an agent-created edge from the symbol graph.\nWhen to use: An agent-added relationship is incorrect or obsolete.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "source",
+          "target",
+          "kind"
+        ],
+        "properties": {
+          "source": {
+            "description": "Source symbol name",
+            "type": "string"
+          },
+          "target": {
+            "description": "Target symbol name",
+            "type": "string"
+          },
+          "kind": {
+            "description": "Edge kind (calls, imports, implements, extends, ...)",
+            "type": "string"
+          },
+          "sourceFile": {
+            "description": "Source file path to disambiguate",
+            "type": "string"
+          },
+          "targetFile": {
+            "description": "Target file path to disambiguate",
+            "type": "string"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-codegraph/src/index.ts",
+        "source": "/Users/maxwellnewman/pi/workspace/pi-codegraph",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/Users/maxwellnewman/pi/workspace/pi-codegraph"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/delete_edge.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "impact": {
+      "name": "impact",
+      "description": "Return the classified blast radius for a set of changed symbols.\nWhen to use: You are planning or reviewing a change to existing code.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "symbols",
+          "changeType"
+        ],
+        "properties": {
+          "symbols": {
+            "description": "One or more symbol names that changed",
+            "type": "array",
+            "items": {
+              "description": "Changed symbol name",
+              "type": "string"
+            }
+          },
+          "changeType": {
+            "description": "Kind of change",
+            "anyOf": [
+              {
+                "const": "signature_change",
+                "type": "string"
+              },
+              {
+                "const": "removal",
+                "type": "string"
+              },
+              {
+                "const": "behavior_change",
+                "type": "string"
+              },
+              {
+                "const": "addition",
+                "type": "string"
+              }
+            ]
+          },
+          "maxDepth": {
+            "description": "Maximum traversal depth (default 5)",
+            "type": "number"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-codegraph/src/index.ts",
+        "source": "/Users/maxwellnewman/pi/workspace/pi-codegraph",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/Users/maxwellnewman/pi/workspace/pi-codegraph"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/impact.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "trace": {
+      "name": "trace",
+      "description": "Return the execution path starting from an entry point. Coverage-backed when available.\nWhen to use: You need to understand what actually runs.",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "entry"
+        ],
+        "properties": {
+          "entry": {
+            "description": "Entry symbol or endpoint name",
+            "type": "string"
+          },
+          "file": {
+            "description": "File path to disambiguate",
+            "type": "string"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-codegraph/src/index.ts",
+        "source": "/Users/maxwellnewman/pi/workspace/pi-codegraph",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/Users/maxwellnewman/pi/workspace/pi-codegraph"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/trace.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    },
+    "code_execution": {
+      "name": "code_execution",
+      "description": "Execute TypeScript or JavaScript code in a sandboxed environment (local Node.js subprocess or Docker container) with nested built-in tool calls",
+      "parameters": {
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "description": "TypeScript or JavaScript source code to execute",
+            "type": "string"
+          },
+          "language": {
+            "description": "Language for the submitted code",
+            "default": "typescript",
+            "anyOf": [
+              {
+                "const": "typescript",
+                "type": "string"
+              },
+              {
+                "const": "javascript",
+                "type": "string"
+              }
+            ]
+          },
+          "timeout": {
+            "description": "Optional execution timeout in milliseconds",
+            "minimum": 1,
+            "type": "number"
+          }
+        }
+      },
+      "sourceInfo": {
+        "path": "/Users/maxwellnewman/pi/workspace/pi-space/src/index.ts",
+        "source": "../../pi/workspace/pi-space",
+        "scope": "user",
+        "origin": "package",
+        "baseDir": "/Users/maxwellnewman/pi/workspace/pi-space"
+      },
+      "enabled": true,
+      "replaceSnippet": false,
+      "replaceGuidelines": false,
+      "includeSection": false,
+      "snippetOverride": "",
+      "guidelineOverrides": [],
+      "promptBodyPath": "tools/code_execution.md",
+      "providerDescriptionOverride": "",
+      "stale": false
+    }
+  }
+}

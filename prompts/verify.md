@@ -20,6 +20,7 @@ Check `AGENTS.md` for the project's test runner and build commands. If not docum
 
 ### Step 1: Run the full test suite fresh
 Not from memory. Run the actual commands now and show the output.
+Before concluding the suite covers the change, use `impact` on the primary symbol you changed to list downstream dependents. Confirm every surfaced dependent's test ran.
 
 ### Step 1b (bugfix only): Reproduce the original symptom
 Follow the reproduction steps from the diagnosis. Confirm the bug **no longer occurs**. Show the output.
@@ -33,6 +34,9 @@ Follow the reproduction steps from the diagnosis. Confirm the bug **no longer oc
 5. **ONLY THEN:** State pass or fail **with evidence** (actual output, file paths, line numbers)
 
 For criteria covered by `[no-test]` tasks: verify via the task's verification step (build success, type check, code inspection). Document what you checked and why a test isn't applicable.
+Use `symbol_graph` on the symbol the criterion describes to confirm it exists with the expected shape; paste the card output (or anchored source from `include: ["source"]`) into the evidence block.
+Use `ast_search` when the criterion is about a structural pattern across multiple sites.
+Use `trace` from the feature's real entry point to confirm the new code is on the executed path. Paste the trace output into the evidence block.
 
 ### Step 3: Produce a verification report
 
@@ -64,6 +68,7 @@ pass / fail
 | Regression test works | Red-green cycle verified | Test passes once |
 | Advisory/reviewer suggestion applied | VCS diff + independent test run | Suggestion text says "looks good" |
 | Requirements met | Per-criterion evidence | "All tests pass" |
+| New behavior is actually reached | `trace` from the feature's entry point shows the new code on the path | Test that constructs the call directly, bypassing the real entry |
 
 ## Red Flags — STOP if you catch yourself doing these
 

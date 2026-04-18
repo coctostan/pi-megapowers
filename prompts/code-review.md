@@ -15,7 +15,8 @@ Check `AGENTS.md` for the project's language, style conventions, and test framew
 {{verify_content}}
 
 ## Instructions
-
+Run `/codex-review --base <ref>` early (against `main` or the feature's base branch) and treat the findings as input. Cite findings you adopt with file:line; explicitly reject findings you disagree with and say why. Do not silently ignore.
+For high-stakes changes (security-sensitive code, data-loss risk, public API surface, or architecture-level changes), also run `/codex-adversarial-review --base <ref>` with focus text describing the risk area. Same citation rules.
 Review all code changes for this issue. Use the project's VCS to get the diff (`git diff`, etc.) or inspect the changed files listed in the verification report.
 
 If any advisory or parallel reviewer output was used during implementation, **review the resulting code with the same rigor** — do not assume suggestions are correct just because tests passed.
@@ -24,6 +25,7 @@ If any advisory or parallel reviewer output was used during implementation, **re
 
 **Code Quality:**
 - Correctness — edge cases, error handling, race conditions
+  Use `symbol_graph` with `include: ["contract"]` on the changed symbol to see its current guards, throws, and invariants. Flag any behavior in the contract that isn't covered by a test.
 - Maintainability — naming, duplication, complexity, readability
 - Patterns — consistent with codebase conventions, no anti-patterns
 - YAGNI — unused code, over-engineering, speculative abstractions
@@ -32,6 +34,7 @@ If any advisory or parallel reviewer output was used during implementation, **re
 - Sound design decisions, scalability considerations
 - Performance implications, security concerns
 - Breaking changes identified and documented
+  Run `impact` with `changeType: "signature_change"` on every public symbol modified in the diff. The returned dependents are the 'breaking change' surface — the review must either confirm they're updated or call out the break explicitly.
 
 **Testing:**
 - Tests are meaningful (not just coverage), test edge cases, readable
@@ -83,7 +86,7 @@ ready / needs-fixes / needs-rework
 ```
 
 ## Rules
-- **Verify suggestions against codebase reality** before making them — read the actual code
+- **Verify suggestions against codebase reality** before making them — read the actual code. Prefer `symbol_graph` and `read` with `symbol: "<name>"` over paraphrasing. When a finding references a symbol, its real name and signature must appear in the finding verbatim.
 - Be specific — reference file paths and line numbers
 - No performative agreement on future changes — fix now or note for later
 - If needs-fixes: implement fixes in this session, re-run tests, update the review
@@ -101,6 +104,7 @@ megapowers_signal({ action: "phase_next" })
 
 ### If **needs-fixes**
 Small, contained issues (naming, missing error handling, minor bugs). Fix them now:
+When applying fixes inline, re-read the changed symbols with `read` using hashline anchors and edit through those anchors. For any signature change you make during fixes, re-run `impact` and update dependent files in the same session.
 1. Implement the fixes in this session
 2. Re-run the full test suite — confirm nothing broke
 3. Update the review report with what was fixed

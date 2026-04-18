@@ -1,0 +1,1 @@
+Execute TypeScript or JavaScript code in a sandboxed environment (local Node.js subprocess or Docker container) with nested built-in tool calls

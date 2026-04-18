@@ -33,6 +33,7 @@ This restriction is specific to implement-phase task execution. Advisory plannin
 
 #### RED — Write one failing test
 1. Write the test from the plan (Step 1 of the task)
+   When the plan's test references an existing symbol, use `read` with `symbol: "<name>"` or `symbol_graph` with `include: ["source"]` to confirm its real signature before pasting the test.
 2. Run it using the exact command from Step 2
 3. Confirm it fails **for the right reason** — the failure should match the expected output from the plan
 4. If it passes immediately, the test is wrong — fix the test, don't proceed
@@ -41,10 +42,12 @@ This restriction is specific to implement-phase task execution. Advisory plannin
 
 #### GREEN — Write minimal code to pass
 1. Write the implementation from the plan (Step 3 of the task) — just enough to make the test pass, nothing more
+   Before editing, use `read` with `symbol: "<name>"` (or `symbol_graph` with `include: ["source"]`) to pull the exact current file state. Use the hashline anchors from that read directly with `edit`.
 2. Run the test — confirm it passes
 3. Call `megapowers_signal({ action: "tests_passed" })` to acknowledge green tests
 4. Run the **full test suite** (Step 5 of the task) — confirm nothing else broke
 5. If other tests break, fix them now before moving on
+   Before patching, run `impact` on the changed symbol to see the full dependent set, so you fix all downstream tests in one pass rather than cascading.
 
 #### REFACTOR — Clean up (optional)
 1. Remove duplication, improve names, extract helpers
@@ -70,6 +73,7 @@ No TDD cycle. The write guard is relaxed for these tasks.
 | Other tests break | Fix the regression. If it's a real conflict with the plan, stop and say so. |
 | Can't figure it out after 2-3 attempts | **Stop and tell the user.** Describe what you tried and what's failing. Don't force through. |
 | Plan step seems wrong or incomplete | **Stop and tell the user.** Don't guess or improvise a different approach. |
+| Implementation doesn't match what the file looks like now | Run `read` with `symbol: "<name>"` or `symbol_graph` with `include: ["source"]` — the plan was based on an earlier snapshot; start from reality. |
 
 ## Rules
 - Work on **only the current task** — don't look ahead or refactor future tasks

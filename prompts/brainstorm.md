@@ -31,6 +31,11 @@ State which mode applies and why. If unclear, ask one short clarifying question.
 
 ## Read first
 Before asking substantive questions, scan the project — key files, docs, and recent commits.
+Use `read` with `map: true` on unfamiliar files to get a structural map instead of dumping full contents.
+Use `symbol_graph` when the request mentions a concrete function, class, or module, to confirm it exists and see what calls it.
+Use `symbol_graph` with `include: ["contract"]` on any existing symbol the request proposes to change, so the brainstorm preserves its current behavioral guarantees instead of silently dropping them.
+Use `grep` for text mentions; use `ast_search` for structural patterns (e.g. every call site of a specific API shape).
+When the request touches an area that might have prior attempts or recent churn, run `git log --oneline -20 -- <path>` via `bash` to skim recent history.
 
 Check whether the request is:
 - already solved

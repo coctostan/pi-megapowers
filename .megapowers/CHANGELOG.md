@@ -373,3 +373,7 @@ All selected wrap-up actions executed:
 ### Changed
 - `prompts/implement-task.md` Execution Mode wording narrowed: `pipeline`/`subagent` restriction now scoped to implement-phase execution only, explicitly exempting advisory planning-scout usage in the plan phase (#113)
 - **Brainstorm/spec requirements traceability contract** — Rewrote `brainstorm.md` prompt as structured requirements capture (`R#`/`O#`/`D#`/`C#`/`Q#` buckets, mode triage, no-silent-drop rule, exact artifact sections). Rewrote `write-spec.md` prompt to enforce `Requirement Traceability` + `No silent drops` (every `R#` mapped exactly once) and legacy handling for older unstructured brainstorm artifacts. Added 7 prompt-contract tests locking both contracts against drift. `brainstorm` phase name unchanged. (#118)
+
+## [Unreleased]
+### Changed
+- Added inline, phase-specific tool guidance to the workflow prompt templates across feature, bugfix, and done phases; documented the prompt-to-tool mapping in `docs/phase-tools.md`; and added regression coverage that checks both raw prompt text and injected prompt output for drift (#127)
