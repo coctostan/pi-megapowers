@@ -1,0 +1,5 @@
+- Status APIs can be easy to misuse: `ctx.ui.setStatus` needs the keyed slot form (`"megapowers"`, message), and tests should model the real signature rather than only checking that a callback was invoked.
+- Derived TDD state must be tied to the current derived task id, not just the task array position; otherwise context visibility can make stale task state look authoritative.
+- Plan mode changes the meaning of phase guidance enough that context summaries should summarize mode-specific actions (`megapowers_plan_task`, `plan_draft_done`, `megapowers_plan_review`) instead of blindly reusing generic phase transition guidance.
+- Keeping `/mega context` and `/mp context` on one shared `renderContextReport` path made review and testing simpler and reduced command-output drift risk.
+- Debug context inspection is a useful escape hatch, but the default report should stay metadata-first and avoid rendering the full hidden prompt unless explicitly requested.

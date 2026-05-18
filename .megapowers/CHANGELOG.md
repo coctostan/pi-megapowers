@@ -1,6 +1,9 @@
 
 ## [Unreleased]
 ### Added
+- Compact Megapowers context visibility: hidden prompt injection now updates a keyed TUI status indicator, and `/mega context` plus `/mp context` render on-demand default/debug context inspection reports without persisting derived prompt data (#128)
+## [Unreleased]
+### Added
 - `plan-orchestrator.ts` module centralising all plan-loop mode transitions (draft→review, review→revise, review→approve), iteration tracking, template resolution, and focused-review decision logic; `reviewApproved` state field and `requireReviewApproved` gate removed (#125)
 ## [Unreleased]
 ### Removed

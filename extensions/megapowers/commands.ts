@@ -8,6 +8,7 @@ import { ensureBranch, switchAwayCommit } from "./vcs/branch-manager.js";
 import type { ExecGit } from "./vcs/git-ops.js";
 import { checkBranchSync } from "./vcs/sync-check.js";
 import type { ExecCmd } from "./vcs/pr-creator.js";
+import { renderContextReport } from "./context-summary.js";
 
 export type RuntimeDeps = { store?: Store; ui?: MegapowersUI; execGit?: ExecGit; execCmd?: ExecCmd };
 
@@ -28,6 +29,12 @@ export function ensureDeps(rd: RuntimeDeps, pi: ExtensionAPI, cwd: string): Deps
 
 export async function handleMegaCommand(args: string, ctx: any, deps: Deps): Promise<void> {
   const sub = args.trim().toLowerCase();
+
+  if (sub === "context" || sub === "context debug") {
+    const report = renderContextReport(ctx.cwd, deps.store, { debug: sub === "context debug" });
+    if (ctx.hasUI) ctx.ui.notify(report, "info");
+    return;
+  }
 
   if (sub === "off") {
     const state = readState(ctx.cwd);

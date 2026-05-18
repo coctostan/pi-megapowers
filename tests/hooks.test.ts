@@ -2,10 +2,11 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { onAgentEnd } from "../extensions/megapowers/hooks.js";
+import { onAgentEnd, onBeforeAgentStart } from "../extensions/megapowers/hooks.js";
 import { readState, writeState } from "../extensions/megapowers/state/state-io.js";
 import { createInitialState } from "../extensions/megapowers/state/state-machine.js";
 
+import { createStore } from "../extensions/megapowers/state/store.js";
 // --- helpers ---
 
 function makeStore(cwd: string) {
@@ -69,8 +70,6 @@ describe("onAgentEnd — done-phase doneActions cleanup", () => {
   afterEach(() => {
     rmSync(tmp, { recursive: true, force: true });
   });
-
-
   it("populates doneActions (and sets doneChecklistShown) when in done phase with empty doneActions", async () => {
     setState(tmp, { phase: "done", doneActions: [], doneChecklistShown: false });
 
@@ -264,6 +263,47 @@ describe("onAgentEnd — deferred done checklist (#083)", () => {
     expect(state.doneChecklistShown).toBe(true);
   });
 
+});
+
+describe("onBeforeAgentStart — compact context status", () => {
+  let tmp: string;
+
+  beforeEach(() => {
+    tmp = mkdtempSync(join(tmpdir(), "hooks-context-status-"));
+    mkdirSync(join(tmp, ".megapowers", "plans", "001-test"), { recursive: true });
+    writeFileSync(join(tmp, ".megapowers", "plans", "001-test", "spec.md"), "# Spec");
+    writeFileSync(join(tmp, ".megapowers", "plans", "001-test", "plan.md"), "# Plan\n\n### Task 1: Build it\n");
+  });
+
+  afterEach(() => {
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("keeps hidden megapowers-context injection and updates TUI status without notifications", async () => {
+    setState(tmp, { phase: "implement", currentTaskIndex: 0, completedTasks: [], tddTaskState: { taskIndex: 1, state: "test-written", skipped: false } });
+    const notifications: string[] = [];
+    const statuses: Array<{ key: string; message: string | undefined }> = [];
+    const ctx = {
+      cwd: tmp,
+      hasUI: true,
+      ui: {
+        notify: (message: string) => notifications.push(message),
+        setStatus: (key: string, message: string | undefined) => statuses.push({ key, message }),
+      },
+    };
+
+    const result = await onBeforeAgentStart({}, ctx as any, { store: createStore(tmp), ui: { renderDashboard: () => {} } } as any);
+
+    expect(result?.message?.customType).toBe("megapowers-context");
+    expect(result?.message?.display).toBe(false);
+    expect(result?.message?.content).toContain("megapowers_signal");
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0].key).toBe("megapowers");
+    expect(statuses[0].message).toContain("feature/implement");
+    expect(statuses[0].message).toContain("task 1/1");
+    expect(statuses[0].message).toContain("artifacts");
+    expect(notifications).toEqual([]);
+  });
 });
 
 
