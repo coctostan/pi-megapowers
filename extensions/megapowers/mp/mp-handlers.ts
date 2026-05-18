@@ -1,5 +1,6 @@
 import type { ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { handleMegaCommand, type Deps } from "../commands.js";
+import { renderContextReport } from "../context-summary.js";
 
 export type MpTier = "programmatic" | "inject" | "subagent";
 
@@ -16,6 +17,7 @@ export const MP_SUBCOMMANDS = [
   "new",
   "on",
   "off",
+  "context",
   "council",
   "audit",
   "health",
@@ -112,6 +114,14 @@ export function createMpRegistry(deps: Deps): MpRegistry {
     description: "Disable megapowers enforcement",
     execute: async (_args: string, ctx: ExtensionCommandContext) => {
       await handleMegaCommand("off", ctx as any, deps);
+    },
+  };
+
+  registry.context = {
+    tier: "programmatic",
+    description: "Inspect current derived Megapowers context",
+    execute: async (args: string, ctx: ExtensionCommandContext) => {
+      return renderContextReport(ctx.cwd, deps.store, { debug: args.trim().toLowerCase() === "debug" });
     },
   };
 

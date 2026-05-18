@@ -16,6 +16,7 @@
   "dependencies": {
     "gray-matter": "^4.0.3",
     "pi-subagents": "^0.11.0",
+    "yaml": "^2.8.4",
     "zod": "^4.3.6"
   },
   "devDependencies": {

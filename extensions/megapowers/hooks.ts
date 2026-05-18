@@ -2,6 +2,7 @@ import type { Deps } from "./commands.js";
 import { readState, writeState } from "./state/state-io.js";
 import { deriveTasks } from "./state/derived.js";
 import { buildInjectedPrompt } from "./prompt-inject.js";
+import { buildContextSummary, formatCompactContextStatus } from "./context-summary.js";
 import { showDoneChecklist } from "./ui.js";
 import { evaluateWriteOverride, recordTestFileWritten } from "./tools/tool-overrides.js";
 import { runFocusedReviewFanout, type FocusedReviewFanoutResult } from "./plan-review/focused-review-runner.js";
@@ -66,6 +67,12 @@ export async function onBeforeAgentStart(_event: any, ctx: any, deps: Deps): Pro
   await preparePlanReviewContext(ctx.cwd);
   const prompt = buildInjectedPrompt(ctx.cwd, store);
   if (!prompt) return;
+
+  if (ctx.hasUI && ctx.ui?.setStatus) {
+    const summary = buildContextSummary(ctx.cwd, store);
+    ctx.ui.setStatus("megapowers", formatCompactContextStatus(summary));
+  }
+
   return {
     message: {
       customType: "megapowers-context",
