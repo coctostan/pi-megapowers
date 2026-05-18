@@ -98,6 +98,26 @@ describe("handlePlanTask — create", () => {
     expect(result.message).toContain("Changed:");
   });
 
+
+  it("create error message identifies the action and names a corrective step (AC46)", () => {
+    setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
+    const result = handlePlanTask(tmp, { id: 1, description: "A".repeat(200) });
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain("plan_task");
+    expect(result.error!.toLowerCase()).toContain("provide title");
+  });
+
+  it("create success uses shared ✅ icon and lists fields set (AC44, AC50)", () => {
+    setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
+    const result = handlePlanTask(tmp, { id: 1, title: "T", description: "A".repeat(200), files_to_modify: ["src/t.ts"] });
+    expect(result.error).toBeUndefined();
+    expect(result.message!.startsWith("✅")).toBe(true);
+    expect(result.message).toContain(".megapowers/plans/001-test/tasks/task-001.md");
+    // Explicit list of fields set
+    expect(result.message).toContain("title");
+    expect(result.message).toContain("files_to_modify");
+  });
+
 });
 
 
@@ -175,6 +195,73 @@ describe("handlePlanTask — update (partial merge)", () => {
     const result = handlePlanTask(tmp, { id: 1, title: "T", description: "Body" });
     expect(result.error).toBeDefined();
     expect(result.error).toContain("corrupt");
+  });
+
+
+  it("update success uses shared ✅ icon and includes artifact path + changed list (AC45, AC50, AC51)", () => {
+    setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
+    handlePlanTask(tmp, { id: 1, title: "T", description: "A".repeat(200), files_to_modify: ["src/t.ts"] });
+    const result = handlePlanTask(tmp, { id: 1, no_test: true });
+    expect(result.message!.startsWith("✅")).toBe(true);
+    expect(result.message).toContain(".megapowers/plans/001-test/tasks/task-001.md");
+    expect(result.message).toContain("no_test");
+  });
+
+
+  it("reports no changes when an unchanged description is rewritten (AC45)", () => {
+    setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
+    const description = "A".repeat(200);
+    handlePlanTask(tmp, { id: 1, title: "T", description, files_to_modify: ["src/t.ts"] });
+
+    const result = handlePlanTask(tmp, { id: 1, description });
+
+    expect(result.error).toBeUndefined();
+    expect(result.message).toContain("Changed: no changes");
+  });
+
+  it("does not list unchanged optional fields as changed (AC45)", () => {
+    setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
+    const description = "A".repeat(200);
+    handlePlanTask(tmp, {
+      id: 1,
+      title: "T",
+      description,
+      depends_on: [],
+      no_test: false,
+      files_to_modify: ["src/t.ts"],
+      files_to_create: [],
+    });
+
+    const result = handlePlanTask(tmp, {
+      id: 1,
+      depends_on: [],
+      no_test: false,
+      files_to_modify: ["src/t.ts"],
+      files_to_create: [],
+    });
+
+    expect(result.error).toBeUndefined();
+    expect(result.message).toContain("Changed: no changes");
+  });
+
+  it("update error message identifies plan_task and a corrective step (AC46)", () => {
+    setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
+    handlePlanTask(tmp, { id: 1, title: "T", description: "A".repeat(200), files_to_modify: ["src/t.ts"] });
+    const result = handlePlanTask(tmp, { id: 1, files_to_modify: [], files_to_create: [] });
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain("plan_task");
+    expect(result.error!.toLowerCase()).toContain("fix lint");
+  });
+
+  it("corrupt-existing error names plan_task and instructs to delete/recreate (AC46)", () => {
+    setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
+    const taskDir = join(tmp, ".megapowers", "plans", "001-test", "tasks");
+    mkdirSync(taskDir, { recursive: true });
+    writeFileSync(join(taskDir, "task-001.md"), "---\nnot_a_field: bad\n---\nBody");
+    const result = handlePlanTask(tmp, { id: 1, title: "T", description: "Body" });
+    expect(result.error).toBeDefined();
+    expect(result.error).toContain("plan_task");
+    expect(result.error!.toLowerCase()).toMatch(/delete .* recreate|recreate corrupt/);
   });
 });
 

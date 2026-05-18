@@ -9,6 +9,7 @@ import { getWorkflowConfig } from "../workflows/registry.js";
 import { createStore } from "../state/store.js";
 import { versionArtifact } from "../artifacts/version-artifact.js";
 import { transitionDraftToReview } from "../plan-orchestrator.js";
+import { composeMessage } from "../feedback.js";
 
 export interface SignalResult {
   message?: string;
@@ -139,7 +140,12 @@ function handleTaskDone(cwd: string): SignalResult {
     const newState = transition(updatedState, "verify" as Phase);
     writeState(cwd, newState);
     return {
-      message: `Task ${currentTask.index} (${currentTask.description}) marked complete. All ${tasks.length} tasks done! Phase advanced to verify. Begin verification.`,
+      message: composeMessage({
+        icon: "success",
+        summary: `Task ${currentTask.index} (${currentTask.description}) marked complete`,
+        changes: [`All ${tasks.length} tasks done`],
+        nextStep: "Phase advanced to verify — begin verification.",
+      }),
       triggerNewSession: true,
     };
   }
@@ -157,7 +163,12 @@ function handleTaskDone(cwd: string): SignalResult {
 
   const remaining = tasks.length - completedTasks.length;
   return {
-    message: `Task ${currentTask.index} (${currentTask.description}) marked complete. ${remaining} task${remaining === 1 ? "" : "s"} remaining. Next: Task ${nextTask.index}: ${nextTask.description}`,
+    message: composeMessage({
+      icon: "success",
+      summary: `Task ${currentTask.index} (${currentTask.description}) marked complete`,
+      changes: [`${remaining} task${remaining === 1 ? "" : "s"} remaining`],
+      nextStep: `Task ${nextTask.index}: ${nextTask.description}`,
+    }),
     triggerNewSession: true,
   };
 }
@@ -183,7 +194,13 @@ function handleTestsFailed(cwd: string): SignalResult {
     tddTaskState: { ...state.tddTaskState, state: "impl-allowed" },
   });
 
-  return { message: "Tests failed (RED ✓). Production code writes are now allowed." };
+  return {
+    message: composeMessage({
+      icon: "success",
+      summary: "Tests failed (RED ✓) — recorded",
+      nextStep: "Production code writes are now allowed.",
+    }),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -197,7 +214,12 @@ function handleTestsPassed(cwd: string): SignalResult {
     return { error: "tests_passed can only be called during the implement or code-review phase." };
   }
 
-  return { message: "Tests passed (GREEN ✓)." };
+  return {
+    message: composeMessage({
+      icon: "success",
+      summary: "Tests passed (GREEN ✓) — recorded",
+    }),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -242,7 +264,11 @@ function handlePhaseNext(cwd: string, target?: string): SignalResult {
     return { error: result.error };
   }
   return {
-    message: `Phase advanced to ${result.newPhase}. Proceed with ${result.newPhase} phase work.`,
+    message: composeMessage({
+      icon: "info",
+      summary: `Phase advanced to ${result.newPhase}`,
+      nextStep: `Proceed with ${result.newPhase} phase work.`,
+    }),
     triggerNewSession: true,
   };
 }
@@ -291,7 +317,12 @@ function handlePhaseBack(cwd: string): SignalResult {
   }
 
   return {
-    message: `Phase moved back to ${result.newPhase}. Rework needed — continue with the ${result.newPhase} phase.`,
+    message: composeMessage({
+      icon: "warn",
+      summary: `Phase moved back to ${result.newPhase}`,
+      changes: ["Rework needed"],
+      nextStep: `Continue with the ${result.newPhase} phase.`,
+    }),
     triggerNewSession: true,
   };
 }
@@ -317,6 +348,14 @@ function handleCloseIssue(cwd: string): SignalResult {
   // Close the active issue
   store.updateIssueStatus(state.activeIssue, "done");
   writeState(cwd, { ...createInitialState(), megaEnabled: state.megaEnabled });
-  const sourceInfo = sources.length > 0 ? ` (+ ${sources.length} source issues)` : "";
-  return { message: `Issue ${state.activeIssue} marked as done${sourceInfo}.` };
+  const changes = sources.length > 0
+    ? [`Closed ${sources.length} source issue${sources.length === 1 ? "" : "s"} (batch)`]
+    : undefined;
+  return {
+    message: composeMessage({
+      icon: "success",
+      summary: `Issue ${state.activeIssue} marked as done`,
+      changes,
+    }),
+  };
 }

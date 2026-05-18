@@ -225,6 +225,40 @@ describe("handleSignal", () => {
       expect(result.error).toBeUndefined();
       expect(result.triggerNewSession).toBe(true);
     });
+
+
+    it("task_done success message starts with ✅ and names completed task index + description (AC36, AC37)", () => {
+      writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: Build it\n\n### Task 2: Polish\n");
+      setState(tmp, {
+        phase: "implement",
+        currentTaskIndex: 0,
+        completedTasks: [],
+        tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
+      });
+      const r = handleSignal(tmp, "task_done");
+      expect(r.error).toBeUndefined();
+      expect(r.message!.startsWith("✅")).toBe(true);
+      expect(r.message).toContain("Task 1");
+      expect(r.message).toContain("Build it");
+      // Remaining count + next task identifier (AC37)
+      expect(r.message).toMatch(/1 task remaining/);
+      expect(r.message).toContain("Task 2");
+    });
+
+    it("task_done message on final task names auto-advance to verify (AC37)", () => {
+      writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: Only\n");
+      setState(tmp, {
+        phase: "implement",
+        currentTaskIndex: 0,
+        completedTasks: [],
+        tddTaskState: { taskIndex: 1, state: "impl-allowed", skipped: false },
+      });
+      const r = handleSignal(tmp, "task_done");
+      expect(r.message!.startsWith("✅")).toBe(true);
+      expect(r.message).toContain("Task 1");
+      expect(r.message).toContain("Only");
+      expect(r.message!.toLowerCase()).toContain("verify");
+    });
   });
 
   describe("task_done without jj bookkeeping", () => {
@@ -321,6 +355,20 @@ describe("handleSignal", () => {
       expect(result.message).toContain("2 tasks");
     });
 
+
+    it("plan_draft_done success message starts with a shared-vocabulary icon and names task count + review transition (AC36, AC42)", async () => {
+      setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
+      const tasksDir = join(tmp, ".megapowers", "plans", "001-test", "tasks");
+      mkdirSync(tasksDir, { recursive: true });
+      writeFileSync(join(tasksDir, "task-001.md"), "---\nid: 1\ntitle: T\nstatus: draft\n---\nBody.");
+      writeFileSync(join(tasksDir, "task-002.md"), "---\nid: 2\ntitle: T2\nstatus: draft\n---\nBody.");
+      const r = await handlePlanDraftDone(tmp);
+      expect(r.error).toBeUndefined();
+      expect(r.message!.startsWith("📋")).toBe(true);
+      expect(r.message).toContain("2 tasks");
+      expect(r.message!.toLowerCase()).toContain("review mode");
+    });
+
     it("sets triggerNewSession flag", async () => {
       setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
       const tasksDir = join(tmp, ".megapowers", "plans", "001-test", "tasks");
@@ -366,6 +414,16 @@ describe("handleSignal", () => {
       const result = handleSignal(tmp, "phase_next");
       expect(result.error).toBeUndefined();
       expect(result.triggerNewSession).toBe(true);
+    });
+
+
+    it("phase_next success message uses 📋 icon and names new phase + next-step phrase (AC36, AC38)", () => {
+      setState(tmp, { phase: "brainstorm" });
+      const r = handleSignal(tmp, "phase_next");
+      expect(r.error).toBeUndefined();
+      expect(r.message!.startsWith("📋")).toBe(true);
+      expect(r.message).toContain("spec");
+      expect(r.message).toMatch(/Next:/);
     });
   });
 
@@ -415,6 +473,15 @@ describe("handleSignal", () => {
       const result = handleSignal(tmp, "phase_back");
       expect(result.error).toBeUndefined();
       expect(result.triggerNewSession).toBe(true);
+    });
+
+    it("phase_back success message uses ⚠️ icon, names new phase, and includes rework / next-step phrase (AC36, AC39)", () => {
+      setState(tmp, { phase: "verify" });
+      const r = handleSignal(tmp, "phase_back");
+      expect(r.error).toBeUndefined();
+      expect(r.message!.startsWith("⚠️")).toBe(true);
+      expect(r.message).toContain("implement");
+      expect(r.message!.toLowerCase()).toContain("rework");
     });
     it("transitions code-review → implement (AC4)", () => {
       setState(tmp, { phase: "code-review" });
@@ -613,6 +680,20 @@ describe("handleSignal", () => {
       const result = handleSignal(tmp, "tests_failed");
       expect(result.error).toContain("No test written yet");
     });
+
+
+    it("tests_failed success message starts with ✅ and states RED recorded + writes unlocked (AC36, AC40)", () => {
+      setState(tmp, {
+        phase: "implement",
+        tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
+      });
+      const r = handleSignal(tmp, "tests_failed");
+      expect(r.error).toBeUndefined();
+      expect(r.message!.startsWith("✅")).toBe(true);
+      expect(r.message).toContain("RED");
+      expect(r.message!.toLowerCase()).toContain("production");
+      expect(r.message!.toLowerCase()).toMatch(/writes? .* allowed|allowed/);
+    });
   });
 
   // ======================================================================
@@ -658,6 +739,18 @@ describe("handleSignal", () => {
 
       const result = handleSignal(tmp, "tests_passed");
       expect(result.error).toContain("tests_passed can only be called during the implement or code-review phase");
+    });
+
+
+    it("tests_passed success message starts with ✅ and records GREEN (AC36, AC41)", () => {
+      setState(tmp, {
+        phase: "implement",
+        tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
+      });
+      const r = handleSignal(tmp, "tests_passed");
+      expect(r.error).toBeUndefined();
+      expect(r.message!.startsWith("✅")).toBe(true);
+      expect(r.message).toContain("GREEN");
     });
   });
 
@@ -798,6 +891,40 @@ describe("handleSignal", () => {
 
       const state = readState(tmp);
       expect(state.activeIssue).toBeNull();
+    });
+
+
+    it("close_issue success message starts with ✅ and names slug; includes source count when batch (AC36, AC43)", () => {
+      const issuesDir = join(tmp, ".megapowers", "issues");
+      mkdirSync(issuesDir, { recursive: true });
+      writeFileSync(
+        join(issuesDir, "010-source-a.md"),
+        "---\nid: 10\ntype: feature\nstatus: in-progress\ncreated: 2026-01-01T00:00:00.000Z\n---\n# Source A\nDesc",
+      );
+      writeFileSync(
+        join(issuesDir, "020-batch.md"),
+        "---\nid: 20\ntype: feature\nstatus: in-progress\ncreated: 2026-01-01T00:00:00.000Z\nsources: [10]\n---\n# Batch\nC",
+      );
+      setState(tmp, { activeIssue: "020-batch", phase: "done" });
+      const r = handleSignal(tmp, "close_issue");
+      expect(r.error).toBeUndefined();
+      expect(r.message!.startsWith("✅")).toBe(true);
+      expect(r.message).toContain("020-batch");
+      expect(r.message).toContain("1 source");
+    });
+
+    it("close_issue success message starts with ✅ when no sources (AC36, AC43)", () => {
+      const issuesDir = join(tmp, ".megapowers", "issues");
+      mkdirSync(issuesDir, { recursive: true });
+      writeFileSync(
+        join(issuesDir, "001-test.md"),
+        "---\nid: 1\ntype: feature\nstatus: in-progress\ncreated: 2026-01-01T00:00:00.000Z\n---\n# T\nD",
+      );
+      setState(tmp, { phase: "done" });
+      const r = handleSignal(tmp, "close_issue");
+      expect(r.error).toBeUndefined();
+      expect(r.message!.startsWith("✅")).toBe(true);
+      expect(r.message).toContain("001-test");
     });
   });
 

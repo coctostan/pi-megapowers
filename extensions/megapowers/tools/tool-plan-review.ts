@@ -6,6 +6,7 @@ import { approvePlan, transitionReviewToRevise } from "../plan-orchestrator.js";
 import { MAX_PLAN_ITERATIONS, transition, type Phase } from "../state/state-machine.js";
 import { deriveTasks } from "../state/derived.js";
 import type { PlanTask, PlanReview } from "../state/plan-schemas.js";
+import { composeMessage } from "../feedback.js";
 
 export interface PlanReviewParams {
   verdict: "approve" | "revise";
@@ -24,11 +25,11 @@ export function handlePlanReview(cwd: string, params: PlanReviewParams): PlanRev
   const state = readState(cwd);
 
   if (state.phase !== "plan") {
-    return { error: "megapowers_plan_review can only be called during the plan phase." };
+    return { error: "❌ plan_review: not in plan phase. Submit during plan review." };
   }
 
   if (state.planMode !== "review") {
-    return { error: `megapowers_plan_review requires planMode 'review', got '${state.planMode}'.` };
+    return { error: `❌ plan_review: not in review mode (got planMode '${state.planMode}'). Submit during plan review.` };
   }
 
   const slug = state.activeIssue!;
@@ -39,10 +40,11 @@ export function handlePlanReview(cwd: string, params: PlanReviewParams): PlanRev
     const filepath = join(cwd, ".megapowers", "plans", slug, filename);
     if (!existsSync(filepath)) {
       return {
-        error:
-          `Missing revise-instructions file: ${filepath}\n` +
-          `Expected filename: ${filename}\n` +
-          "Write it before submitting a revise verdict.",
+        error: composeMessage({
+          icon: "error",
+          summary: `plan_review: missing revise-instructions file at ${filepath}`,
+          nextStep: `Write the ${filename} file before submitting a revise verdict.`,
+        }),
       };
     }
   }
@@ -57,40 +59,32 @@ export function handlePlanReview(cwd: string, params: PlanReviewParams): PlanRev
     approved_tasks: approvedIds,
     needs_revision_tasks: needsRevisionIds,
   };
-  writePlanReview(cwd, slug, review, params.feedback);
-
-  updateTaskStatuses(cwd, slug, approvedIds, "approved");
-  updateTaskStatuses(cwd, slug, needsRevisionIds, "needs_revision");
-
   if (params.verdict === "revise") {
-    return handleReviseVerdict(cwd, state, approvedIds, needsRevisionIds);
+    const orchestrated = transitionReviewToRevise(
+      state,
+      approvedIds,
+      needsRevisionIds,
+      MAX_PLAN_ITERATIONS,
+    );
+    if (!orchestrated.ok) {
+      return { error: orchestrated.error };
+    }
+    writePlanReview(cwd, slug, review, params.feedback);
+    updateTaskStatuses(cwd, slug, approvedIds, "approved");
+    updateTaskStatuses(cwd, slug, needsRevisionIds, "needs_revision");
+    writeState(cwd, orchestrated.value.nextState);
+    return {
+      message: orchestrated.value.message,
+      triggerNewSession: true,
+    };
   }
 
+  writePlanReview(cwd, slug, review, params.feedback);
+  updateTaskStatuses(cwd, slug, approvedIds, "approved");
+  updateTaskStatuses(cwd, slug, needsRevisionIds, "needs_revision");
   return handleApproveVerdict(cwd, state, slug);
 }
 
-function handleReviseVerdict(
-  cwd: string,
-  state: ReturnType<typeof readState>,
-  approvedIds: number[],
-  needsRevisionIds: number[],
-): PlanReviewResult {
-  const orchestrated = transitionReviewToRevise(
-    state,
-    approvedIds,
-    needsRevisionIds,
-    MAX_PLAN_ITERATIONS,
-  );
-  if (!orchestrated.ok) {
-    return { error: orchestrated.error };
-  }
-
-  writeState(cwd, orchestrated.value.nextState);
-  return {
-    message: orchestrated.value.message,
-    triggerNewSession: true,
-  };
-}
 
 function handleApproveVerdict(
   cwd: string,
@@ -117,7 +111,13 @@ function handleApproveVerdict(
   writeFileSync(join(planDir, "plan.md"), orchestrated.value.legacyPlanMd);
   writeState(cwd, orchestrated.value.nextState);
   return {
-    message: orchestrated.value.message,
+    message: composeMessage({
+      icon: "success",
+      summary: `Plan approved (iteration ${state.planIteration})`,
+      changes: [`All ${tasks.length} tasks approved`],
+      artifactPath: `.megapowers/plans/${slug}/plan.md`,
+      nextStep: "Advancing to implement phase.",
+    }),
     triggerNewSession: true,
   };
 }

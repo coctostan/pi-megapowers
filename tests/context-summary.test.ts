@@ -187,4 +187,17 @@ describe("context inspection debug report", () => {
     expect(debug).toContain("## Rendered prompt");
     expect(debug).toContain("You are writing a step-by-step implementation plan");
   });
+
+
+  it("debug report's rendered prompt section contains the compact `## Megapowers` header (AC34)", () => {
+    const store = createStore(tmp);
+    mkdirSync(join(tmp, ".megapowers", "plans", "001-test"), { recursive: true });
+    setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
+
+    const debug = renderContextReport(tmp, store, { debug: true });
+
+    expect(debug).toContain("## Rendered prompt");
+    expect(debug).toContain("## Megapowers");
+    expect(debug).not.toContain("## Megapowers Protocol");
+  });
 });

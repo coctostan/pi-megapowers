@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { buildInjectedPrompt } from "../extensions/megapowers/prompt-inject.js";
+import { buildInjectedPrompt, renderFullProtocolPrompt } from "../extensions/megapowers/prompt-inject.js";
 import { writeState } from "../extensions/megapowers/state/state-io.js";
 import { createInitialState, type MegapowersState } from "../extensions/megapowers/state/state-machine.js";
 import { createStore } from "../extensions/megapowers/state/store.js";
@@ -32,12 +32,12 @@ describe("buildInjectedPrompt", () => {
     expect(buildInjectedPrompt(tmp)).not.toBeNull();
   });
 
-  it("includes megapowers protocol section with tool descriptions", () => {
+  it("includes compact megapowers header for active issues", () => {
     setState(tmp, { phase: "spec", megaEnabled: true });
     const result = buildInjectedPrompt(tmp);
     expect(result).not.toBeNull();
-    expect(result).toContain("megapowers_signal");
-    expect(result).toContain("Artifact Persistence");
+    expect(result).toContain("## Megapowers");
+    expect(result).not.toContain("## Megapowers Protocol");
   });
 
   it("includes phase-specific tool instructions for spec phase (AC19)", () => {
@@ -350,13 +350,12 @@ describe("buildInjectedPrompt — idle mode", () => {
     expect(buildInjectedPrompt(tmp)).toBeNull();
   });
 
-  it("includes protocol section with tool names (AC3)", () => {
+  it("includes compact megapowers header in idle prompt", () => {
     writeState(tmp, { ...createInitialState(), megaEnabled: true });
     const result = buildInjectedPrompt(tmp);
     expect(result).not.toBeNull();
-    expect(result).toContain("Megapowers Protocol");
-    expect(result).toContain("megapowers_signal");
-    expect(result).toContain("Artifact Persistence");
+    expect(result).toContain("## Megapowers");
+    expect(result).not.toContain("## Megapowers Protocol");
   });
 
   it("includes open issues list with id, title, milestone, and priority (AC4)", () => {
@@ -397,20 +396,21 @@ describe("buildInjectedPrompt — idle mode", () => {
     expect(result).not.toContain("Done task");
   });
 
-  it("includes slash command hints (AC5)", () => {
+  it("includes issue-selection slash command hints", () => {
     writeState(tmp, { ...createInitialState(), megaEnabled: true });
     const result = buildInjectedPrompt(tmp);
     expect(result).toContain("/issue new");
     expect(result).toContain("/issue list");
     expect(result).toContain("/triage");
-    expect(result).toContain("/mega on|off");
+    expect(result).not.toContain("Commands:");
+    expect(result).not.toContain("/mega on|off");
   });
 
-  it("includes roadmap and milestones reference (AC6)", () => {
+  it("idle prompt is non-empty and mentions issue selection actions", () => {
     writeState(tmp, { ...createInitialState(), megaEnabled: true });
-    const result = buildInjectedPrompt(tmp);
-    expect(result).toContain("ROADMAP.md");
-    expect(result).toContain(".megapowers/milestones.md");
+    const result = buildInjectedPrompt(tmp)!;
+    expect(result.length).toBeGreaterThan(0);
+    expect(result).toContain("/issue list");
   });
 });
 
@@ -564,5 +564,167 @@ describe("buildInjectedPrompt — inline phase tool guidance", () => {
 
     setState(tmp, { phase: "done", megaEnabled: true, doneActions: ["generate-docs"] });
     expect(buildInjectedPrompt(tmp)).toContain("When the document describes a new or modified API surface, use `symbol_graph` (or `read` with `symbol: \"<name>\"`) to pull the real signature into the doc. Do not paraphrase signatures from memory.");
+  });
+});
+
+describe("renderFullProtocolPrompt", () => {
+  it("returns the canonical `## Megapowers Protocol` content (AC33, AC35)", () => {
+    const out = renderFullProtocolPrompt();
+    expect(out).toContain("## Megapowers Protocol");
+    expect(out).toContain("megapowers_signal");
+    expect(out).toContain("megapowers_plan_task");
+    expect(out).toContain("megapowers_plan_review");
+  });
+});
+
+describe("buildInjectedPrompt — compact active-issue header", () => {
+  let tmp: string;
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "compact-active-")); });
+  afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+
+  it("does NOT include `## Megapowers Protocol` for active issues (AC1)", () => {
+    setState(tmp, { phase: "implement", megaEnabled: true });
+    const r = buildInjectedPrompt(tmp)!;
+    expect(r).not.toContain("## Megapowers Protocol");
+  });
+
+  it("includes `## Megapowers` header and issue slug (AC2, AC4)", () => {
+    setState(tmp, { phase: "implement", megaEnabled: true });
+    const r = buildInjectedPrompt(tmp)!;
+    expect(r).toContain("## Megapowers");
+    expect(r).toContain("001-test");
+  });
+
+  it("plan/draft header shows `plan (draft)` and lists plan_task + plan_draft_done; warns vs phase_next (AC3, AC9)", () => {
+    setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1, megaEnabled: true });
+    const r = buildInjectedPrompt(tmp)!;
+    expect(r).toContain("plan (draft)");
+    expect(r).toContain("megapowers_plan_task");
+    expect(r).toContain("plan_draft_done");
+    expect(r).toContain("phase_next");
+  });
+
+  it("plan/revise header shows `plan (revise)` and lists plan_task + plan_draft_done (AC10)", () => {
+    setState(tmp, { phase: "plan", planMode: "revise", planIteration: 2, megaEnabled: true });
+    const r = buildInjectedPrompt(tmp)!;
+    expect(r).toContain("plan (revise)");
+    expect(r).toContain("megapowers_plan_task");
+    expect(r).toContain("plan_draft_done");
+  });
+
+  it("plan/review header lists megapowers_plan_review with approve+revise; warns vs review_approve and phase_next (AC11, AC16)", () => {
+    setState(tmp, { phase: "plan", planMode: "review", planIteration: 1, megaEnabled: true });
+    const r = buildInjectedPrompt(tmp)!;
+    expect(r).toContain("megapowers_plan_review");
+    expect(r).toMatch(/approve/);
+    expect(r).toMatch(/revise/);
+    expect(r).toContain("review_approve");
+    // Header section must not advertise review_approve as allowed
+    const headerEnd = r.indexOf("## ", r.indexOf("## Megapowers") + 1);
+    const header = headerEnd === -1 ? r : r.slice(0, headerEnd);
+    expect(header).not.toContain('action: "review_approve"');
+  });
+
+  it("implement header lists tests_failed, tests_passed, task_done (AC12)", () => {
+    const dir = join(tmp, ".megapowers", "plans", "001-test");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "plan.md"), "# Plan\n\n### Task 1: Build it\n");
+    setState(tmp, { phase: "implement", megaEnabled: true, currentTaskIndex: 0 });
+    const r = buildInjectedPrompt(tmp)!;
+    expect(r).toContain("tests_failed");
+    expect(r).toContain("tests_passed");
+    expect(r).toContain("task_done");
+    // AC5: current task surfaced
+    expect(r).toContain("Build it");
+  });
+
+  it("verify header lists phase_next and phase_back (AC13)", () => {
+    setState(tmp, { phase: "verify", megaEnabled: true });
+    const r = buildInjectedPrompt(tmp)!;
+    expect(r).toContain("phase_next");
+    expect(r).toContain("phase_back");
+  });
+
+  it("code-review header lists phase_next and phase_back (AC14)", () => {
+    setState(tmp, { phase: "code-review", megaEnabled: true });
+    const r = buildInjectedPrompt(tmp)!;
+    expect(r).toContain("phase_next");
+    expect(r).toContain("phase_back");
+  });
+
+  it("done header notes push/PR + cleanup and lists close_issue (AC15)", () => {
+    setState(tmp, { phase: "done", megaEnabled: true, doneActions: ["close-issue"] });
+    const r = buildInjectedPrompt(tmp)!;
+    expect(r).toContain("close_issue");
+    expect(r.toLowerCase()).toMatch(/push|pr|cleanup/);
+  });
+
+  it("includes universal rules (AC7, AC8)", () => {
+    setState(tmp, { phase: "implement", megaEnabled: true });
+    const r = buildInjectedPrompt(tmp)!;
+    expect(r).toContain("Do not edit .megapowers/state.json.");
+    expect(r.toLowerCase()).toContain("follow its message");
+  });
+
+  it("active-issue prompt does NOT include `## Open Issues` or `## Available Commands` (AC26, AC27)", () => {
+    setState(tmp, { phase: "implement", megaEnabled: true });
+    const r = buildInjectedPrompt(tmp)!;
+    expect(r).not.toContain("## Open Issues");
+    expect(r).not.toContain("## Available Commands");
+  });
+
+  it("preserves phase template after the compact header (AC17)", () => {
+    setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1, megaEnabled: true });
+    const r = buildInjectedPrompt(tmp)!;
+    expect(r).toContain("You are writing a step-by-step implementation plan");
+  });
+});
+
+
+describe("buildInjectedPrompt — compact no-active-issue prompt", () => {
+  let tmp: string;
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "compact-idle-")); });
+  afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+
+  it("contains `## Megapowers` and `No active issue.` line (AC28)", () => {
+    writeState(tmp, { ...createInitialState(), megaEnabled: true });
+    const r = buildInjectedPrompt(tmp)!;
+    expect(r).toContain("## Megapowers");
+    expect(r).toContain("No active issue.");
+  });
+
+  it("lists /issue list, /issue new, /triage (AC29)", () => {
+    writeState(tmp, { ...createInitialState(), megaEnabled: true });
+    const r = buildInjectedPrompt(tmp)!;
+    expect(r).toContain("/issue list");
+    expect(r).toContain("/issue new");
+    expect(r).toContain("/triage");
+  });
+
+  it("includes universal rules (AC30)", () => {
+    writeState(tmp, { ...createInitialState(), megaEnabled: true });
+    const r = buildInjectedPrompt(tmp)!;
+    expect(r).toContain("Do not edit .megapowers/state.json.");
+    expect(r.toLowerCase()).toContain("follow its message");
+  });
+
+  it("includes compact open-issues list filtered to non-done/archived (AC31)", () => {
+    writeState(tmp, { ...createInitialState(), megaEnabled: true });
+    const store = createStore(tmp);
+    store.createIssue("Auth refactor", "feature", "Refactor auth module");
+    store.createIssue("Done task", "bugfix", "Already done");
+    store.updateIssueStatus("002-done-task", "done");
+
+    const r = buildInjectedPrompt(tmp, store)!;
+    expect(r).toContain("#001");
+    expect(r).toContain("Auth refactor");
+    expect(r).toMatch(/milestone:.*priority:/);
+    expect(r).not.toContain("Done task");
+  });
+
+  it("does NOT include the full `## Megapowers Protocol` block (AC32)", () => {
+    writeState(tmp, { ...createInitialState(), megaEnabled: true });
+    const r = buildInjectedPrompt(tmp)!;
+    expect(r).not.toContain("## Megapowers Protocol");
   });
 });

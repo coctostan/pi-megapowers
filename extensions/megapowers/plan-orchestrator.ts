@@ -3,6 +3,7 @@ import { generateLegacyPlanMd } from "./state/legacy-plan-bridge.js";
 import type { PlanTask as PlanTaskDoc } from "./state/plan-schemas.js";
 import type { MegapowersState, PlanMode, PlanTask } from "./state/state-machine.js";
 import { FOCUSED_REVIEW_THRESHOLD } from "./plan-review/focused-review.js";
+import { composeMessage } from "./feedback.js";
 
 export type PlanTemplateName = "write-plan.md" | "review-plan.md" | "revise-plan.md";
 
@@ -96,9 +97,11 @@ export function transitionDraftToReview(
     ok: true,
     value: {
       nextState: { ...state, planMode: "review" },
-      message:
-        `📝 Draft complete: ${taskCount} task${taskCount === 1 ? "" : "s"} saved\n` +
-        "  → Transitioning to review mode.",
+      message: composeMessage({
+        icon: "info",
+        summary: `Plan draft complete — ${taskCount} task${taskCount === 1 ? "" : "s"} saved`,
+        nextStep: "Transitioning to review mode. A new review session will start.",
+      }),
     },
   };
 }
@@ -119,9 +122,11 @@ export function transitionReviewToRevise(
   if (state.planIteration >= maxIterations) {
     return {
       ok: false,
-      error:
-        `⚠️ Plan review reached ${maxIterations} iterations without approval. Human intervention needed.\n` +
-        "  Use /mega off to disable enforcement and manually advance, or revise the spec.",
+      error: composeMessage({
+        icon: "error",
+        summary: `plan_review: reached ${maxIterations} iterations without approval — Human intervention needed`,
+        nextStep: "Use /mega off to disable enforcement and manually advance, or revise the spec.",
+      }),
     };
   }
 
@@ -133,11 +138,15 @@ export function transitionReviewToRevise(
         planMode: "revise",
         planIteration: state.planIteration + 1,
       },
-      message:
-        `📋 Plan review: REVISE (iteration ${state.planIteration + 1} of ${maxIterations})\n` +
-        `  ✅ Tasks ${approvedIds.join(", ") || "none"} approved\n` +
-        `  ⚠️ Tasks ${needsRevisionIds.join(", ") || "none"} need revision\n` +
-        "  → Transitioning to revise mode. A new review session will start.",
+      message: composeMessage({
+        icon: "info",
+        summary: `Plan review: REVISE (iteration ${state.planIteration + 1} of ${maxIterations})`,
+        changes: [
+          `Tasks ${approvedIds.join(", ") || "none"} approved`,
+          `Tasks ${needsRevisionIds.join(", ") || "none"} need revision`,
+        ],
+        nextStep: "Transitioning to revise mode. A new review session will start.",
+      }),
     },
   };
 }

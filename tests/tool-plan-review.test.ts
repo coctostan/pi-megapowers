@@ -120,6 +120,27 @@ describe("handlePlanReview — revise verdict", () => {
     expect(result.error).toContain("intervention");
   });
 
+
+  it("does not write review artifacts or task statuses when revise verdict is rejected at iteration cap", () => {
+    setState(tmp, { phase: "plan", planMode: "review", planIteration: 4 });
+    createTaskFile(tmp, 1, "T1");
+    const planDir = join(tmp, ".megapowers", "plans", "001-test");
+    mkdirSync(planDir, { recursive: true });
+    writeFileSync(join(planDir, "revise-instructions-4.md"), "Reviewer instructions");
+
+    const result = handlePlanReview(tmp, {
+      verdict: "revise",
+      feedback: "Still needs work.",
+      approved_tasks: [],
+      needs_revision_tasks: [1],
+    });
+
+    expect(result.error).toBeDefined();
+    expect(existsSync(join(planDir, "review-004.md"))).toBe(false);
+    const t1 = readPlanTask(tmp, "001-test", 1);
+    expect(t1 && !("error" in t1) ? t1.data.status : undefined).toBe("draft");
+  });
+
   it("sets triggerNewSession flag on revise", () => {
     setState(tmp, { phase: "plan", planMode: "review", planIteration: 1 });
     createTaskFile(tmp, 1, "T1");
@@ -293,5 +314,87 @@ describe("handlePlanReview — revise-instructions file gate (missing → error)
 
     expect(result.error).toBeUndefined();
     expect(result.message).toContain("approved");
+  });
+});
+
+
+describe("handlePlanReview — message shape", () => {
+  let tmp: string;
+  beforeEach(() => { tmp = mkdtempSync(join(tmpdir(), "tool-plan-review-shape-")); });
+  afterEach(() => { rmSync(tmp, { recursive: true, force: true }); });
+
+  it("revise message includes iteration, approved IDs, needs-revision IDs, and transition next-step (AC47)", () => {
+    setState(tmp, { phase: "plan", planMode: "review", planIteration: 1 });
+    createTaskFile(tmp, 1, "T1");
+    createTaskFile(tmp, 2, "T2");
+    const planDir = join(tmp, ".megapowers", "plans", "001-test");
+    mkdirSync(planDir, { recursive: true });
+    writeFileSync(join(planDir, "revise-instructions-1.md"), "instructions");
+
+    const r = handlePlanReview(tmp, {
+      verdict: "revise",
+      feedback: "fix it",
+      approved_tasks: [1],
+      needs_revision_tasks: [2],
+    });
+    expect(r.error).toBeUndefined();
+    expect(r.message).toContain("iteration 2");
+    expect(r.message).toContain("1"); // approved id
+    expect(r.message).toContain("2"); // revise id
+    expect(r.message!.toLowerCase()).toContain("revise mode");
+  });
+
+  it("approve message includes iteration, count of approved tasks, plan.md artifact path, and implement next-step (AC48, AC51)", () => {
+    setState(tmp, { phase: "plan", planMode: "review", planIteration: 2 });
+    createTaskFile(tmp, 1, "T1");
+    createTaskFile(tmp, 2, "T2");
+
+    const r = handlePlanReview(tmp, {
+      verdict: "approve",
+      feedback: "all good",
+      approved_tasks: [1, 2],
+    });
+    expect(r.error).toBeUndefined();
+    expect(r.message).toContain("iteration 2");
+    expect(r.message).toContain("2"); // approved count
+    expect(r.message).toContain(".megapowers/plans/001-test/plan.md");
+    expect(r.message!.toLowerCase()).toContain("implement");
+  });
+
+  it("revise verdict at iteration cap returns error naming plan_review and corrective action (AC49)", () => {
+    setState(tmp, { phase: "plan", planMode: "review", planIteration: 4 });
+    createTaskFile(tmp, 1, "T1");
+    const planDir = join(tmp, ".megapowers", "plans", "001-test");
+    mkdirSync(planDir, { recursive: true });
+    writeFileSync(join(planDir, "revise-instructions-4.md"), "instr");
+    const r = handlePlanReview(tmp, {
+      verdict: "revise",
+      feedback: "x",
+      approved_tasks: [],
+      needs_revision_tasks: [1],
+    });
+    expect(r.error).toBeDefined();
+    expect(r.error).toContain("plan_review");
+  });
+
+  it("missing revise-instructions error names plan_review and tells the user to write the file (AC49)", () => {
+    setState(tmp, { phase: "plan", planMode: "review", planIteration: 1 });
+    createTaskFile(tmp, 1, "T1");
+    const r = handlePlanReview(tmp, {
+      verdict: "revise",
+      feedback: "x",
+      approved_tasks: [],
+      needs_revision_tasks: [1],
+    });
+    expect(r.error).toBeDefined();
+    expect(r.error).toContain("plan_review");
+    expect(r.error!.toLowerCase()).toMatch(/write .* revise-instructions/);
+  });
+
+  it("wrong-phase error names plan_review (AC49)", () => {
+    setState(tmp, { phase: "implement", planMode: null });
+    const r = handlePlanReview(tmp, { verdict: "approve", feedback: "x" });
+    expect(r.error).toBeDefined();
+    expect(r.error).toContain("plan_review");
   });
 });
