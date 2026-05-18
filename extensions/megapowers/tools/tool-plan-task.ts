@@ -4,6 +4,7 @@ import { PlanTaskSchema, type PlanTask } from "../state/plan-schemas.js";
 import type { EntityDoc } from "../state/entity-parser.js";
 import { lintTask } from "../validation/plan-task-linter.js";
 import { validatePlanTaskMutation } from "../plan-orchestrator.js";
+import { composeMessage } from "../feedback.js";
 
 export interface PlanTaskParams {
   id: number;
@@ -32,7 +33,7 @@ export function handlePlanTask(cwd: string, params: PlanTaskParams): PlanTaskRes
   const existing = readPlanTask(cwd, slug, params.id);
 
   if (existing && "error" in existing) {
-    return { error: `❌ Task ${params.id} is corrupt and cannot be updated: ${existing.error}. Delete the file and recreate it.` };
+    return { error: `❌ plan_task: Task ${params.id} existing file is corrupt (${existing.error}). Delete and recreate the corrupt task file.` };
   }
 
   if (existing) {
@@ -40,11 +41,11 @@ export function handlePlanTask(cwd: string, params: PlanTaskParams): PlanTaskRes
   }
 
   if (!params.title) {
-    return { error: `❌ Task ${params.id} invalid: title is required when creating a new task.` };
+    return { error: `❌ plan_task: Task ${params.id} invalid — title is required. Provide title when creating a new task.` };
   }
 
   if (!params.description) {
-    return { error: `❌ Task ${params.id} invalid: description is required when creating a new task.` };
+    return { error: `❌ plan_task: Task ${params.id} invalid — description is required. Provide description when creating a new task.` };
   }
 
   const task: PlanTask = {
@@ -62,14 +63,14 @@ export function handlePlanTask(cwd: string, params: PlanTaskParams): PlanTaskRes
   const lintResult = lintTask(lintInput, existingTasks);
   if (!lintResult.pass) {
     return {
-      error: `❌ Task ${params.id} lint failed:\n${lintResult.errors.map((e) => `  • ${e}`).join("\n")}`,
+      error: `❌ plan_task: Task ${params.id} lint failed — fix lint errors:\n${lintResult.errors.map((e) => `  • ${e}`).join("\n")}`,
     };
   }
 
   const validation = PlanTaskSchema.safeParse(task);
   if (!validation.success) {
     const issues = validation.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
-    return { error: `❌ Task ${params.id} invalid: ${issues}` };
+    return { error: `❌ plan_task: Task ${params.id} invalid — ${issues}. Fix the listed validation errors.` };
   }
 
   writePlanTask(cwd, slug, task, params.description);
@@ -77,13 +78,19 @@ export function handlePlanTask(cwd: string, params: PlanTaskParams): PlanTaskRes
   const depsStr = task.depends_on.length > 0 ? task.depends_on.join(", ") : "none";
   const filesCount = task.files_to_modify.length + task.files_to_create.length;
   const taskPath = `.megapowers/plans/${slug}/tasks/task-${String(task.id).padStart(3, "0")}.md`;
+  const fields = ["title", "description", "depends_on", "no_test", "files_to_modify", "files_to_create"];
   return {
-    message:
-      `✅ Task ${task.id} saved: "${task.title}"\n` +
-      `  → ${taskPath}\n` +
-      "  Changed: title, description, status, depends_on, no_test, files_to_modify, files_to_create\n" +
-      `  depends_on: [${depsStr}] | files: ${filesCount}`,
+    message: composeMessage({
+      icon: "success",
+      summary: `Task ${task.id} saved: "${task.title}"`,
+      changes: [`Changed: Fields set: ${fields.join(", ")}`, `depends_on: [${depsStr}] | files: ${filesCount}`],
+      artifactPath: taskPath,
+    }),
   };
+}
+
+function sameArray<T>(a: T[], b: T[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
 function handleUpdate(
@@ -99,25 +106,25 @@ function handleUpdate(
     merged.title = params.title;
     changed.push("title");
   }
-  if (params.depends_on !== undefined) {
+  if (params.depends_on !== undefined && !sameArray(params.depends_on, existing.data.depends_on)) {
     merged.depends_on = params.depends_on;
     changed.push("depends_on");
   }
-  if (params.no_test !== undefined) {
+  if (params.no_test !== undefined && params.no_test !== existing.data.no_test) {
     merged.no_test = params.no_test;
     changed.push("no_test");
   }
-  if (params.files_to_modify !== undefined) {
+  if (params.files_to_modify !== undefined && !sameArray(params.files_to_modify, existing.data.files_to_modify)) {
     merged.files_to_modify = params.files_to_modify;
     changed.push("files_to_modify");
   }
-  if (params.files_to_create !== undefined) {
+  if (params.files_to_create !== undefined && !sameArray(params.files_to_create, existing.data.files_to_create)) {
     merged.files_to_create = params.files_to_create;
     changed.push("files_to_create");
   }
 
   const body = params.description ?? existing.content;
-  if (params.description !== undefined) {
+  if (params.description !== undefined && params.description !== existing.content) {
     changed.push("description");
   }
 
@@ -126,16 +133,18 @@ function handleUpdate(
   const lintResult = lintTask(lintInput, allTasks);
   if (!lintResult.pass) {
     return {
-      error: `❌ Task ${params.id} lint failed:\n${lintResult.errors.map((e) => `  • ${e}`).join("\n")}`,
+      error: `❌ plan_task: Task ${params.id} lint failed — fix lint errors:\n${lintResult.errors.map((e) => `  • ${e}`).join("\n")}`,
     };
   }
   writePlanTask(cwd, slug, merged, body);
 
   const taskPath = `.megapowers/plans/${slug}/tasks/task-${String(merged.id).padStart(3, "0")}.md`;
   return {
-    message:
-      `✅ Task ${merged.id} updated: "${merged.title}"\n` +
-      `  → ${taskPath}\n` +
-      `  Changed: ${changed.length > 0 ? changed.join(", ") : "no changes"}`,
+    message: composeMessage({
+      icon: "success",
+      summary: `Task ${merged.id} updated: "${merged.title}"`,
+      changes: [`Changed: ${changed.length > 0 ? changed.join(", ") : "no changes"}`],
+      artifactPath: taskPath,
+    }),
   };
 }

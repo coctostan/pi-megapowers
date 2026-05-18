@@ -15,9 +15,18 @@ import {
 import type { Store } from "./state/store.js";
 import { getWorkflowConfig } from "./workflows/registry.js";
 import { deriveToolInstructions } from "./workflows/tool-instructions.js";
+import { getAllowedActions } from "./workflows/allowed-actions.js";
 import { shouldRunFocusedReviewFanout } from "./plan-review/focused-review.js";
 import { resolvePlanTemplate } from "./plan-orchestrator.js";
 import { isSubagentSession } from "./subagent-session.js";
+
+/**
+ * Render the canonical full Megapowers protocol block from prompts/megapowers-protocol.md.
+ * Reachable from tests and debug paths without going through buildInjectedPrompt.
+ */
+export function renderFullProtocolPrompt(): string {
+  return loadPromptFile("megapowers-protocol.md");
+}
 
 /**
  * Build the injected system prompt for the current phase.
@@ -26,34 +35,41 @@ import { isSubagentSession } from "./subagent-session.js";
  * Covers AC41 (prompt injection) and AC42 (phase-specific tool instructions).
  */
 
-function buildIdlePrompt(_cwd: string, store?: Store): string | null {
-  const parts: string[] = [];
-  const protocol = loadPromptFile("megapowers-protocol.md");
-  if (protocol) parts.push(protocol);
+function buildIdlePrompt(_cwd: string, store?: Store): string {
+  const lines: string[] = [
+    "## Megapowers",
+    "",
+    "No active issue.",
+    "",
+    "Allowed now:",
+    "- `/issue list` to pick an issue.",
+    "- `/issue new` to create an issue.",
+    "- `/triage` to batch/prioritize open issues.",
+    "",
+    "Rules:",
+    "- Do not edit .megapowers/state.json.",
+    "- If a Megapowers tool errors, follow its message and retry rather than working around it.",
+  ];
 
   if (store) {
     const issues = store.listIssues().filter(i => i.status !== "done" && i.status !== "archived");
-    const issueLines = issues.map(i =>
-      `- #${String(i.id).padStart(3, "0")} ${i.title} (milestone: ${i.milestone || "none"}, priority: ${i.priority ?? "none"})`,
-    );
-
-    parts.push(
-      issues.length > 0
-        ? `## Open Issues\n\n${issueLines.join("\n")}`
-        : "## Open Issues\n\nNo open issues. Use `/issue new` to create one.",
-    );
+    lines.push("");
+    if (issues.length > 0) {
+      lines.push("## Open Issues");
+      lines.push("");
+      for (const i of issues) {
+        lines.push(
+          `- #${String(i.id).padStart(3, "0")} ${i.title} (milestone: ${i.milestone || "none"}, priority: ${i.priority ?? "none"})`,
+        );
+      }
+    } else {
+      lines.push("## Open Issues");
+      lines.push("");
+      lines.push("No open issues. Use `/issue new` to create one.");
+    }
   }
 
-  parts.push(`## Available Commands
-
-- \`/issue new\` — create a new issue
-- \`/issue list\` — pick an issue to work on
-- \`/triage\` — batch and prioritize open issues
-- \`/mega on|off\` — enable/disable workflow enforcement`);
-
-  parts.push("See `ROADMAP.md` and `.megapowers/milestones.md` for what's next.");
-
-  return parts.length > 0 ? parts.join("\n\n") : null;
+  return lines.join("\n");
 }
 
 function buildFocusedReviewArtifactsSection(cwd: string, issueSlug: string, taskCount: number): string {
@@ -103,6 +119,55 @@ function buildAdvisoryPlanReviewSubagentSection(): string {
     "Follow the assigned subagent prompt and task only; any written artifact is advisory input for the main review session.",
   ].join("\n");
 }
+
+function buildCompactHeader(
+  cwd: string,
+  state: ReturnType<typeof readState>,
+  isAdvisoryPlanReviewSubagent = false,
+): string {
+  const phase = state.phase!;
+  const slug = state.activeIssue!;
+  const allowed = getAllowedActions(phase, state.planMode);
+
+  const phaseLabel = phase === "plan" && state.planMode ? `plan (${state.planMode})` : phase;
+
+  const lines: string[] = [
+    "## Megapowers",
+    "",
+    `Active phase: ${phaseLabel}`,
+    `Current issue: ${slug}`,
+  ];
+
+  if (phase === "implement") {
+    const tasks = deriveTasks(cwd, slug);
+    const current = tasks[state.currentTaskIndex];
+    if (current) {
+      lines.push(`Current task: Task ${current.index}: ${current.description}`);
+    }
+  }
+
+  lines.push("");
+  lines.push("Allowed now:");
+  for (const action of allowed.signalActions) {
+    lines.push(`- \`megapowers_signal({ action: "${action}" })\``);
+  }
+  if (allowed.planTask) {
+    lines.push("- `megapowers_plan_task(...)` to create/update structured plan tasks.");
+  }
+  if (allowed.planReview && !isAdvisoryPlanReviewSubagent) {
+    lines.push('- `megapowers_plan_review({ verdict: "approve", ... })`');
+    lines.push('- `megapowers_plan_review({ verdict: "revise", ... })`');
+  }
+  for (const note of allowed.notes) lines.push(`- ${note}`);
+
+  lines.push("");
+  lines.push("Rules:");
+  for (const w of allowed.warnings) lines.push(`- ${w}`);
+  lines.push("- Do not edit .megapowers/state.json.");
+  lines.push("- If a Megapowers tool errors, follow its message and retry rather than working around it.");
+
+  return lines.join("\n");
+}
 export function buildInjectedPrompt(cwd: string, store?: Store): string | null {
   const state = readState(cwd);
 
@@ -116,9 +181,8 @@ export function buildInjectedPrompt(cwd: string, store?: Store): string | null {
 
   const parts: string[] = [];
 
-  // Base protocol — always included so LLM knows about the tools (AC41)
-  const protocol = loadPromptFile("megapowers-protocol.md");
-  if (protocol) parts.push(protocol);
+  // Compact phase-aware header (replaces the full protocol injection for active issues).
+  parts.push(buildCompactHeader(cwd, state, isAdvisoryPlanReviewSubagent));
 
   // Build template variables
   const vars: Record<string, string> = {
@@ -246,7 +310,7 @@ export function buildInjectedPrompt(cwd: string, store?: Store): string | null {
     const phaseConfig = config.phases.find(p => p.name === state.phase);
     if (phaseConfig) {
       const isTerminal = config.phases[config.phases.length - 1].name === state.phase;
-      const toolInstructions = deriveToolInstructions(phaseConfig, state.activeIssue, { isTerminal });
+      const toolInstructions = deriveToolInstructions(phaseConfig, state.activeIssue, { isTerminal, planMode: state.planMode });
       if (toolInstructions) parts.push(toolInstructions.trim());
     }
   }

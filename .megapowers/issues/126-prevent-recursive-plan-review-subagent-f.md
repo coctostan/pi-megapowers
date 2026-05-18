@@ -1,7 +1,7 @@
 ---
 id: 126
 type: bugfix
-status: open
+status: done
 created: 2026-03-12T16:47:43.933Z
 ---
 # Prevent recursive plan-review subagent fan-out
