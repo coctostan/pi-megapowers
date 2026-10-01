@@ -18,7 +18,6 @@ export interface PlanReviewParams {
 export interface PlanReviewResult {
   message?: string;
   error?: string;
-  triggerNewSession?: boolean;
 }
 
 export function handlePlanReview(cwd: string, params: PlanReviewParams): PlanReviewResult {
@@ -75,7 +74,6 @@ export function handlePlanReview(cwd: string, params: PlanReviewParams): PlanRev
     writeState(cwd, orchestrated.value.nextState);
     return {
       message: orchestrated.value.message,
-      triggerNewSession: true,
     };
   }
 
@@ -118,7 +116,6 @@ function handleApproveVerdict(
       artifactPath: `.megapowers/plans/${slug}/plan.md`,
       nextStep: "Advancing to implement phase.",
     }),
-    triggerNewSession: true,
   };
 }
 

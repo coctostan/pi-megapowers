@@ -170,7 +170,7 @@ describe("handleSignal", () => {
       expect(state.completedTasks).toContain(1);
     });
 
-    it("returns triggerNewSession when auto-advancing to verify (all tasks complete)", () => {
+    it("omits session-reset instructions when auto-advancing to verify", () => {
       writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: Only task\n");
       setState(tmp, {
         phase: "implement",
@@ -181,7 +181,7 @@ describe("handleSignal", () => {
       const result = handleSignal(tmp, "task_done");
       expect(result.error).toBeUndefined();
       expect(result.message).toContain("verify");
-      expect(result.triggerNewSession).toBe(true);
+      expect(result).not.toHaveProperty("triggerNewSession");
     });
 
     it("resets tddTaskState for next task", () => {
@@ -213,7 +213,7 @@ describe("handleSignal", () => {
       expect(state.currentTaskIndex).toBe(2); // Skipped Task 2 (already done), landed on Task 3
     });
 
-    it("returns triggerNewSession when advancing to next task", () => {
+    it("omits session-reset instructions when advancing to the next task", () => {
       writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: A\n\n### Task 2: B\n\n### Task 3: C\n");
       setState(tmp, {
         phase: "implement",
@@ -223,7 +223,7 @@ describe("handleSignal", () => {
       });
       const result = handleSignal(tmp, "task_done");
       expect(result.error).toBeUndefined();
-      expect(result.triggerNewSession).toBe(true);
+      expect(result).not.toHaveProperty("triggerNewSession");
     });
 
 
@@ -307,7 +307,7 @@ describe("handleSignal", () => {
 
       const result = await handlePlanDraftDone(tmp);
       expect(result.error).toBeUndefined();
-      expect(result.message).toContain("review mode");
+      expect(result.message!.toLowerCase()).toContain("review mode");
       const state = readState(tmp);
       expect(state.planMode).toBe("review");
     });
@@ -369,13 +369,13 @@ describe("handleSignal", () => {
       expect(r.message!.toLowerCase()).toContain("review mode");
     });
 
-    it("sets triggerNewSession flag", async () => {
+    it("omits session-reset instructions when entering review mode", async () => {
       setState(tmp, { phase: "plan", planMode: "draft", planIteration: 1 });
       const tasksDir = join(tmp, ".megapowers", "plans", "001-test", "tasks");
       mkdirSync(tasksDir, { recursive: true });
       writeFileSync(join(tasksDir, "task-001.md"), "---\nid: 1\ntitle: T\nstatus: draft\n---\nB.");
       const result = await handlePlanDraftDone(tmp);
-      expect(result.triggerNewSession).toBe(true);
+      expect(result).not.toHaveProperty("triggerNewSession");
     });
   });
 
@@ -409,11 +409,11 @@ describe("handleSignal", () => {
       expect(readState(tmp).phase).toBe("implement");
     });
 
-    it("returns triggerNewSession on successful phase advance", () => {
+    it("omits session-reset instructions on phase advance", () => {
       setState(tmp, { phase: "brainstorm" });
       const result = handleSignal(tmp, "phase_next");
       expect(result.error).toBeUndefined();
-      expect(result.triggerNewSession).toBe(true);
+      expect(result).not.toHaveProperty("triggerNewSession");
     });
 
 
@@ -468,11 +468,11 @@ describe("handleSignal", () => {
       expect(readState(tmp).phase).toBe("implement");
     });
 
-    it("returns triggerNewSession on successful backward transition", () => {
+    it("omits session-reset instructions on backward transition", () => {
       setState(tmp, { phase: "verify" });
       const result = handleSignal(tmp, "phase_back");
       expect(result.error).toBeUndefined();
-      expect(result.triggerNewSession).toBe(true);
+      expect(result).not.toHaveProperty("triggerNewSession");
     });
 
     it("phase_back success message uses ⚠️ icon, names new phase, and includes rework / next-step phrase (AC36, AC39)", () => {
@@ -940,22 +940,22 @@ describe("handleSignal", () => {
     });
   });
 
-  describe("triggerNewSession — error cases", () => {
-    it("does NOT return triggerNewSession when phase_next fails", () => {
+  describe("session policy — error cases", () => {
+    it("omits session-reset instructions when phase_next fails", () => {
       setState(tmp, { phase: "spec" }); // spec.md missing — gate will fail
       const result = handleSignal(tmp, "phase_next");
       expect(result.error).toBeDefined();
-      expect(result.triggerNewSession).toBeUndefined();
+      expect(result).not.toHaveProperty("triggerNewSession");
     });
 
-    it("does NOT return triggerNewSession when phase_back fails", () => {
+    it("omits session-reset instructions when phase_back fails", () => {
       setState(tmp, { phase: "brainstorm" }); // no backward transition
       const result = handleSignal(tmp, "phase_back");
       expect(result.error).toBeDefined();
-      expect(result.triggerNewSession).toBeUndefined();
+      expect(result).not.toHaveProperty("triggerNewSession");
     });
 
-    it("does NOT return triggerNewSession when task_done fails", () => {
+    it("omits session-reset instructions when task_done fails", () => {
       setState(tmp, {
         phase: "implement",
         currentTaskIndex: 0,
@@ -965,39 +965,39 @@ describe("handleSignal", () => {
       writeArtifact(tmp, "001-test", "plan.md", "# Plan\n\n### Task 1: Build\n");
       const result = handleSignal(tmp, "task_done");
       expect(result.error).toBeDefined();
-      expect(result.triggerNewSession).toBeUndefined();
+      expect(result).not.toHaveProperty("triggerNewSession");
     });
 
-    it("does NOT return triggerNewSession when plan_draft_done fails", async () => {
+    it("omits session-reset instructions when plan_draft_done fails", async () => {
       setState(tmp, { phase: "implement", planMode: null });
       const result = await handlePlanDraftDone(tmp);
       expect(result.error).toBeDefined();
-      expect(result.triggerNewSession).toBeUndefined();
+      expect(result).not.toHaveProperty("triggerNewSession");
     });
   });
 
-  describe("triggerNewSession — non-transition actions", () => {
-    it("does NOT return triggerNewSession for tests_failed", () => {
+  describe("session policy — non-transition actions", () => {
+    it("omits session-reset instructions for tests_failed", () => {
       setState(tmp, {
         phase: "implement",
         tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
       });
       const result = handleSignal(tmp, "tests_failed");
       expect(result.error).toBeUndefined();
-      expect(result.triggerNewSession).toBeUndefined();
+      expect(result).not.toHaveProperty("triggerNewSession");
     });
 
-    it("does NOT return triggerNewSession for tests_passed", () => {
+    it("omits session-reset instructions for tests_passed", () => {
       setState(tmp, {
         phase: "implement",
         tddTaskState: { taskIndex: 1, state: "test-written", skipped: false },
       });
       const result = handleSignal(tmp, "tests_passed");
       expect(result.error).toBeUndefined();
-      expect(result.triggerNewSession).toBeUndefined();
+      expect(result).not.toHaveProperty("triggerNewSession");
     });
 
-    it("does NOT return triggerNewSession for close_issue", () => {
+    it("omits session-reset instructions for close_issue", () => {
       const issuesDir = join(tmp, ".megapowers", "issues");
       mkdirSync(issuesDir, { recursive: true });
       writeFileSync(
@@ -1007,7 +1007,7 @@ describe("handleSignal", () => {
       setState(tmp, { phase: "done" });
       const result = handleSignal(tmp, "close_issue");
       expect(result.error).toBeUndefined();
-      expect(result.triggerNewSession).toBeUndefined();
+      expect(result).not.toHaveProperty("triggerNewSession");
     });
   });
 
@@ -1039,5 +1039,40 @@ describe("handleSignal", () => {
       );
       expect(result.trim()).toBe("");
     });
+  });
+});
+
+
+describe("signal session policy", () => {
+  it("successful signal transitions return no session-reset instruction", async () => {
+    for (const action of ["phase_next", "phase_back", "task_done", "plan_draft_done"] as const) {
+      const cwd = mkdtempSync(join(tmpdir(), "signal-policy-"));
+      try {
+        const dir = join(cwd, ".megapowers", "plans", "001-test");
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, "plan.md"), "# Plan\n\n### Task 1: First\n\n### Task 2: Second\n");
+        if (action === "plan_draft_done") {
+          mkdirSync(join(dir, "tasks"), { recursive: true });
+          writeFileSync(join(dir, "tasks", "task-001.md"), "---\nid: 1\ntitle: First\nstatus: draft\n---\nBody.");
+        }
+        writeState(cwd, {
+          ...createInitialState(), activeIssue: "001-test", workflow: "feature",
+          phase: action === "phase_next" ? "brainstorm" : action === "phase_back" ? "verify"
+            : action === "task_done" ? "implement" : "plan",
+          planMode: action === "plan_draft_done" ? "draft" : null,
+          planIteration: action === "plan_draft_done" ? 1 : 0,
+          tddTaskState: action === "task_done" ? { taskIndex: 1, state: "impl-allowed", skipped: false } : null,
+        });
+        const result = action === "plan_draft_done" ? await handlePlanDraftDone(cwd) : handleSignal(cwd, action);
+        expect(result.error).toBeUndefined();
+        if (action === "plan_draft_done") {
+          expect(result.message).toContain("current Pi session");
+          expect(result.message).not.toMatch(/new review session|starts a new session|fresh session/i);
+        }
+        expect(result).not.toHaveProperty("triggerNewSession");
+      } finally {
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    }
   });
 });

@@ -100,7 +100,7 @@ export function transitionDraftToReview(
       message: composeMessage({
         icon: "info",
         summary: `Plan draft complete — ${taskCount} task${taskCount === 1 ? "" : "s"} saved`,
-        nextStep: "Transitioning to review mode. A new review session will start.",
+        nextStep: "Review mode is active in the current Pi session. Continue with plan review.",
       }),
     },
   };
@@ -145,7 +145,7 @@ export function transitionReviewToRevise(
           `Tasks ${approvedIds.join(", ") || "none"} approved`,
           `Tasks ${needsRevisionIds.join(", ") || "none"} need revision`,
         ],
-        nextStep: "Transitioning to revise mode. A new review session will start.",
+        nextStep: "Revise mode is active in the current Pi session. Update the tasks using the review feedback.",
       }),
     },
   };

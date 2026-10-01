@@ -141,7 +141,7 @@ describe("handlePlanReview — revise verdict", () => {
     expect(t1 && !("error" in t1) ? t1.data.status : undefined).toBe("draft");
   });
 
-  it("sets triggerNewSession flag on revise", () => {
+  it("omits session-reset instructions on revise", () => {
     setState(tmp, { phase: "plan", planMode: "review", planIteration: 1 });
     createTaskFile(tmp, 1, "T1");
     const planDir = join(tmp, ".megapowers", "plans", "001-test");
@@ -154,7 +154,8 @@ describe("handlePlanReview — revise verdict", () => {
       approved_tasks: [],
       needs_revision_tasks: [1],
     });
-    expect(result.triggerNewSession).toBe(true);
+    expect(result.error).toBeUndefined();
+    expect(result).not.toHaveProperty("triggerNewSession");
   });
 });
 
@@ -237,7 +238,7 @@ describe("handlePlanReview — approve verdict", () => {
     expect(result.message).toContain("implement");
   });
 
-  it("returns triggerNewSession on approve", () => {
+  it("omits session-reset instructions on approve", () => {
     setState(tmp, { phase: "plan", planMode: "review", planIteration: 1 });
     createTaskFile(tmp, 1, "T1");
 
@@ -247,7 +248,7 @@ describe("handlePlanReview — approve verdict", () => {
       approved_tasks: [1],
     });
     expect(result.error).toBeUndefined();
-    expect(result.triggerNewSession).toBe(true);
+    expect(result).not.toHaveProperty("triggerNewSession");
   });
 });
 
@@ -396,5 +397,34 @@ describe("handlePlanReview — message shape", () => {
     const r = handlePlanReview(tmp, { verdict: "approve", feedback: "x" });
     expect(r.error).toBeDefined();
     expect(r.error).toContain("plan_review");
+  });
+});
+
+describe("plan-review session policy", () => {
+  it("successful review verdicts return no session-reset instruction", () => {
+    for (const verdict of ["approve", "revise"] as const) {
+      const cwd = mkdtempSync(join(tmpdir(), "review-policy-"));
+      try {
+        const dir = join(cwd, ".megapowers", "plans", "001-test");
+        mkdirSync(join(dir, "tasks"), { recursive: true });
+        writeFileSync(join(dir, "tasks", "task-001.md"), "---\nid: 1\ntitle: First\nstatus: draft\n---\nBody.");
+        writeFileSync(join(dir, "revise-instructions-1.md"), "Fix task 1.");
+        writeState(cwd, { ...createInitialState(), activeIssue: "001-test", workflow: "feature",
+          phase: "plan", planMode: "review", planIteration: 1 });
+        const result = handlePlanReview(cwd, {
+          verdict, feedback: "Review feedback",
+          approved_tasks: verdict === "approve" ? [1] : [],
+          needs_revision_tasks: verdict === "revise" ? [1] : [],
+        });
+        expect(result.error).toBeUndefined();
+        if (verdict === "revise") {
+          expect(result.message).toContain("current Pi session");
+          expect(result.message).not.toMatch(/new review session|starts a new session|fresh session/i);
+        }
+        expect(result).not.toHaveProperty("triggerNewSession");
+      } finally {
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    }
   });
 });

@@ -55,3 +55,14 @@ describe("registerTools — legacy tool removal", () => {
     expect(source).toContain("result = await handlePlanDraftDone(ctx.cwd);");
   });
 });
+
+describe("tool session descriptions", () => {
+  it("transition tools describe preservation rather than automatic fresh sessions", () => {
+    const tools: Record<string, any> = {};
+    registerTools({ registerTool: (tool: any) => { tools[tool.name] = tool; } } as any, {});
+    for (const name of ["megapowers_signal", "megapowers_plan_review"]) {
+      expect(tools[name].description).toContain("preserves the current Pi session");
+      expect(tools[name].description).not.toMatch(/starts a new session|fresh session/i);
+    }
+  });
+});
