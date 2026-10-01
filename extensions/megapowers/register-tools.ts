@@ -16,7 +16,7 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
   pi.registerTool({
     name: "megapowers_signal",
     label: "Megapowers Signal",
-    description: "Signal a megapowers state transition. Actions: task_done (mark current implement task complete), plan_draft_done (signal draft is complete — transitions planMode from draft/revise to review and starts a new session), phase_next (advance to the next workflow phase), phase_back (go back one phase — e.g. verify→implement, code-review→implement; errors if no backward transition exists), tests_failed (mark RED after a failing test run), tests_passed (acknowledge GREEN after a passing test run), close_issue (mark issue as done, reset state — done phase only).",
+    description: "Signal a megapowers state transition. Every action preserves the current Pi session. Actions: task_done (mark current implement task complete), plan_draft_done (signal draft is complete — transitions planMode from draft/revise to review), phase_next (advance to the next workflow phase), phase_back (go back one phase — e.g. verify→implement, code-review→implement; errors if no backward transition exists), tests_failed (mark RED after a failing test run), tests_passed (acknowledge GREEN after a passing test run), close_issue (mark issue as done, reset workflow state — done phase only).",
     parameters: Type.Object({
       action: Type.Union([
         Type.Literal("task_done"),
@@ -40,9 +40,7 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
       if (result.error) {
         return { content: [{ type: "text", text: `Error: ${result.error}` }], details: undefined };
       }
-      if (result.triggerNewSession) {
-        (ctx.sessionManager as any)?.newSession?.();
-      }
+      // Workflow transitions preserve the current Pi session.
 
 
       if (ctx.hasUI) {
@@ -81,7 +79,7 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
   pi.registerTool({
     name: "megapowers_plan_review",
     label: "Plan Review",
-    description: "Submit plan review verdict. Approves the plan or requests revisions with per-task feedback.",
+    description: "Submit plan review verdict. Approves the plan or requests revisions with per-task feedback. This preserves the current Pi session.",
     parameters: Type.Object({
       verdict: StringEnum(["approve", "revise"] as const),
       feedback: Type.String({ description: "Review feedback — per-task assessment, issues found, suggestions (markdown)" }),
@@ -93,9 +91,7 @@ export function registerTools(pi: ExtensionAPI, runtimeDeps: RuntimeDeps): void 
       if (result.error) {
         return { content: [{ type: "text", text: `Error: ${result.error}` }], details: undefined };
       }
-      if (result.triggerNewSession) {
-        (ctx.sessionManager as any)?.newSession?.();
-      }
+      // Workflow transitions preserve the current Pi session.
 
       return { content: [{ type: "text", text: result.message ?? "OK" }], details: undefined };
     },

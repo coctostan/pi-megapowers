@@ -1,63 +1,97 @@
-// extensions/megapowers/tools/tool-signal.ts
-import { join } from "node:path";
-import { readState, writeState } from "../state/state-io.js";
-import { listPlanTasks } from "../state/plan-store.js";
-import { advancePhase } from "../policy/phase-advance.js";
-import { deriveTasks } from "../state/derived.js";
-import { transition, createInitialState, type Phase } from "../state/state-machine.js";
-import { getWorkflowConfig } from "../workflows/registry.js";
-import { createStore } from "../state/store.js";
-import { versionArtifact } from "../artifacts/version-artifact.js";
-import { transitionDraftToReview } from "../plan-orchestrator.js";
-import { composeMessage } from "../feedback.js";
+---
+id: 2
+title: Remove signal session-reset instructions
+status: approved
+depends_on:
+  - 1
+no_test: false
+files_to_modify:
+  - extensions/megapowers/tools/tool-signal.ts
+  - tests/tool-signal.test.ts
+  - extensions/megapowers/plan-orchestrator.ts
+files_to_create: []
+---
 
+### Task 2: Remove signal session-reset instructions [depends: 1]
+
+**Files:**
+- Modify: `extensions/megapowers/tools/tool-signal.ts`
+- Modify: `tests/tool-signal.test.ts`
+- Modify: `extensions/megapowers/plan-orchestrator.ts`
+
+Covers Fixed When 1, 3, 5–7. Task 1 must have removed the consumers first. Preserve all workflow state mutations and feedback content except for the explicitly obsolete automatic-session promise in `transitionDraftToReview`. The optional result-field removal is a result contract change, not a state.json schema change.
+
+Grounding: verified `SignalResult`, `handleSignal(cwd, action, target?): SignalResult`, and `handlePlanDraftDone(cwd): Promise<SignalResult>` from source. `impact([SignalResult], signature_change)` found no indexed call-edge dependents; explicit search identified the signal producer, register-tools consumer (already removed by Task 1), and `tests/tool-signal.test.ts`. No other dependent tests require changes.
+
+Revision grounding: `read(symbol)` and `symbol_graph` confirm `transitionDraftToReview(state: MegapowersState, taskCount: number): OrchestratorResult<PlanTransitionResult>` and `composeMessage(args: ComposeArgs): string`. AST search confirms the `composeMessage` call owns the obsolete `nextStep` inside this function. All Step 3 local callees were checked against their current source signatures; Node fs/path helpers remain the existing imports.
+
+**Step 1 — Write the failing test**
+Append this COMPLETE describe block at EOF in `tests/tool-signal.test.ts`. Its imports (`describe/it/expect`, fs/temp/path helpers, handlers, state helpers) already exist in that file; it uses its own temporary fixtures rather than another describe's hooks.
+
+```ts
+describe("signal session policy", () => {
+  it("successful signal transitions return no session-reset instruction", async () => {
+    for (const action of ["phase_next", "phase_back", "task_done", "plan_draft_done"] as const) {
+      const cwd = mkdtempSync(join(tmpdir(), "signal-policy-"));
+      try {
+        const dir = join(cwd, ".megapowers", "plans", "001-test");
+        mkdirSync(dir, { recursive: true });
+        writeFileSync(join(dir, "plan.md"), "# Plan\n\n### Task 1: First\n\n### Task 2: Second\n");
+        if (action === "plan_draft_done") {
+          mkdirSync(join(dir, "tasks"), { recursive: true });
+          writeFileSync(join(dir, "tasks", "task-001.md"), "---\nid: 1\ntitle: First\nstatus: draft\n---\nBody.");
+        }
+        writeState(cwd, {
+          ...createInitialState(), activeIssue: "001-test", workflow: "feature",
+          phase: action === "phase_next" ? "brainstorm" : action === "phase_back" ? "verify"
+            : action === "task_done" ? "implement" : "plan",
+          planMode: action === "plan_draft_done" ? "draft" : null,
+          planIteration: action === "plan_draft_done" ? 1 : 0,
+          tddTaskState: action === "task_done" ? { taskIndex: 1, state: "impl-allowed", skipped: false } : null,
+        });
+        const result = action === "plan_draft_done" ? await handlePlanDraftDone(cwd) : handleSignal(cwd, action);
+        expect(result.error).toBeUndefined();
+        if (action === "plan_draft_done") {
+          expect(result.message).toContain("current Pi session");
+          expect(result.message).not.toMatch(/new review session|starts a new session|fresh session/i);
+        }
+        expect(result).not.toHaveProperty("triggerNewSession");
+      } finally {
+        rmSync(cwd, { recursive: true, force: true });
+      }
+    }
+  });
+});
+```
+
+**Step 2 — Run test, verify it fails**
+Run: `bun test tests/tool-signal.test.ts -t "signal session policy"`
+Expected: FAIL. Minimal actual handler probe emitted:
+```text
+error: expect(received).not.toHaveProperty(path)
+
+Expected path: not "triggerNewSession"
+
+Received value: true
+```
+
+The loop initially fails on the `phase_next` no-flag assertion above. Once the obsolete flags are removed, the `plan_draft_done` message assertion independently fails until its producer's next step is corrected:
+```text
+error: expect(received).toContain(expected)
+
+Expected to contain: "current Pi session"
+Received: "📋 Plan draft complete — 1 task saved\n  Next: Transitioning to review mode. A new review session will start."
+```
+Both failures protect the same session-preservation policy; keep all four action fixtures and the no-flag assertion.
+
+**Step 3 — Write minimal implementation**
+Replace the existing interface and these five symbols with the complete bodies below. They differ only by removing the interface field and all five return flags. Keep imports and every other handler unchanged.
+
+```ts
 export interface SignalResult {
   message?: string;
   error?: string;
 }
-
-export function handleSignal(
-  cwd: string,
-  action:
-    | "task_done"
-    | "phase_next"
-    | "phase_back"
-    | "tests_failed"
-    | "tests_passed"
-    | "plan_draft_done"
-    | "close_issue"
-    | string,
-  target?: string,
-): SignalResult {
-  const state = readState(cwd);
-
-  if (!state.megaEnabled) {
-    return { error: "Megapowers is disabled. Use /mega on to re-enable." };
-  }
-
-  switch (action) {
-    case "task_done":
-      return handleTaskDone(cwd);
-    case "phase_next":
-      return handlePhaseNext(cwd, target);
-    case "phase_back":
-      return handlePhaseBack(cwd);
-    case "tests_failed":
-      return handleTestsFailed(cwd);
-    case "tests_passed":
-      return handleTestsPassed(cwd);
-    case "plan_draft_done":
-      return { error: "plan_draft_done must be called via the async handlePlanDraftDone export." };
-    case "close_issue":
-      return handleCloseIssue(cwd);
-    default:
-      return { error: `Unknown signal action: ${String(action)}` };
-  }
-}
-
-// ---------------------------------------------------------------------------
-// task_done
-// ---------------------------------------------------------------------------
 
 function handleTaskDone(cwd: string): SignalResult {
   const state = readState(cwd);
@@ -170,59 +204,6 @@ function handleTaskDone(cwd: string): SignalResult {
   };
 }
 
-// ---------------------------------------------------------------------------
-
-function handleTestsFailed(cwd: string): SignalResult {
-  const state = readState(cwd);
-
-  if (state.phase !== "implement" && state.phase !== "code-review") {
-    return { error: "tests_failed can only be called during the implement or code-review phase." };
-  }
-
-  if (!state.tddTaskState || state.tddTaskState.state !== "test-written") {
-    if (state.tddTaskState?.state === "impl-allowed") {
-      return { error: "TDD state is already in impl-allowed." };
-    }
-    return { error: "No test written yet, or tests have not failed yet." };
-  }
-
-  writeState(cwd, {
-    ...state,
-    tddTaskState: { ...state.tddTaskState, state: "impl-allowed" },
-  });
-
-  return {
-    message: composeMessage({
-      icon: "success",
-      summary: "Tests failed (RED ✓) — recorded",
-      nextStep: "Production code writes are now allowed.",
-    }),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// tests_passed
-// ---------------------------------------------------------------------------
-
-function handleTestsPassed(cwd: string): SignalResult {
-  const state = readState(cwd);
-
-  if (state.phase !== "implement" && state.phase !== "code-review") {
-    return { error: "tests_passed can only be called during the implement or code-review phase." };
-  }
-
-  return {
-    message: composeMessage({
-      icon: "success",
-      summary: "Tests passed (GREEN ✓) — recorded",
-    }),
-  };
-}
-
-// ---------------------------------------------------------------------------
-// plan_draft_done
-// ---------------------------------------------------------------------------
-
 export async function handlePlanDraftDone(cwd: string): Promise<SignalResult> {
   const state = readState(cwd);
   if (state.phase !== "plan") {
@@ -247,13 +228,6 @@ export async function handlePlanDraftDone(cwd: string): Promise<SignalResult> {
   };
 }
 
-
-
-
-// ---------------------------------------------------------------------------
-// phase_next
-// ---------------------------------------------------------------------------
-
 function handlePhaseNext(cwd: string, target?: string): SignalResult {
   const result = advancePhase(cwd, target as Phase | undefined);
   if (!result.ok) {
@@ -267,10 +241,6 @@ function handlePhaseNext(cwd: string, target?: string): SignalResult {
     }),
   };
 }
-
-// ---------------------------------------------------------------------------
-// phase_back
-// ---------------------------------------------------------------------------
 
 function handlePhaseBack(cwd: string): SignalResult {
   const state = readState(cwd);
@@ -320,36 +290,40 @@ function handlePhaseBack(cwd: string): SignalResult {
     }),
   };
 }
+```
 
-// ---------------------------------------------------------------------------
-// close_issue
-// ---------------------------------------------------------------------------
+In `extensions/megapowers/plan-orchestrator.ts`, inside `transitionDraftToReview(state: MegapowersState, taskCount: number): OrchestratorResult<PlanTransitionResult>`, replace ONLY:
+```ts
+        nextStep: "Transitioning to review mode. A new review session will start.",
+```
+with:
+```ts
+        nextStep: "Review mode is active in the current Pi session. Continue with plan review.",
+```
+Keep its guards, `nextState`, summary and task count unchanged. Do not replace the whole orchestrator file or change any other transition.
 
-function handleCloseIssue(cwd: string): SignalResult {
-  const state = readState(cwd);
+Retire obsolete test expectations in `tests/tool-signal.test.ts`. Replace every exact occurrence of either of these lines:
+```ts
+expect(result.triggerNewSession).toBe(true);
+expect(result.triggerNewSession).toBeUndefined();
+```
+with:
+```ts
+expect(result).not.toHaveProperty("triggerNewSession");
+```
+Keep ALL surrounding state, gate, message, and TDD assertions. Rename the five former positive-reset tests to:
+- `omits session-reset instructions when auto-advancing to verify`
+- `omits session-reset instructions when advancing to the next task`
+- `omits session-reset instructions when entering review mode`
+- `omits session-reset instructions on phase advance`
+- `omits session-reset instructions on backward transition`
 
-  if (!state.activeIssue || state.phase !== "done") {
-    return { error: "close_issue can only be called during the done phase." };
-  }
+The error/non-transition test groups should be named `session policy — error cases` and `session policy — non-transition actions`; their case titles should say `omits session-reset instructions` rather than referring to reading a removed typed property. String-key negative assertions are intentional behavioral regressions.
 
-  const store = createStore(cwd);
-  // Batch auto-close: close source issues first (before the batch issue)
-  const sources = store.getSourceIssues(state.activeIssue);
-  for (const source of sources) {
-    store.updateIssueStatus(source.slug, "done");
-  }
+**Step 4 — Run test, verify it passes**
+Run: `bun test tests/tool-signal.test.ts -t "signal session policy"`
+Expected: PASS. Also run `bun test tests/tool-signal.test.ts tests/plan-orchestrator.test.ts` to check updated legacy cases and unchanged orchestrator behavior.
 
-  // Close the active issue
-  store.updateIssueStatus(state.activeIssue, "done");
-  writeState(cwd, { ...createInitialState(), megaEnabled: state.megaEnabled });
-  const changes = sources.length > 0
-    ? [`Closed ${sources.length} source issue${sources.length === 1 ? "" : "s"} (batch)`]
-    : undefined;
-  return {
-    message: composeMessage({
-      icon: "success",
-      summary: `Issue ${state.activeIssue} marked as done`,
-      changes,
-    }),
-  };
-}
+**Step 5 — Verify no regressions**
+Run: `bun test`
+Expected: all passing.

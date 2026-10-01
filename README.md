@@ -68,10 +68,18 @@ All commands are available via `/mp` or the legacy `/mega` prefix:
 The `plan` phase has an internal draft/review/revise cycle:
 
 1. **Draft** — create tasks with `megapowers_plan_task`
-2. **Submit** — `megapowers_signal({ action: "plan_draft_done" })` → enters review mode + new session
+2. **Submit** — `megapowers_signal({ action: "plan_draft_done" })` → enters review mode in the current Pi session
 3. **Review** — `megapowers_plan_review({ verdict: "approve" | "revise", ... })`
    - `approve` → generates `plan.md`, advances to `implement`
    - `revise` → returns to draft mode (max 4 iterations)
+
+### Session boundaries
+
+Megapowers phase, task, and plan-review transitions preserve the current Pi session. They update workflow state without automatically clearing history or starting a fresh agent runtime.
+
+For a fresh context window, use Pi's `/new` command between agent runs. Workflow state and artifacts remain on disk, so the next agent start builds context for the current phase/task. This context is injected at agent start, not on every follow-up model request inside an existing run.
+
+After updating the extension, reload it before testing transitions. A session already corrupted by an older version may need a one-time `/new`; this fix prevents new corruption but does not repair historical transcripts.
 
 The feature-side `brainstorm` → `spec` handoff is requirements-first: `brainstorm.md` is treated as a structured requirements artifact, and `spec.md` is expected to include requirement traceability so reduced-scope or deferred items do not silently disappear during spec writing.
 

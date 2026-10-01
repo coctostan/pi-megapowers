@@ -15,7 +15,7 @@ Backward transitions:
 
 Plan authoring is an internal loop inside `plan` (not a separate workflow phase):
 - **Draft/Revise:** create/update tasks with `megapowers_plan_task`
-- **Submit draft:** `megapowers_signal({ action: "plan_draft_done" })` → enters review mode + starts new session
+- **Submit draft:** `megapowers_signal({ action: "plan_draft_done" })` → enters review mode in the current Pi session
 - **Review verdict:** `megapowers_plan_review({ verdict: "approve" | "revise", ... })`
   - `approve`: marks tasks approved, generates backward-compatible `plan.md`, advances to `implement`
   - `revise`: returns to revise mode, increments iteration (max 4)
@@ -52,6 +52,7 @@ Derived data is always computed on demand:
 - **Bugfix aliasing:** `reproduce_content` → `brainstorm_content`, `diagnosis_content` → `spec_content` for shared prompt templates.
 - **Implement execution mode**: implementation work runs directly in the primary session with strict TDD sequencing and signal acknowledgements.
 - **Focused review fan-out**: plan review may use preserved `pi-subagents` fan-out for advisory reviewers (coverage/dependency/task quality).
+- **Session boundaries:** workflow tools preserve the current Pi session. Fresh context is user-initiated with `/new` between runs; the next agent start rebuilds phase/task context from disk. Never reset a raw/read-only session manager from a tool or lifecycle hook.
 
 ## tests
 

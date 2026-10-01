@@ -10,3 +10,9 @@
 - Standardized success/error messages for all megapowers signals and plan tools to include an icon, what changed, artifact path when applicable, and explicit next step (#129, #121).
 - `handlePlanTask` update path now reports only fields whose values actually changed (#129).
 - `handlePlanReview` no longer writes the review artifact or mutates task statuses when a revise verdict is rejected at the iteration cap (#129).
+
+### Fixed
+- Preserve tool-call transcripts across phase/task transitions, draft submission, and plan-review verdicts by removing in-tool session resets; prevent orphaned tool-result provider errors without changing workflow gates or TDD sequencing (#130).
+
+### Changed
+- Workflow transitions retain the current Pi session; use `/new` between runs for clean context. Updated tool guidance and documented isolated session-compatibility smoke checks (#130).
